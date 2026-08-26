@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>L1 Agent · 自动转单与关单</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', Roboto, sans-serif;
+            background: #0b1424;
+            color: #e0e6f0;
+            padding: 24px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+
+        /* ----- 头部 ----- */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 18px;
+            border-bottom: 1px solid #1e3150;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .header-left h1 {
+            font-size: 24px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #64d8ff, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-left h1 i {
+            -webkit-text-fill-color: #3b82f6;
+            margin-right: 8px;
+        }
+
+        .badge-l1 {
+            background: #1f3a5f;
+            padding: 4px 14px;
+            border-radius: 20px;
+            border: 1px solid #2a4a7f;
+            color: #64d8ff;
+            font-size: 13px;
+        }
+
+        .badge-l1 i {
+            color: #10b981;
+            margin-right: 4px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 14px;
+            color: #94a9c9;
+        }
+
+        /* ----- 统计卡片 ----- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: #111d35;
+            border-radius: 14px;
+            padding: 18px 20px;
+            border: 1px solid #1e3150;
+        }
+
+        .stat-card .label {
+            font-size: 12px;
+            color: #7a93b5;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .stat-card .value {
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .stat-card .sub {
+            font-size: 13px;
+            color: #5a7a9a;
+        }
+
+        .stat-card.accent-blue .value { color: #60a5fa; }
+        .stat-card.accent-green .value { color: #34d399; }
+        .stat-card.accent-yellow .value { color: #fbbf24; }
+        .stat-card.accent-red .value { color: #f87171; }
+
+        /* ----- 操作栏 ----- */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .toolbar .left {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            background: #1a2744;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: #94a9c9;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: 0.2s;
+            user-select: none;
+        }
+
+        .filter-btn.active {
+            border-color: #3b82f6;
+            color: #60a5fa;
+            background: #1a2a4a;
+        }
+
+        .filter-btn:hover {
+            border-color: #2a4a7f;
+        }
+
+        .timestamp {
+            color: #4a6a8a;
+            font-size: 13px;
+        }
+
+        .timestamp i {
+            margin-right: 4px;
+        }
+
+        /* ----- 工单列表 ----- */
+        .ticket-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .ticket-card {
+            background: #111d35;
+            border-radius: 12px;
+            border: 1px solid #1e3150;
+            padding: 18px 20px;
+            transition: 0.2s;
+            display: grid;
+            grid-template-columns: 1fr auto auto auto;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .ticket-card:hover {
+            border-color: #2a4a7f;
+        }
+
+        .ticket-card .info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .ticket-card .info .title {
+            font-size: 16px;
+            font-weight: 500;
+            color: #e0e6f0;
+        }
+
+        .ticket-card .info .desc {
+            font-size: 13px;
+            color: #94a9c9;
+        }
+
+        .ticket-card .info .meta {
+            font-size: 12px;
+            color: #4a6a8a;
+            margin-top: 4px;
+        }
+
+        .ticket-card .info .meta i {
+            margin-right: 4px;
+        }
+
+        .ticket-card .classification {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0 12px;
+            border-left: 1px solid #1a2744;
+            border-right: 1px solid #1a2744;
+        }
+
+        .ticket-card .classification .tag {
+            font-size: 13px;
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 20px;
+            white-space: nowrap;
+        }
+
+        .tag.own {
+            background: #0f2a1a;
+            color: #34d399;
+        }
+
+        .tag.other {
+            background: #2a1a1a;
+            color: #f87171;
+        }
+
+        .tag.unknown {
+            background: #3b2a1a;
+            color: #fbbf24;
+        }
+
+        .ticket-card .classification .conf {
+            font-size: 12px;
+            color: #7a93b5;
+            margin-top: 4px;
+        }
+
+        .ticket-card .actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 6px 16px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 12px;
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #2a4a7f;
+            color: #94a9c9;
+        }
+
+        .btn-outline:hover {
+            background: #1a2744;
+            border-color: #3b82f6;
+        }
+
+        .btn-success {
+            background: #0f2a1a;
+            color: #34d399;
+            border: 1px solid #1a4a3a;
+        }
+
+        .btn-success:hover {
+            background: #1a4a3a;
+        }
+
+        .btn-warning {
+            background: #3b2a1a;
+            color: #fbbf24;
+            border: 1px solid #4a3a2a;
+        }
+
+        .btn-warning:hover {
+            background: #4a3a2a;
+        }
+
+        .btn-danger {
+            background: #2a1a1a;
+            color: #f87171;
+            border: 1px solid #4a2a2a;
+        }
+
+        .btn-danger:hover {
+            background: #4a2a2a;
+        }
+
+        .btn-primary {
+            background: #1a2a4a;
+            color: #60a5fa;
+            border: 1px solid #2a4a7f;
+        }
+
+        .btn-primary:hover {
+            background: #2a4a7f;
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* ----- 日志面板 ----- */
+        .log-panel {
+            background: #0a1628;
+            border-radius: 12px;
+            border: 1px solid #1e3150;
+            padding: 16px 20px;
+            margin-top: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            color: #b0c4de;
+        }
+
+        .log-panel .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #152238;
+            display: flex;
+            gap: 12px;
+        }
+
+        .log-panel .log-entry .time {
+            color: #4a6a8a;
+            min-width: 80px;
+        }
+
+        .log-panel .log-entry .msg {
+            color: #e0e6f0;
+        }
+
+        .log-panel .log-entry .msg .highlight {
+            color: #60a5fa;
+        }
+
+        .log-panel .log-entry .msg .success {
+            color: #34d399;
+        }
+
+        .log-panel .log-entry .msg .error {
+            color: #f87171;
+        }
+
+        .log-panel .log-entry .msg .warning {
+            color: #fbbf24;
+        }
+
+        /* ----- 空状态 ----- */
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #4a6a8a;
+        }
+
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        /* ----- 响应式 ----- */
+        @media (max-width: 1000px) {
+            .ticket-card {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            .ticket-card .classification {
+                flex-direction: row;
+                justify-content: flex-start;
+                gap: 12px;
+                border: none;
+                padding: 0;
+            }
+            .ticket-card .actions {
+                justify-content: flex-start;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .header-left h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- 头部 -->
+    <header class="header">
+        <div class="header-left">
+            <h1><i class="fas fa-route"></i> 自动转单与关单</h1>
+            <span class="badge-l1"><i class="fas fa-robot"></i> L1 Agent</span>
+        </div>
+        <div class="header-right">
+            <span><i class="far fa-clock"></i> 2026-07-08 09:32:15</span>
+            <span><i class="fas fa-flag"></i> 自动审核 v1.4</span>
+        </div>
+    </header>
+
+    <!-- 统计卡片 -->
+    <section class="stats-grid">
+        <div class="stat-card accent-blue">
+            <div class="label">总工单</div>
+            <div class="value" id="totalCount">0</div>
+            <div class="sub">今日已处理</div>
+        </div>
+        <div class="stat-card accent-green">
+            <div class="label">本系统（保留）</div>
+            <div class="value" id="ownCount">0</div>
+            <div class="sub">升级至 L2 或直接处理</div>
+        </div>
+        <div class="stat-card accent-yellow">
+            <div class="label">其他系统（转单）</div>
+            <div class="value" id="otherCount">0</div>
+            <div class="sub">已自动转单并关闭</div>
+        </div>
+        <div class="stat-card accent-red">
+            <div class="label">自动处理率</div>
+            <div class="value" id="autoRate">0%</div>
+            <div class="sub">L1 Agent 闭环</div>
+        </div>
+    </section>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <div class="left">
+            <span class="filter-btn active" data-filter="all" onclick="setFilter('all')">全部</span>
+            <span class="filter-btn" data-filter="own" onclick="setFilter('own')">本系统</span>
+            <span class="filter-btn" data-filter="other" onclick="setFilter('other')">其他系统</span>
+            <span class="filter-btn" onclick="refreshTickets()"><i class="fas fa-sync-alt"></i> 刷新</span>
+        </div>
+        <span class="timestamp"><i class="fas fa-robot"></i> L1 Agent 持续运行 · 实时分类</span>
+    </div>
+
+    <!-- 工单列表 -->
+    <div class="ticket-list" id="ticketList">
+        <!-- 由 JS 动态生成 -->
+    </div>
+
+    <!-- 日志面板 -->
+    <div class="log-panel" id="logPanel">
+        <div class="log-entry"><span class="time">09:32:15</span><span class="msg">系统启动，L1 Agent 已就绪。</span></div>
+        <div class="log-entry"><span class="time">09:32:16</span><span class="msg">加载工单队列 ... 共 8 个待处理。</span></div>
+    </div>
+</div>
+
+<script>
+    // ================================================================
+    // 模拟工单数据 (包含本系统/其他系统)
+    // 本系统标识: system === 'SIP'
+    // ================================================================
+    const initialTickets = [
+        { id: 'INC-001', title: 'SIP 呼叫建立失败，用户无法拨出', desc: '部分外呼用户反映呼叫中断，错误码 503', system: 'SIP', status: 'pending' },
+        { id: 'INC-002', title: '账单系统报表导出缓慢', desc: '财务部门反馈月度报表生成超时，影响结算', system: 'Billing', status: 'pending' },
+        { id: 'INC-003', title: '媒体服务器 CPU 飙高，音质卡顿', desc: '媒体节点 CPU 达 95%，RTP 流出现丢包', system: 'SIP', status: 'pending' },
+        { id: 'INC-004', title: 'CRM 系统无法同步客户资料', desc: '销售团队无法更新客户信息，API 返回 500', system: 'CRM', status: 'pending' },
+        { id: 'INC-005', title: 'SIP 注册超时，终端无法上线', desc: '部分 SIP 终端注册失败，提示 408 超时', system: 'SIP', status: 'pending' },
+        { id: 'INC-006', title: '监控告警平台收不到数据库指标', desc: 'Prometheus 无法采集 DB 的 metrics，连接被拒', system: 'Monitor', status: 'pending' },
+        { id: 'INC-007', title: 'IVR 语音菜单配置错误', desc: '用户按键无响应，进入默认流程', system: 'SIP', status: 'pending' },
+        { id: 'INC-008', title: '邮件服务发送队列积压', desc: '通知邮件堆积超过 10 万封，SMTP 响应慢', system: 'Email', status: 'pending' }
+    ];
+
+    // 每个工单的自动分类结果（模拟 L1 Agent 判断）
+    // 我们将在初始化时计算这些结果：是否属于本系统 (true/false) 和置信度
+    // 本系统定义为 system === 'SIP'
+    // 同时模拟一些模糊情况
+    let tickets = [];
+
+    function classifyTicket(ticket) {
+        // 实际场景中，这里会调用 ML 模型或规则引擎
+        // 我们模拟：如果 system === 'SIP'，则认为是本系统，否则是其他系统
+        // 但为了演示，给一部分其他系统也混淆（例如 'Monitor' 可能与本系统有关联）
+        const isOwn = ticket.system === 'SIP';
+        let confidence = isOwn ? 95 + Math.floor(Math.random() * 4) : 90 + Math.floor(Math.random() * 8);
+        // 对特定工单降低置信度模拟不确定性
+        if (ticket.id === 'INC-003' && ticket.system === 'SIP') confidence = 72; // 媒体服务器可能属于SIP也可能属于独立
+        if (ticket.id === 'INC-006') confidence = 65; // 监控告警平台，可能与本系统有关联
+        // 随机一些低置信度
+        if (Math.random() < 0.1) confidence = 60 + Math.floor(Math.random() * 15);
+
+        return {
+            isOwn,
+            confidence,
+            // 模拟决策：如果置信度 > 70，则直接判定，否则需要人工介入（但我们在demo中仍自动处理，但显示低置信度）
+            decision: confidence > 70 ? (isOwn ? 'own' : 'other') : 'unknown'
+        };
+    }
+
+    function initTickets() {
+        tickets = initialTickets.map(t => {
+            const classification = classifyTicket(t);
+            return {
+                ...t,
+                classification,
+                // 状态：pending, processed_own, processed_other, escalated
+                processStatus: 'pending',
+                // 是否已关闭
+                closed: false,
+                // 处理时间
+                processedAt: null,
+                // 转单目标
+                targetSystem: classification.isOwn ? null : 'Support_' + t.system
+            };
+        });
+    }
+
+    // 当前过滤
+    let currentFilter = 'all';
+    // 日志数组
+    let logs = [];
+
+    // 添加日志
+    function addLog(msg, type = 'info') {
+        const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        logs.push({ time, msg, type });
+        renderLogs();
+    }
+
+    function renderLogs() {
+        const panel = document.getElementById('logPanel');
+        let html = logs.map(log => {
+            let cls = '';
+            if (log.type === 'success') cls = 'success';
+            else if (log.type === 'error') cls = 'error';
+            else if (log.type === 'warning') cls = 'warning';
+            else if (log.type === 'highlight') cls = 'highlight';
+            return `<div class="log-entry"><span class="time">${log.time}</span><span class="msg"><span class="${cls}">${log.msg}</span></span></div>`;
+        }).join('');
+        panel.innerHTML = html;
+        panel.scrollTop = panel.scrollHeight;
+    }
+
+    // 处理工单（模拟 L1 Agent 执行）
+    function processTicket(ticketId) {
+        const ticket = tickets.find(t => t.id === ticketId);
+        if (!ticket || ticket.processStatus !== 'pending') return;
+
+        const { isOwn, confidence, decision } = ticket.classification;
+
+        // 模拟处理延迟
+        addLog(`🔄 处理工单 ${ticket.id} : ${ticket.title}`, 'info');
+
+        setTimeout(() => {
+            if (isOwn && confidence > 70) {
+                // 本系统 -> 升级到 L2
+                ticket.processStatus = 'processed_own';
+                ticket.closed = false;
+                ticket.processedAt = new Date().toLocaleString();
+                addLog(`✅ ${ticket.id} 判定为 <span class="highlight">本系统</span> (置信度 ${confidence}%)，已升级至 L2 Agent`, 'success');
+                // 触发一个模拟 L2 处理事件（只是日志）
+                setTimeout(() => {
+                    addLog(`   ↳ L2 Agent 已接手工单 ${ticket.id}，开始深入分析。`, 'info');
+                }, 300);
+            } else if (!isOwn && confidence > 70) {
+                // 其他系统 -> 转单并关闭
+                ticket.processStatus = 'processed_other';
+                ticket.closed = true;
+                ticket.processedAt = new Date().toLocaleString();
+                const target = ticket.targetSystem || `Support_${ticket.system}`;
+                addLog(`↗️ ${ticket.id} 判定为 <span class="warning">其他系统</span> (置信度 ${confidence}%)，自动转单至 <span class="highlight">${target}</span> 并关闭本工单`, 'warning');
+            } else {
+                // 低置信度 -> 人工介入（模拟升级到人工）
+                ticket.processStatus = 'processed_own'; // 视为需要人工
+                ticket.closed = false;
+                ticket.processedAt = new Date().toLocaleString();
+                addLog(`❓ ${ticket.id} 置信度较低 (${confidence}%)，<span class="error">需人工审核</span>，已转交队列。`, 'error');
+            }
+
+            // 更新界面
+            renderStats();
+            renderTicketList(currentFilter);
+        }, 400 + Math.random() * 600);
+    }
+
+    // 批量处理所有待处理工单
+    function processAllPending() {
+        const pending = tickets.filter(t => t.processStatus === 'pending');
+        if (pending.length === 0) {
+            addLog('✅ 所有工单已处理完毕，无待办。', 'success');
+            return;
+        }
+        addLog(`🚀 启动批量处理，共 ${pending.length} 个工单待处理。`, 'info');
+        pending.forEach((t, index) => {
+            setTimeout(() => {
+                processTicket(t.id);
+            }, index * 500 + 200);
+        });
+    }
+
+    // 渲染统计
+    function renderStats() {
+        const total = tickets.length;
+        const own = tickets.filter(t => t.processStatus === 'processed_own').length;
+        const other = tickets.filter(t => t.processStatus === 'processed_other').length;
+        const processed = tickets.filter(t => t.processStatus !== 'pending').length;
+        const rate = processed > 0 ? Math.round((processed / total) * 100) : 0;
+
+        document.getElementById('totalCount').textContent = total;
+        document.getElementById('ownCount').textContent = own;
+        document.getElementById('otherCount').textContent = other;
+        document.getElementById('autoRate').textContent = rate + '%';
+    }
+
+    // 渲染工单列表
+    function renderTicketList(filter = 'all') {
+        const container = document.getElementById('ticketList');
+        let filtered = tickets;
+        if (filter === 'own') {
+            filtered = filtered.filter(t => t.classification.isOwn === true);
+        } else if (filter === 'other') {
+            filtered = filtered.filter(t => t.classification.isOwn === false);
+        }
+
+        if (filtered.length === 0) {
+            container.innerHTML = `<div class="empty-state"><i class="fas fa-inbox"></i><p>没有符合条件的工单</p></div>`;
+            return;
+        }
+
+        let html = '';
+        filtered.forEach(t => {
+            const isPending = t.processStatus === 'pending';
+            const isOwn = t.classification.isOwn;
+            const conf = t.classification.confidence;
+
+            let tagClass = 'unknown';
+            let tagText = '待判定';
+            if (isPending) {
+                tagClass = 'unknown';
+                tagText = '分析中...';
+            } else if (isOwn) {
+                tagClass = 'own';
+                tagText = '本系统';
+            } else {
+                tagClass = 'other';
+                tagText = '其他系统';
+            }
+
+            const statusText = isPending ? '待处理' : (t.closed ? '已关闭' : '处理中');
+            const actionsHtml = isPending ? `
+                <button class="btn btn-primary btn-sm" onclick="processTicket('${t.id}')"><i class="fas fa-play"></i> 立即处理</button>
+            ` : (t.closed ? `
+                <span style="color:#4a6a8a;font-size:13px;"><i class="fas fa-check-circle" style="color:#34d399;"></i> 已转单并关闭</span>
+            ` : `
+                <span style="color:#fbbf24;font-size:13px;"><i class="fas fa-arrow-up"></i> 已升级 L2</span>
+            `);
+
+            html += `
+                <div class="ticket-card">
+                    <div class="info">
+                        <div class="title">${t.title} <span style="font-size:12px;color:#4a6a8a;font-weight:400;">#${t.id}</span></div>
+                        <div class="desc">${t.desc}</div>
+                        <div class="meta"><i class="fas fa-tag"></i> 系统: ${t.system} · 状态: ${statusText}</div>
+                    </div>
+                    <div class="classification">
+                        <span class="tag ${tagClass}">${tagText}</span>
+                        <span class="conf">${isPending ? '--' : conf + '%'}</span>
+                    </div>
+                    <div class="actions">
+                        ${actionsHtml}
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+        renderStats();
+    }
+
+    // 过滤切换
+    function setFilter(filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-btn[data-filter]').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.filter === filter);
+        });
+        renderTicketList(filter);
+    }
+
+    // 刷新（重新初始化模拟数据，重置状态）
+    function refreshTickets() {
+        // 重置所有工单为待处理
+        tickets.forEach(t => {
+            t.processStatus = 'pending';
+            t.closed = false;
+            t.processedAt = null;
+            // 重新分类（模拟每次刷新可能略有不同）
+            const newClass = classifyTicket(t);
+            t.classification = newClass;
+            t.targetSystem = newClass.isOwn ? null : 'Support_' + t.system;
+        });
+        // 清空日志，增加系统启动日志
+        logs = [];
+        addLog('🔄 系统刷新，所有工单重置为待处理。', 'info');
+        addLog(`📋 共 ${tickets.length} 个工单，等待 L1 Agent 分类。`, 'info');
+        renderTicketList(currentFilter);
+        renderStats();
+    }
+
+    // 页面加载后自动执行一次批量处理（演示自动流程）
+    function autoProcess() {
+        // 先初始处理一些工单（让页面展示混合状态）
+        const toProcess = tickets.slice(0, 4); // 处理前4个
+        toProcess.forEach((t, idx) => {
+            setTimeout(() => {
+                processTicket(t.id);
+            }, idx * 600 + 500);
+        });
+        // 后面的留给用户点击“立即处理”或“批量处理”按钮
+        addLog('⏳ 已启动前 4 个工单的自动处理，其余可手动触发。', 'info');
+    }
+
+    // 初始化
+    initTickets();
+    // 添加初始日志
+    addLog('🤖 L1 Agent 已加载，开始分析工单。', 'info');
+    renderTicketList('all');
+    renderStats();
+
+    // 等待1秒后开始自动处理
+    setTimeout(autoProcess, 1000);
+
+    // 暴露函数到全局
+    window.processTicket = processTicket;
+    window.setFilter = setFilter;
+    window.refreshTickets = refreshTickets;
+    window.processAllPending = processAllPending;
+</script>
+</body>
+</html>

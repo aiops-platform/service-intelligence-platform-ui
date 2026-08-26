@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>SIP · Knowledge Reflow Log</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f4f7fc;
+      color: #1e293b;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 260px;
+      background: #0f172a;
+      color: #cbd5e1;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 0 16px;
+      flex-shrink: 0;
+      box-shadow: 2px 0 12px rgba(0,0,0,0.06);
+    }
+    .logo {
+      padding: 0 20px 24px;
+      font-weight: 700;
+      font-size: 1.35rem;
+      color: white;
+      letter-spacing: -0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid #1e293b;
+      margin-bottom: 8px;
+    }
+    .logo i {
+      color: #38bdf8;
+      font-size: 1.6rem;
+    }
+    .nav-section {
+      padding: 12px 0;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 20px;
+      color: #94a3b8;
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.15s;
+      cursor: pointer;
+      gap: 12px;
+      border-left: 3px solid transparent;
+      font-size: 0.95rem;
+    }
+    .nav-item i {
+      width: 20px;
+      text-align: center;
+      font-size: 1rem;
+    }
+    .nav-item:hover {
+      background: #1e293b;
+      color: #e2e8f0;
+    }
+    .nav-item.active {
+      background: #1e293b;
+      color: white;
+      border-left-color: #38bdf8;
+      font-weight: 600;
+    }
+    .nav-parent {
+      font-weight: 600;
+      color: #e2e8f0;
+      padding: 10px 20px 4px;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav-child {
+      padding-left: 48px;
+      font-size: 0.9rem;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 28px 32px;
+      overflow-y: auto;
+    }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .page-header h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .breadcrumb {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+    .breadcrumb i {
+      margin: 0 6px;
+      font-size: 0.7rem;
+    }
+
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: white;
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .stat-info h4 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .stat-info .value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 4px 0 0;
+    }
+    .stat-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      color: white;
+    }
+    .bg-blue { background: #3b82f6; }
+    .bg-orange { background: #f97316; }
+    .bg-emerald { background: #10b981; }
+
+    .filter-bar {
+      background: white;
+      border-radius: 14px;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+      flex-wrap: wrap;
+    }
+    .filter-bar select, .filter-bar input {
+      padding: 8px 14px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      background: #f8fafc;
+      color: #1e293b;
+      outline: none;
+      min-width: 140px;
+    }
+    .filter-bar select:focus, .filter-bar input:focus {
+      border-color: #38bdf8;
+    }
+    .filter-bar .date-input {
+      width: 150px;
+    }
+    .filter-bar .btn {
+      background: #0f172a;
+      color: white;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .filter-bar .btn-outline {
+      background: white;
+      color: #0f172a;
+      border: 1px solid #cbd5e1;
+    }
+    .filter-bar .btn i {
+      font-size: 0.8rem;
+    }
+
+    .table-container {
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+      overflow: hidden;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      text-align: left;
+      padding: 14px 16px;
+      background: #f8fafc;
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 0.9rem;
+      vertical-align: middle;
+      color: #334155;
+    }
+    tr:hover td {
+      background: #f8fafc;
+    }
+    .source-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+      font-size: 0.8rem;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: #f1f5f9;
+    }
+    .source-badge i {
+      font-size: 0.9rem;
+    }
+    .source-servicenow i { color: #2e7d32; }
+    .source-jira i { color: #0052cc; }
+    .ticket-link {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .ticket-link:hover {
+      text-decoration: underline;
+    }
+    .summary-text {
+      max-width: 200px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+    }
+    .tag {
+      display: inline-block;
+      background: #e0f2fe;
+      color: #0369a1;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-right: 4px;
+    }
+    .detail-btn {
+      background: none;
+      border: 1px solid #cbd5e1;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      color: #334155;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: 0.15s;
+    }
+    .detail-btn:hover {
+      background: #f1f5f9;
+      border-color: #94a3b8;
+    }
+    .pagination {
+      display: flex;
+      justify-content: flex-end;
+      padding: 14px 16px;
+      gap: 8px;
+      align-items: center;
+      font-size: 0.85rem;
+    }
+    .page-item {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+    }
+    .page-item.active {
+      background: #0f172a;
+      color: white;
+      border-color: #0f172a;
+    }
+
+    .drawer-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.3);
+      z-index: 999;
+      display: none;
+      justify-content: flex-end;
+    }
+    .drawer {
+      width: 540px;
+      background: white;
+      height: 100%;
+      box-shadow: -4px 0 20px rgba(0,0,0,0.08);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      animation: slideIn 0.2s ease;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(30px); opacity: 0.8; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .drawer-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .drawer-header h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.4rem;
+      cursor: pointer;
+      color: #64748b;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+    }
+    .close-btn:hover { background: #f1f5f9; }
+    .drawer-body {
+      padding: 24px;
+      flex: 1;
+    }
+    .detail-block {
+      margin-bottom: 24px;
+    }
+    .detail-block label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 6px;
+      letter-spacing: 0.4px;
+    }
+    .detail-block p, .detail-block .code-block {
+      background: #f8fafc;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: #1e293b;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+    .detail-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .meta-item {
+      background: #f1f5f9;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 20px;
+    }
+    .btn-primary {
+      background: #0f172a;
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-secondary {
+      background: white;
+      border: 1px solid #cbd5e1;
+      padding: 10px 24px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .drawer-overlay.open {
+      display: flex;
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <i class="fas fa-brain"></i> SIP Platform
+    </div>
+    <div class="nav-section">
+      <div class="nav-parent"><i class="fas fa-chart-pie"></i> Business Ops</div>
+      <div class="nav-item"><i class="fas fa-ticket-alt"></i> Ticket Workspace</div>
+      <div class="nav-item"><i class="fas fa-check-circle"></i> Approval Center</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-parent"><i class="fas fa-server"></i> Service Ops</div>
+      <div class="nav-item"><i class="fas fa-desktop"></i> Monitoring Dashboard</div>
+      <div class="nav-item"><i class="fas fa-bell"></i> Alert Management</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-parent"><i class="fas fa-cogs"></i> Engineering Ops</div>
+      <div class="nav-item active"><i class="fas fa-book"></i> Knowledge Studio</div>
+      <div class="nav-item nav-child active">
+        <i class="fas fa-clock-rotate-left"></i> Knowledge Reflow Log
+      </div>
+      <div class="nav-item nav-child"><i class="fas fa-flask"></i> RAG Test Lab</div>
+      <div class="nav-item"><i class="fas fa-sliders-h"></i> Automation Rules</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-parent"><i class="fas fa-project-diagram"></i> Architecture</div>
+      <div class="nav-item"><i class="fas fa-plug"></i> Integration Hub</div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="breadcrumb">
+      Engineering Ops <i class="fas fa-chevron-right"></i> Knowledge Studio <i class="fas fa-chevron-right"></i> <strong>Knowledge Reflow Log</strong>
+    </div>
+    <div class="page-header">
+      <h1>Knowledge Reflow Log</h1>
+      <span style="color:#64748b; font-size:0.9rem;"><i class="far fa-calendar-alt"></i> Last execution: 2026-07-05 02:00:15</span>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-info">
+          <h4>Total Reflowed Yesterday</h4>
+          <div class="value">47</div>
+        </div>
+        <div class="stat-icon bg-blue"><i class="fas fa-sync-alt"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info">
+          <h4>ServiceNow</h4>
+          <div class="value">28</div>
+        </div>
+        <div class="stat-icon bg-orange"><i class="fas fa-cloud"></i></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-info">
+          <h4>Jira</h4>
+          <div class="value">19</div>
+        </div>
+        <div class="stat-icon bg-emerald"><i class="fab fa-jira"></i></div>
+      </div>
+    </div>
+
+    <!-- Filter Bar (no failure status filter) -->
+    <div class="filter-bar">
+      <select id="sourceFilter">
+        <option value="">All Sources</option>
+        <option value="ServiceNow">ServiceNow</option>
+        <option value="Jira">Jira</option>
+      </select>
+      <input type="date" class="date-input" id="dateFilter" value="2026-07-05">
+      <input type="text" placeholder="Search tags or summary..." style="flex:1; min-width:180px;">
+      <button class="btn"><i class="fas fa-search"></i> Search</button>
+      <button class="btn btn-outline"><i class="fas fa-redo-alt"></i> Reset</button>
+    </div>
+
+    <!-- Table (no Status column) -->
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Original Ticket</th>
+            <th>Problem Summary</th>
+            <th>Solution Summary</th>
+            <th>Tags</th>
+            <th>Reflow Time</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+        </tbody>
+      </table>
+      <div class="pagination">
+        <span>1-10 of 47</span>
+        <div class="page-item active">1</div>
+        <div class="page-item">2</div>
+        <div class="page-item">3</div>
+        <div class="page-item"><i class="fas fa-chevron-right"></i></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Detail Drawer -->
+  <div class="drawer-overlay" id="drawerOverlay">
+    <div class="drawer">
+      <div class="drawer-header">
+        <h3>Knowledge Entry Detail</h3>
+        <button class="close-btn" onclick="closeDrawer()"><i class="fas fa-times"></i></button>
+      </div>
+      <div class="drawer-body" id="drawerContent">
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // All entries are successful, no failure status
+    const mockData = [
+      { source: 'ServiceNow', ticketId: 'INC0012345', ticketUrl: '#', problem: 'Cesar service response delay causing user login timeout', solution: 'Restart cesar-pod-3 and adjust connection pool size to 200. Latency recovered below 50ms after verification.', tags: ['cesar', 'latency', 'pod restart'], time: '2026-07-05 02:00:15' },
+      { source: 'Jira', ticketId: 'CESAR-1024', ticketUrl: '#', problem: 'Cesar thread deadlock under high concurrency', solution: 'Upgrade cesar to v2.3.1 which fixed the deadlock. Temporary mitigation: limit concurrent threads.', tags: ['cesar', 'deadlock', 'upgrade'], time: '2026-07-05 02:00:16' },
+      { source: 'ServiceNow', ticketId: 'INC0012346', ticketUrl: '#', problem: 'Database connection pool exhaustion alert', solution: 'Increase max connections to 500 and optimize slow queries.', tags: ['database', 'connection pool'], time: '2026-07-05 02:00:17' },
+      { source: 'Jira', ticketId: 'PROJ-562', ticketUrl: '#', problem: 'Frontend page slow loading, static assets not cached', solution: 'Configure CDN caching policy with max-age=86400.', tags: ['frontend', 'CDN', 'cache'], time: '2026-07-05 02:00:18' },
+      { source: 'ServiceNow', ticketId: 'INC0012347', ticketUrl: '#', problem: 'SSL certificate expiry warning', solution: 'Renew certificate and restart nginx.', tags: ['SSL', 'certificate', 'nginx'], time: '2026-07-05 02:00:19' },
+      { source: 'Jira', ticketId: 'BUG-891', ticketUrl: '#', problem: 'Out of memory error when exporting CSV', solution: 'Switch to streaming export with batch query.', tags: ['memory', 'export', 'CSV'], time: '2026-07-05 02:00:20' },
+      { source: 'ServiceNow', ticketId: 'INC0012348', ticketUrl: '#', problem: 'Severe message queue backlog', solution: 'Scale consumers to 10 instances and optimize message processing logic.', tags: ['message queue', 'backlog'], time: '2026-07-05 02:00:21' },
+      { source: 'ServiceNow', ticketId: 'INC0012349', ticketUrl: '#', problem: 'User permission sync failure', solution: 'Manually trigger LDAP sync task to fix.', tags: ['permission', 'LDAP'], time: '2026-07-05 02:00:23' },
+      { source: 'Jira', ticketId: 'INFRA-203', ticketUrl: '#', problem: 'K8s node NotReady', solution: 'Restart node and verify kubelet service.', tags: ['K8s', 'node'], time: '2026-07-05 02:00:24' },
+      { source: 'Jira', ticketId: 'CESAR-1051', ticketUrl: '#', problem: 'Memory leak in Cesar observed after 48h uptime', solution: 'Applied patch for goroutine leak, schedule rolling restart weekly.', tags: ['cesar', 'memory leak'], time: '2026-07-05 02:00:25' },
+    ];
+
+    function renderTable(data) {
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = data.map(item => `
+        <tr>
+          <td>
+            <span class="source-badge ${item.source === 'ServiceNow' ? 'source-servicenow' : 'source-jira'}">
+              <i class="fab fa-${item.source === 'ServiceNow' ? 'servicenow' : 'jira'}"></i> ${item.source}
+            </span>
+          </td>
+          <td><a href="${item.ticketUrl}" class="ticket-link">${item.ticketId} <i class="fas fa-external-link-alt"></i></a></td>
+          <td><span class="summary-text" title="${item.problem}">${item.problem}</span></td>
+          <td><span class="summary-text" title="${item.solution}">${item.solution}</span></td>
+          <td>${item.tags.map(t => `<span class="tag">${t}</span>`).join(' ')}</td>
+          <td>${item.time}</td>
+          <td><button class="detail-btn" onclick="openDetail('${item.ticketId}')"><i class="fas fa-eye"></i> Detail</button></td>
+        </tr>
+      `).join('');
+    }
+
+    renderTable(mockData);
+
+    function openDetail(ticketId) {
+      const item = mockData.find(d => d.ticketId === ticketId);
+      if (!item) return;
+      document.getElementById('drawerContent').innerHTML = `
+        <div class="detail-meta">
+          <span class="meta-item"><i class="fab fa-${item.source === 'ServiceNow' ? 'servicenow' : 'jira'}"></i> ${item.source}</span>
+          <span class="meta-item"><i class="fas fa-ticket-alt"></i> ${item.ticketId}</span>
+          <span class="meta-item"><i class="far fa-calendar-check"></i> Closed: 2026-07-04 18:30</span>
+          <span class="meta-item"><i class="fas fa-clock"></i> Reflowed: ${item.time}</span>
+        </div>
+        <div class="detail-block">
+          <label>Problem Description</label>
+          <p>${item.problem}</p>
+        </div>
+        <div class="detail-block">
+          <label>Solution</label>
+          <div class="code-block">${item.solution}</div>
+        </div>
+        <div class="detail-block">
+          <label>Tags</label>
+          <div>${item.tags.map(t => `<span class="tag">${t}</span>`).join(' ')}</div>
+        </div>
+        <div class="detail-block">
+          <label>Vectorization Status</label>
+          <p>✅ Embedding generated · Index updated at ${item.time}</p>
+        </div>
+        <div class="action-buttons">
+          <button class="btn-primary" onclick="alert('Edit feature (Demo)')"><i class="fas fa-edit"></i> Edit Knowledge</button>
+          <button class="btn-secondary" onclick="alert('Re-extract (Demo)')"><i class="fas fa-redo-alt"></i> Re-extract</button>
+        </div>
+      `;
+      document.getElementById('drawerOverlay').classList.add('open');
+    }
+
+    function closeDrawer() {
+      document.getElementById('drawerOverlay').classList.remove('open');
+    }
+    document.getElementById('drawerOverlay').addEventListener('click', function(e) {
+      if (e.target === this) closeDrawer();
+    });
+
+    document.querySelector('.btn').addEventListener('click', function() {
+      const source = document.getElementById('sourceFilter').value;
+      let filtered = mockData;
+      if (source) filtered = filtered.filter(d => d.source === source);
+      renderTable(filtered);
+    });
+  </script>
+</body>
+</html>

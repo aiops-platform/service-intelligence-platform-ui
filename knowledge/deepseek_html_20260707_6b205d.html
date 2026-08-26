@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operation 审核仪表盘 · AIOps</title>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* ===== 全局样式 ===== */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', Roboto, sans-serif;
+            background-color: #0b1424;
+            color: #e0e6f0;
+            padding: 24px;
+            min-height: 100vh;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1a2744; }
+        ::-webkit-scrollbar-thumb { background: #2a4a7f; border-radius: 8px; }
+
+        .dashboard-container { max-width: 1440px; margin: 0 auto; }
+
+        /* ===== 头部 ===== */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+            border-bottom: 1px solid #1e3150;
+            padding-bottom: 18px;
+        }
+        .header h1 {
+            font-size: 26px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #64d8ff, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header h1 i { margin-right: 12px; -webkit-text-fill-color: #3b82f6; }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 14px;
+            color: #94a9c9;
+        }
+        .live-badge {
+            background: #1f3a5f;
+            padding: 6px 14px;
+            border-radius: 20px;
+            color: #64d8ff;
+            border: 1px solid #2a4a7f;
+            font-size: 13px;
+        }
+        .live-badge i { color: #10b981; margin-right: 6px; }
+
+        /* ===== 统计卡片 ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 18px;
+            margin-bottom: 28px;
+        }
+        .stat-card {
+            background: #111d35;
+            border-radius: 14px;
+            padding: 20px 24px;
+            border: 1px solid #1e3150;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: 0.2s;
+        }
+        .stat-card:hover { border-color: #2a4a7f; transform: translateY(-2px); }
+        .stat-card .label {
+            font-size: 13px;
+            color: #7a93b5;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .stat-card .sub {
+            font-size: 13px;
+            color: #5a7a9a;
+            margin-top: 6px;
+        }
+        .stat-card.accent-blue .value { color: #60a5fa; }
+        .stat-card.accent-green .value { color: #34d399; }
+        .stat-card.accent-yellow .value { color: #fbbf24; }
+        .stat-card.accent-purple .value { color: #a78bfa; }
+
+        /* ===== 工具栏 ===== */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .toolbar .left { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .toolbar input {
+            background: #111d35;
+            border: 1px solid #1e3150;
+            color: #e0e6f0;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 260px;
+            outline: none;
+            transition: 0.2s;
+        }
+        .toolbar input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+        }
+        .toolbar input::placeholder { color: #4a6a8a; }
+        .filter-badge {
+            background: #1a2744;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: #94a9c9;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: 0.2s;
+            user-select: none;
+        }
+        .filter-badge.active {
+            border-color: #3b82f6;
+            color: #60a5fa;
+            background: #1a2a4a;
+        }
+        .filter-badge:hover { border-color: #2a4a7f; }
+
+        /* ===== 表格 ===== */
+        .table-wrapper {
+            background: #111d35;
+            border-radius: 14px;
+            border: 1px solid #1e3150;
+            overflow: auto;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            min-width: 800px;
+        }
+        thead {
+            background: #0a1628;
+            border-bottom: 1px solid #1e3150;
+        }
+        thead th {
+            text-align: left;
+            padding: 16px 20px;
+            font-weight: 600;
+            color: #7a93b5;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        tbody tr {
+            border-bottom: 1px solid #152238;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        tbody tr:hover { background: #182a47; }
+        tbody td {
+            padding: 16px 20px;
+            vertical-align: middle;
+        }
+
+        /* Agent ID 主样式 */
+        .agent-id-main {
+            font-size: 18px;
+            font-weight: 700;
+            color: #60a5fa;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+        .agent-id-main i { font-size: 14px; color: #3b82f6; margin-right: 6px; }
+        .snow-id-sub {
+            font-size: 12px;
+            color: #4a6a8a;
+            margin-top: 2px;
+            font-family: 'Consolas', 'Courier New', monospace;
+        }
+        .snow-id-sub i { margin-right: 4px; font-size: 10px; }
+
+        /* 状态徽章 */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .status-badge.running {
+            background: #1a2a4a;
+            color: #60a5fa;
+        }
+        .status-badge.running i { animation: spin 1.5s linear infinite; }
+        .status-badge.approval {
+            background: #3b2a1a;
+            color: #fbbf24;
+        }
+        .status-badge.done {
+            background: #0f2a1a;
+            color: #34d399;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 置信度进度条 */
+        .confidence-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .bar-track {
+            width: 70px;
+            height: 5px;
+            background: #1a2744;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+        }
+        .bar-fill.high { background: linear-gradient(90deg, #34d399, #6ee7b7); }
+        .bar-fill.medium { background: linear-gradient(90deg, #fbbf24, #fcd34d); }
+        .bar-fill.low { background: linear-gradient(90deg, #f87171, #fca5a5); }
+
+        /* 风险标签 */
+        .risk-tag {
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .risk-tag.low { background: #0f2a1a; color: #34d399; }
+        .risk-tag.medium { background: #3b2a1a; color: #fbbf24; }
+        .risk-tag.high { background: #2a1a1a; color: #f87171; }
+
+        /* Token 数字 */
+        .token-num {
+            font-family: 'Consolas', monospace;
+            color: #a78bfa;
+            font-weight: 600;
+        }
+        .token-num i { color: #7c3aed; margin-right: 4px; }
+
+        /* 详情侧边栏 */
+        .detail-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(4px);
+            visibility: hidden;
+            opacity: 0;
+            transition: 0.3s ease;
+            z-index: 1000;
+        }
+        .detail-overlay.active { visibility: visible; opacity: 1; }
+        .detail-panel {
+            position: fixed;
+            top: 0;
+            right: -520px;
+            width: 520px;
+            height: 100%;
+            background: #0f1a30;
+            border-left: 1px solid #1e3150;
+            padding: 30px 28px;
+            overflow-y: auto;
+            transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
+            z-index: 1001;
+            box-shadow: -8px 0 30px rgba(0,0,0,0.6);
+        }
+        .detail-panel.open { right: 0; }
+        .detail-panel .close-btn {
+            position: absolute;
+            top: 16px;
+            right: 20px;
+            background: none;
+            border: none;
+            color: #7a93b5;
+            font-size: 24px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .detail-panel .close-btn:hover { color: #e0e6f0; transform: rotate(90deg); }
+        .detail-panel .agent-id-large {
+            font-size: 22px;
+            font-weight: 700;
+            color: #60a5fa;
+            font-family: 'Consolas', monospace;
+            margin-bottom: 4px;
+        }
+        .detail-panel h2 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .detail-panel .ticket-meta {
+            color: #7a93b5;
+            font-size: 14px;
+            margin-bottom: 24px;
+            border-bottom: 1px solid #1a2744;
+            padding-bottom: 16px;
+        }
+        .log-section { margin-top: 18px; }
+        .log-section h3 {
+            font-size: 14px;
+            color: #94a9c9;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .log-item {
+            background: #0a1628;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-left: 3px solid #2a4a7f;
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            color: #b0c4de;
+        }
+        .log-item .time { color: #4a6a8a; margin-right: 12px; }
+        .log-item .step { color: #60a5fa; font-weight: 600; }
+        .log-item.done { border-left-color: #34d399; }
+        .log-item.approval { border-left-color: #fbbf24; }
+
+        .diagnosis-box {
+            background: #0a1628;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+            border: 1px solid #1a2744;
+        }
+        .diagnosis-box .label {
+            color: #7a93b5;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .diagnosis-box .content {
+            font-size: 15px;
+            margin-top: 6px;
+            line-height: 1.6;
+        }
+
+        .approval-actions {
+            display: flex;
+            gap: 14px;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #1a2744;
+        }
+        .btn {
+            padding: 10px 28px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-approve {
+            background: #0f2a1a;
+            color: #34d399;
+            border: 1px solid #1a4a3a;
+        }
+        .btn-approve:hover { background: #1a4a3a; box-shadow: 0 0 20px rgba(52,211,153,0.2); }
+        .btn-reject {
+            background: #2a1a1a;
+            color: #f87171;
+            border: 1px solid #4a2a2a;
+        }
+        .btn-reject:hover { background: #4a2a2a; }
+        .btn-close-detail {
+            background: #1a2744;
+            color: #94a9c9;
+            border: 1px solid #2a3a5a;
+        }
+        .btn-close-detail:hover { background: #2a3a5a; }
+
+        /* 响应式 */
+        @media (max-width: 1000px) {
+            .stats-grid { grid-template-columns: repeat(2,1fr); }
+            .detail-panel { width: 100%; right: -100%; }
+        }
+        @media (max-width: 600px) {
+            body { padding: 12px; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .header { flex-direction: column; align-items: start; gap: 12px; }
+            .toolbar input { width: 100%; }
+            table { font-size: 12px; }
+            thead th, tbody td { padding: 10px 12px; }
+        }
+    </style>
+</head>
+<body>
+<div class="dashboard-container">
+    <!-- 头部 -->
+    <header class="header">
+        <h1><i class="fas fa-clipboard-list"></i> Operation 审核仪表盘</h1>
+        <div class="header-right">
+            <span class="live-badge"><i class="fas fa-circle"></i> 系统在线 · 2 Agents 活跃</span>
+            <span><i class="far fa-clock"></i> 更新于: 2026-07-07 15:12:30</span>
+        </div>
+    </header>
+
+    <!-- 统计卡片 -->
+    <section class="stats-grid">
+        <div class="stat-card accent-blue">
+            <div class="label"><i class="fas fa-tasks"></i> 总任务数</div>
+            <div class="value" id="totalTasks">0</div>
+            <div class="sub">近 24 小时</div>
+        </div>
+        <div class="stat-card accent-green">
+            <div class="label"><i class="fas fa-check-circle"></i> 平均置信度</div>
+            <div class="value" id="avgConfidence">0%</div>
+            <div class="sub">根因诊断准确率</div>
+        </div>
+        <div class="stat-card accent-yellow">
+            <div class="label"><i class="fas fa-clock"></i> 待审批</div>
+            <div class="value" id="pendingCount">0</div>
+            <div class="sub">需人工介入</div>
+        </div>
+        <div class="stat-card accent-purple">
+            <div class="label"><i class="fas fa-coins"></i> 总 Token 消耗</div>
+            <div class="value" id="totalTokens">0</div>
+            <div class="sub">LLM 推理开销</div>
+        </div>
+    </section>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <div class="left">
+            <input type="text" id="searchInput" placeholder="🔍 搜索 Agent ID、工单或服务..." oninput="filterTable()">
+            <span class="filter-badge active" data-filter="all" onclick="setFilter('all')">全部</span>
+            <span class="filter-badge" data-filter="running" onclick="setFilter('running')">运行中</span>
+            <span class="filter-badge" data-filter="approval" onclick="setFilter('approval')">待审批</span>
+            <span class="filter-badge" data-filter="done" onclick="setFilter('done')">已完成</span>
+        </div>
+        <div>
+            <button class="filter-badge" onclick="refreshData()" style="background:#1a2a4a;"><i class="fas fa-sync-alt"></i> 刷新</button>
+        </div>
+    </div>
+
+    <!-- 表格 -->
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>Agent 任务 ID</th>
+                    <th>任务描述</th>
+                    <th>状态</th>
+                    <th>置信度</th>
+                    <th>风险</th>
+                    <th>Token 消耗</th>
+                    <th>触发时间</th>
+                    <th style="text-align:center;">详情</th>
+                </tr>
+            </thead>
+            <tbody id="taskTableBody">
+                <!-- JS 渲染 -->
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top:18px;display:flex;justify-content:space-between;color:#4a6a8a;font-size:13px;">
+        <span>共 <span id="rowCount">0</span> 条任务</span>
+        <span><i class="fas fa-info-circle"></i> 点击行查看完整执行日志与审批</span>
+    </div>
+</div>
+
+<!-- 详情侧边栏 -->
+<div class="detail-overlay" id="detailOverlay" onclick="closeDetail()"></div>
+<div class="detail-panel" id="detailPanel">
+    <button class="close-btn" onclick="closeDetail()"><i class="fas fa-times"></i></button>
+    <div class="agent-id-large" id="detailAgentId">TASK-20260707-0000</div>
+    <h2 id="detailTitle">任务详情</h2>
+    <div class="ticket-meta" id="detailMeta">
+        <i class="fas fa-ticket-alt"></i> 关联工单: INC000000000 · 服务: unknown · 触发于 2026-07-07
+    </div>
+    <div class="diagnosis-box">
+        <div class="label"><i class="fas fa-bug"></i> 根因诊断 & 证据链</div>
+        <div class="content" id="detailDiagnosis">加载中...</div>
+    </div>
+    <div class="log-section">
+        <h3><i class="fas fa-list-ul"></i> 执行时间线 (LangGraph 节点)</h3>
+        <div id="logContainer"></div>
+    </div>
+    <div class="approval-actions" id="approvalActions" style="display:none;">
+        <button class="btn btn-approve" onclick="handleApproval(true)"><i class="fas fa-check"></i> 批准变更</button>
+        <button class="btn btn-reject" onclick="handleApproval(false)"><i class="fas fa-times"></i> 拒绝</button>
+        <button class="btn btn-close-detail" onclick="closeDetail()">关闭</button>
+    </div>
+    <div class="approval-actions" id="doneActions" style="display:none;">
+        <button class="btn btn-close-detail" onclick="closeDetail()">关闭详情</button>
+    </div>
+</div>
+
+<script>
+    // ================================================================
+    //  1. 模拟数据（三种状态：running, approval, done）
+    // ================================================================
+    const mockTasks = [{
+        agent_id: 'TASK-20260707-3A7B',
+        ticket_id: 'INC001235070',
+        title: 'GSD 系统审批页面加载超时',
+        service: 'GSD-Service',
+        status: 'done',
+        confidence: 94,
+        risk: 'low',
+        tokens: 2341,
+        time: '2026-07-07 14:25:32',
+        diagnosis: '根因：GSD 服务依赖的 PostgreSQL 数据库查询未走索引，导致全表扫描。\n证据链：① CPU 92% ② 慢查询日志 ③ 历史工单 INC001235070 匹配。',
+        logs: [
+            { time: '14:25:33', step: 'Node 1 (工单解析)', msg: '意图识别: performance, 实体: GSD-Service', status: 'done' },
+            { time: '14:25:35', step: 'Node 2 (数据采集)', msg: '并行调用 Metrics / Logs / Topology MCP ...', status: 'done' },
+            { time: '14:25:38', step: 'Node 3 (根因分析)', msg: 'LLM 推理完成，置信度 94%，建议创建复合索引', status: 'done' },
+            { time: '14:25:40', step: 'Node 4 (风险评估)', msg: '风险 LOW (标准索引操作)，自动执行 Ansible Playbook', status: 'done' },
+            { time: '14:25:42', step: '✅ 闭环', msg: '工单已自动关闭，修复验证通过', status: 'done' }
+        ]
+    }, {
+        agent_id: 'TASK-20260707-1C9D',
+        ticket_id: 'INC001235071',
+        title: 'VPN 连接失败，无法访问内网',
+        service: 'VPN-Service',
+        status: 'done',
+        confidence: 100,
+        risk: 'low',
+        tokens: 892,
+        time: '2026-07-07 14:10:15',
+        diagnosis: '根因：VPN 客户端服务进程异常停止。\n证据链：① 服务状态检查 ② 历史工单 INC001235071 直接命中。',
+        logs: [
+            { time: '14:10:16', step: 'Node 1 (工单解析)', msg: '意图识别: availability, 实体: VPN-Service', status: 'done' },
+            { time: '14:10:18', step: 'Node 2 (数据采集)', msg: 'RAG 检索命中 100% 相似历史工单', status: 'done' },
+            { time: '14:10:20', step: 'Node 3 (根因分析)', msg: '直接匹配已知解决方案: systemctl restart openvpn', status: 'done' },
+            { time: '14:10:22', step: 'Node 4 (自动修复)', msg: '执行重启命令，服务恢复', status: 'done' },
+            { time: '14:10:23', step: '✅ 闭环', msg: '工单自动关闭', status: 'done' }
+        ]
+    }, {
+        agent_id: 'TASK-20260707-5F2E',
+        ticket_id: 'INC001235072',
+        title: '支付网关数据库 CPU 飙高至 99%',
+        service: 'Payment-Service',
+        status: 'approval',
+        confidence: 78,
+        risk: 'high',
+        tokens: 4103,
+        time: '2026-07-07 13:55:40',
+        diagnosis: '根因：支付流水表增长过快，缺少分区策略，导致大量慢查询。\n建议方案：创建表分区 (按日期)，但操作需锁表，风险较高。',
+        logs: [
+            { time: '13:55:41', step: 'Node 1 (工单解析)', msg: '意图识别: performance, 实体: Payment-Service', status: 'done' },
+            { time: '13:55:43', step: 'Node 2 (数据采集)', msg: 'Metrics 异常: CPU 99%, DB 连接数爆满', status: 'done' },
+            { time: '13:55:48', step: 'Node 3 (根因分析)', msg: 'LLM 推理: 索引失效 + 分区缺失，置信度 78%', status: 'done' },
+            { time: '13:55:52', step: 'Node 4 (风险评估)', msg: '⚠️ 高风险操作 (DDL 变更)，已生成 Change Request', status: 'approval' },
+            { time: '13:56:00', step: '⏳ 待审批', msg: '已通知 DBA 负责人，等待人工批准...', status: 'approval' }
+        ]
+    }, {
+        agent_id: 'TASK-20260707-8A3C',
+        ticket_id: 'INC001235073',
+        title: '文件上传服务间歇性超时',
+        service: 'Storage-Service',
+        status: 'running',
+        confidence: 65,
+        risk: 'medium',
+        tokens: 1876,
+        time: '2026-07-07 14:30:00',
+        diagnosis: '正在分析中，初步怀疑 NFS 网络抖动或连接池不足。',
+        logs: [
+            { time: '14:30:01', step: 'Node 1 (工单解析)', msg: '意图识别: performance, 实体: Storage-Service' },
+            { time: '14:30:04', step: 'Node 2 (数据采集)', msg: '正在查询 Loki 日志和 Prometheus 指标...' },
+            { time: '14:30:08', step: 'Node 3 (根因分析)', msg: 'LLM 推理进行中 (当前进度 60%)...' }
+        ]
+    }, {
+        agent_id: 'TASK-20260707-7E6F',
+        ticket_id: 'INC001235075',
+        title: '日志采集 Agent 丢失部分数据',
+        service: 'Logging-Agent',
+        status: 'done',
+        confidence: 89,
+        risk: 'low',
+        tokens: 1654,
+        time: '2026-07-07 11:05:22',
+        diagnosis: '根因：Agent 缓存队列配置过小，高并发时丢弃数据。\n修复方案：调整 buffer_size 参数并重启 Agent。',
+        logs: [
+            { time: '11:05:23', step: 'Node 1 (工单解析)', msg: '意图识别: data_loss, 实体: Logging-Agent', status: 'done' },
+            { time: '11:05:25', step: 'Node 2 (数据采集)', msg: 'RAG 检索到相似配置问题', status: 'done' },
+            { time: '11:05:30', step: 'Node 3 (根因分析)', msg: '置信度 89%，定位至配置参数', status: 'done' },
+            { time: '11:05:35', step: 'Node 4 (自动修复)', msg: '通过 Ansible 调整配置并重启', status: 'done' },
+            { time: '11:05:40', step: '✅ 闭环', msg: '数据采集恢复正常', status: 'done' }
+        ]
+    }, {
+        agent_id: 'TASK-20260707-2B4D',
+        ticket_id: 'INC001235074',
+        title: '用户登录接口频繁报 500 错误',
+        service: 'Auth-Service',
+        status: 'done',   // 原失败，改为已完成（人工介入）
+        confidence: 45,
+        risk: 'medium',
+        tokens: 3150,
+        time: '2026-07-07 12:20:10',
+        diagnosis: '诊断失败：日志中无明确错误堆栈，且无历史相似工单。\n最终由人工排查发现是第三方证书过期，已更新证书。',
+        logs: [
+            { time: '12:20:11', step: 'Node 1 (工单解析)', msg: '意图识别: error, 实体: Auth-Service', status: 'done' },
+            { time: '12:20:13', step: 'Node 2 (数据采集)', msg: 'Logs 未捕获到有效异常，Metrics 指标正常', status: 'done' },
+            { time: '12:20:18', step: 'Node 3 (根因分析)', msg: '❌ 置信度低于阈值 (45%)，无法确定根因', status: 'done' },
+            { time: '12:20:20', step: '🔄 降级策略', msg: '已创建人工工单，转交资深 SRE 处理', status: 'done' },
+            { time: '13:10:00', step: '👤 人工介入', msg: 'SRE 排查发现第三方证书过期，更新后恢复', status: 'done' },
+            { time: '13:12:00', step: '✅ 闭环', msg: '工单人工关闭', status: 'done' }
+        ]
+    }];
+
+    // ================================================================
+    //  2. 渲染逻辑
+    // ================================================================
+    let currentFilter = 'all';
+    let currentDetailTask = null;
+
+    function renderStats() {
+        const total = mockTasks.length;
+        const done = mockTasks.filter(t => t.status === 'done');
+        const approval = mockTasks.filter(t => t.status === 'approval');
+        const avgConf = Math.round(mockTasks.reduce((acc, t) => acc + t.confidence, 0) / total);
+        const totalTokens = mockTasks.reduce((acc, t) => acc + (t.tokens || 0), 0);
+        
+        document.getElementById('totalTasks').textContent = total;
+        document.getElementById('avgConfidence').textContent = avgConf + '%';
+        document.getElementById('pendingCount').textContent = approval.length;
+        document.getElementById('totalTokens').textContent = totalTokens.toLocaleString();
+    }
+
+    function renderTable(filter = 'all') {
+        const tbody = document.getElementById('taskTableBody');
+        const searchVal = document.getElementById('searchInput').value.toLowerCase();
+        
+        let filtered = mockTasks;
+        if (filter !== 'all') {
+            filtered = filtered.filter(t => t.status === filter);
+        }
+        if (searchVal) {
+            filtered = filtered.filter(t => 
+                t.agent_id.toLowerCase().includes(searchVal) ||
+                t.ticket_id.toLowerCase().includes(searchVal) ||
+                t.title.toLowerCase().includes(searchVal) ||
+                t.service.toLowerCase().includes(searchVal)
+            );
+        }
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:#4a6a8a;">没有匹配的任务</td></tr>`;
+            document.getElementById('rowCount').textContent = 0;
+            return;
+        }
+
+        let html = '';
+        filtered.forEach(task => {
+            const statusMap = {
+                'running': '<span class="status-badge running"><i class="fas fa-spinner"></i> 运行中</span>',
+                'approval': '<span class="status-badge approval"><i class="fas fa-clock"></i> 待审批</span>',
+                'done': '<span class="status-badge done"><i class="fas fa-check-circle"></i> 已完成</span>'
+            };
+            const riskMap = {
+                'low': '<span class="risk-tag low">低</span>',
+                'medium': '<span class="risk-tag medium">中</span>',
+                'high': '<span class="risk-tag high">高</span>'
+            };
+            let barClass = 'medium';
+            if (task.confidence >= 80) barClass = 'high';
+            else if (task.confidence < 60) barClass = 'low';
+
+            html += `
+                <tr onclick="openDetail('${task.agent_id}')">
+                    <td>
+                        <div class="agent-id-main"><i class="fas fa-robot"></i> ${task.agent_id}</div>
+                        <div class="snow-id-sub"><i class="fas fa-ticket-alt"></i> ${task.ticket_id}</div>
+                    </td>
+                    <td>
+                        <div style="font-weight:500;">${task.title}</div>
+                        <div style="font-size:12px;color:#4a6a8a;">服务: ${task.service}</div>
+                    </td>
+                    <td>${statusMap[task.status]}</td>
+                    <td>
+                        <div class="confidence-bar">
+                            <span style="font-weight:600;width:38px;">${task.confidence}%</span>
+                            <div class="bar-track"><div class="bar-fill ${barClass}" style="width:${task.confidence}%;"></div></div>
+                        </div>
+                    </td>
+                    <td>${riskMap[task.risk]}</td>
+                    <td><span class="token-num"><i class="fas fa-coins"></i> ${task.tokens.toLocaleString()}</span></td>
+                    <td style="font-size:13px;color:#7a93b5;">${task.time}</td>
+                    <td style="text-align:center;color:#3b82f6;"><i class="fas fa-chevron-right"></i></td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+        document.getElementById('rowCount').textContent = filtered.length;
+    }
+
+    function setFilter(filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-badge[data-filter]').forEach(el => {
+            el.classList.toggle('active', el.dataset.filter === filter);
+        });
+        renderTable(filter);
+    }
+
+    function filterTable() { renderTable(currentFilter); }
+
+    function refreshData() {
+        const btn = document.querySelector('.filter-badge:last-child');
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 刷新中...';
+        setTimeout(() => {
+            btn.innerHTML = '<i class="fas fa-sync-alt"></i> 刷新';
+            renderTable(currentFilter);
+            renderStats();
+        }, 600);
+    }
+
+    // ================================================================
+    //  3. 详情面板
+    // ================================================================
+    function openDetail(agentId) {
+        const task = mockTasks.find(t => t.agent_id === agentId);
+        if (!task) return;
+        currentDetailTask = task;
+
+        document.getElementById('detailAgentId').textContent = task.agent_id;
+        document.getElementById('detailTitle').textContent = task.title;
+        document.getElementById('detailMeta').innerHTML = `
+            <i class="fas fa-ticket-alt"></i> 关联工单: ${task.ticket_id} · 服务: ${task.service} · 触发于 ${task.time}
+            <span style="margin-left:16px;"><i class="fas fa-coins"></i> Token: ${task.tokens.toLocaleString()}</span>
+        `;
+        document.getElementById('detailDiagnosis').textContent = task.diagnosis;
+
+        const logContainer = document.getElementById('logContainer');
+        let logHtml = '';
+        task.logs.forEach(log => {
+            let cls = '';
+            if (log.status === 'done') cls = 'done';
+            else if (log.status === 'approval') cls = 'approval';
+            logHtml += `
+                <div class="log-item ${cls}">
+                    <span class="time">${log.time}</span>
+                    <span class="step">${log.step}</span>
+                    <span style="color:#b0c4de;">${log.msg}</span>
+                </div>
+            `;
+        });
+        logContainer.innerHTML = logHtml;
+
+        const approvalActions = document.getElementById('approvalActions');
+        const doneActions = document.getElementById('doneActions');
+        if (task.status === 'approval') {
+            approvalActions.style.display = 'flex';
+            doneActions.style.display = 'none';
+        } else {
+            approvalActions.style.display = 'none';
+            doneActions.style.display = 'flex';
+        }
+
+        document.getElementById('detailOverlay').classList.add('active');
+        document.getElementById('detailPanel').classList.add('open');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeDetail() {
+        document.getElementById('detailOverlay').classList.remove('active');
+        document.getElementById('detailPanel').classList.remove('open');
+        document.body.style.overflow = 'auto';
+    }
+
+    function handleApproval(approved) {
+        if (!currentDetailTask) return;
+        const action = approved ? '批准' : '拒绝';
+        alert(`✅ 您已 ${action} 了变更请求 (${currentDetailTask.agent_id})。\n真实环境中将触发 Webhook 回调恢复 Agent 执行。`);
+        
+        if (approved) {
+            const task = mockTasks.find(t => t.agent_id === currentDetailTask.agent_id);
+            if (task) {
+                task.status = 'done';
+                task.logs.push({ time: new Date().toLocaleTimeString(), step: '👤 人工审批', msg: '审批通过，执行 DDL 变更...', status: 'done' });
+                task.logs.push({ time: new Date().toLocaleTimeString(), step: '✅ 闭环', msg: '变更完成，工单关闭', status: 'done' });
+            }
+        }
+        closeDetail();
+        renderTable(currentFilter);
+        renderStats();
+        alert('💡 演示效果：任务状态已更新为 "已完成"。');
+    }
+
+    // ===== 初始化 =====
+    renderStats();
+    renderTable('all');
+</script>
+</body>
+</html>

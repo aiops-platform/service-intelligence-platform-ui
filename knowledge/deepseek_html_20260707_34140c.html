@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RAG 解决方案审批 · 决策追溯</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', 'PingFang SC', Roboto, sans-serif;
+            background: #0b1424;
+            color: #e0e6f0;
+            padding: 24px;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1440px;
+            margin: 0 auto;
+        }
+
+        /* ----- 头部 (同前) ----- */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 18px;
+            border-bottom: 1px solid #1e3150;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+        .header-left .breadcrumb {
+            font-size: 14px;
+            color: #7a93b5;
+        }
+        .header-left .breadcrumb span {
+            color: #94a9c9;
+        }
+        .header-left .breadcrumb i {
+            margin: 0 6px;
+            font-size: 12px;
+        }
+        .header-left h1 {
+            font-size: 24px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #64d8ff, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .header-left h1 i {
+            -webkit-text-fill-color: #3b82f6;
+            margin-right: 8px;
+        }
+        .badge-rag {
+            background: #1f3a5f;
+            padding: 4px 14px;
+            border-radius: 20px;
+            border: 1px solid #2a4a7f;
+            color: #64d8ff;
+            font-size: 13px;
+        }
+        .badge-rag i {
+            color: #a78bfa;
+            margin-right: 4px;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 14px;
+            color: #94a9c9;
+        }
+
+        /* ----- 统计卡片 (同前) ----- */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #111d35;
+            border-radius: 14px;
+            padding: 18px 20px;
+            border: 1px solid #1e3150;
+        }
+        .stat-card .label {
+            font-size: 12px;
+            color: #7a93b5;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .stat-card .value {
+            font-size: 26px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .stat-card .sub {
+            font-size: 13px;
+            color: #5a7a9a;
+        }
+        .stat-card.accent-blue .value { color: #60a5fa; }
+        .stat-card.accent-green .value { color: #34d399; }
+        .stat-card.accent-yellow .value { color: #fbbf24; }
+        .stat-card.accent-red .value { color: #f87171; }
+        .stat-card.accent-purple .value { color: #a78bfa; }
+
+        /* ----- 工具栏 (同前) ----- */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .toolbar .left {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            background: #1a2744;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            color: #94a9c9;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: 0.2s;
+            user-select: none;
+        }
+        .filter-btn.active {
+            border-color: #3b82f6;
+            color: #60a5fa;
+            background: #1a2a4a;
+        }
+        .filter-btn:hover {
+            border-color: #2a4a7f;
+        }
+        .timestamp {
+            color: #4a6a8a;
+            font-size: 13px;
+        }
+        .timestamp i {
+            margin-right: 4px;
+        }
+
+        /* ----- 列表 (Agent Tasks 风格) ----- */
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .task-row {
+            background: #111d35;
+            border-radius: 12px;
+            border: 1px solid #1e3150;
+            padding: 14px 18px;
+            display: grid;
+            grid-template-columns: 1fr auto auto auto auto 30px;
+            gap: 16px;
+            align-items: center;
+            cursor: pointer;
+            transition: 0.2s;
+            min-height: 60px;
+        }
+        .task-row:hover {
+            border-color: #2a4a7f;
+            background: #16243f;
+        }
+        .task-row .info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+        .task-row .info .title {
+            font-size: 15px;
+            font-weight: 500;
+            color: #e0e6f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .task-row .info .sub {
+            font-size: 12px;
+            color: #4a6a8a;
+        }
+        .task-row .info .sub i {
+            margin-right: 4px;
+        }
+
+        /* 状态徽章 */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .status-badge.pending {
+            background: #3b2a1a;
+            color: #fbbf24;
+        }
+        .status-badge.approved {
+            background: #0f2a1a;
+            color: #34d399;
+        }
+        .status-badge.rejected {
+            background: #2a1a1a;
+            color: #f87171;
+        }
+        .status-badge.escalated {
+            background: #2a1a3a;
+            color: #c084fc;
+        }
+
+        /* Agent 层级标签 */
+        .agent-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .agent-tag.l1 {
+            background: #1a2a4a;
+            color: #60a5fa;
+        }
+        .agent-tag.l2 {
+            background: #2a1a4a;
+            color: #a78bfa;
+        }
+        .agent-tag.l3 {
+            background: #1a3a2a;
+            color: #34d399;
+        }
+        .agent-tag.human {
+            background: #3a2a1a;
+            color: #fbbf24;
+        }
+
+        /* 置信度 */
+        .conf-badge {
+            font-family: 'Consolas', monospace;
+            font-weight: 700;
+            font-size: 15px;
+            min-width: 48px;
+            text-align: center;
+        }
+        .conf-badge.high {
+            color: #34d399;
+        }
+        .conf-badge.medium {
+            color: #fbbf24;
+        }
+        .conf-badge.low {
+            color: #f87171;
+        }
+
+        /* 来源标签 */
+        .source-tag {
+            font-size: 12px;
+            padding: 2px 10px;
+            border-radius: 12px;
+            background: #1a2744;
+            color: #7a93b5;
+            white-space: nowrap;
+        }
+        .source-tag i {
+            margin-right: 4px;
+        }
+        .source-tag.servicenow {
+            color: #60a5fa;
+            border: 1px solid #2a4a7f;
+        }
+        .source-tag.jira {
+            color: #a78bfa;
+            border: 1px solid #4a2a7f;
+        }
+
+        .task-row .arrow {
+            text-align: center;
+            color: #3b82f6;
+            font-size: 14px;
+        }
+
+        /* ----- 模态框 (不变) ----- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            animation: fadeIn 0.25s ease;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        .modal-box {
+            background: #0f1a30;
+            border-radius: 16px;
+            border: 1px solid #1e3150;
+            max-width: 900px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 28px 32px;
+            position: relative;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-box .close-modal {
+            position: sticky;
+            top: 0;
+            float: right;
+            background: none;
+            border: none;
+            color: #7a93b5;
+            font-size: 28px;
+            cursor: pointer;
+            transition: 0.2s;
+            z-index: 10;
+            line-height: 1;
+            padding: 0 4px;
+        }
+        .modal-box .close-modal:hover {
+            color: #e0e6f0;
+            transform: rotate(90deg);
+        }
+        .modal-box .modal-title {
+            font-size: 22px;
+            font-weight: 600;
+            color: #e0e6f0;
+            margin-bottom: 4px;
+            padding-right: 40px;
+        }
+        .modal-box .modal-subtitle {
+            font-size: 14px;
+            color: #7a93b5;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #1a2744;
+            padding-bottom: 14px;
+        }
+        .chain-steps {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding: 12px 0 16px 0;
+        }
+        .chain-step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #111d35;
+            padding: 6px 14px 6px 10px;
+            border-radius: 20px;
+            border: 1px solid #1a2744;
+            font-size: 13px;
+        }
+        .chain-step .step-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+        }
+        .chain-step .step-icon.done {
+            background: #0f2a1a;
+            color: #34d399;
+        }
+        .chain-step .step-icon.active {
+            background: #1a2a4a;
+            color: #60a5fa;
+            animation: pulse 1.5s infinite;
+        }
+        .chain-step .step-icon.pending {
+            background: #2a1a1a;
+            color: #f87171;
+        }
+        .chain-step .step-icon.waiting {
+            background: #3b2a1a;
+            color: #fbbf24;
+        }
+        @keyframes pulse {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.4;
+            }
+        }
+        .chain-arrow {
+            color: #2a4a7f;
+            font-size: 14px;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-top: 8px;
+        }
+        .detail-item {
+            background: #111d35;
+            border-radius: 8px;
+            padding: 12px 16px;
+            border: 1px solid #1a2744;
+        }
+        .detail-item .label {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #7a93b5;
+            letter-spacing: 0.3px;
+        }
+        .detail-item .value {
+            font-size: 14px;
+            margin-top: 4px;
+            line-height: 1.6;
+            color: #b0c4de;
+        }
+        .detail-item .value .highlight {
+            color: #60a5fa;
+        }
+        .detail-item .value .success {
+            color: #34d399;
+        }
+        .detail-item .value .error {
+            color: #f87171;
+        }
+
+        .case-list {
+            list-style: none;
+            padding: 0;
+        }
+        .case-list li {
+            padding: 6px 0;
+            border-bottom: 1px solid #152238;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .case-list li:last-child {
+            border-bottom: none;
+        }
+        .case-list .case-source {
+            color: #7a93b5;
+            font-size: 12px;
+        }
+        .case-list .case-similarity {
+            color: #a78bfa;
+            font-weight: 600;
+        }
+
+        .approval-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid #1a2744;
+            flex-wrap: wrap;
+        }
+        .btn {
+            padding: 8px 20px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-success {
+            background: #0f2a1a;
+            color: #34d399;
+            border: 1px solid #1a4a3a;
+        }
+        .btn-success:hover {
+            background: #1a4a3a;
+            box-shadow: 0 0 20px rgba(52, 211, 153, 0.15);
+        }
+        .btn-danger {
+            background: #2a1a1a;
+            color: #f87171;
+            border: 1px solid #4a2a2a;
+        }
+        .btn-danger:hover {
+            background: #4a2a2a;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #2a4a7f;
+            color: #94a9c9;
+        }
+        .btn-outline:hover {
+            background: #1a2744;
+            border-color: #3b82f6;
+        }
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 12px;
+        }
+
+        .log-panel-modal {
+            background: #0a1628;
+            border-radius: 8px;
+            padding: 12px 16px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            color: #b0c4de;
+            border: 1px solid #1a2744;
+            margin-top: 4px;
+        }
+        .log-panel-modal .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid #152238;
+            display: flex;
+            gap: 12px;
+        }
+        .log-panel-modal .log-entry .time {
+            color: #4a6a8a;
+            min-width: 80px;
+            flex-shrink: 0;
+        }
+        .log-panel-modal .log-entry .msg {
+            color: #e0e6f0;
+        }
+
+        /* 全局日志 */
+        .log-panel-global {
+            background: #0a1628;
+            border-radius: 12px;
+            border: 1px solid #1e3150;
+            padding: 16px 20px;
+            margin-top: 8px;
+            max-height: 180px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            color: #b0c4de;
+        }
+        .log-panel-global .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid #152238;
+            display: flex;
+            gap: 12px;
+        }
+        .log-panel-global .log-entry .time {
+            color: #4a6a8a;
+            min-width: 80px;
+            flex-shrink: 0;
+        }
+        .log-panel-global .log-entry .msg {
+            color: #e0e6f0;
+        }
+        .log-panel-global .log-entry .msg .highlight {
+            color: #60a5fa;
+        }
+        .log-panel-global .log-entry .msg .success {
+            color: #34d399;
+        }
+        .log-panel-global .log-entry .msg .error {
+            color: #f87171;
+        }
+        .log-panel-global .log-entry .msg .warning {
+            color: #fbbf24;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #4a6a8a;
+        }
+        .empty-state i {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        /* 响应式 */
+        @media (max-width: 1100px) {
+            .task-row {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+            .chain-steps {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .chain-arrow {
+                transform: rotate(90deg);
+            }
+            .modal-box {
+                padding: 20px;
+                max-height: 95vh;
+            }
+        }
+        @media (max-width: 600px) {
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+            .header-left h1 {
+                font-size: 20px;
+            }
+            .header-left .breadcrumb {
+                display: none;
+            }
+            .task-row {
+                padding: 14px 16px;
+            }
+            .modal-box {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- 头部 -->
+    <header class="header">
+        <div class="header-left">
+            <div class="breadcrumb">
+                <i class="fas fa-home"></i> Business Ops <i class="fas fa-chevron-right"></i>
+                Approval Center <i class="fas fa-chevron-right"></i>
+                <span>RAG 解决方案审批</span>
+            </div>
+            <h1><i class="fas fa-robot"></i> RAG 解决方案审批</h1>
+            <span class="badge-rag"><i class="fas fa-brain"></i> 决策追溯</span>
+        </div>
+        <div class="header-right">
+            <span><i class="far fa-clock"></i> 2026-07-08 11:20:35</span>
+            <span><i class="fas fa-flag"></i> v2.3</span>
+        </div>
+    </header>
+
+    <!-- 统计 -->
+    <section class="stats-grid">
+        <div class="stat-card accent-blue">
+            <div class="label">待审批</div>
+            <div class="value" id="pendingCount">0</div>
+            <div class="sub">等待人工决策</div>
+        </div>
+        <div class="stat-card accent-green">
+            <div class="label">已批准</div>
+            <div class="value" id="approvedCount">0</div>
+            <div class="sub">回写 SNOW 并关单</div>
+        </div>
+        <div class="stat-card accent-red">
+            <div class="label">已拒绝</div>
+            <div class="value" id="rejectedCount">0</div>
+            <div class="sub">转人工处理</div>
+        </div>
+        <div class="stat-card accent-yellow">
+            <div class="label">已升级</div>
+            <div class="value" id="escalatedCount">0</div>
+            <div class="sub">L3 → 人工</div>
+        </div>
+        <div class="stat-card accent-purple">
+            <div class="label">平均置信度</div>
+            <div class="value" id="avgConfidence">0%</div>
+            <div class="sub">RAG 推荐质量</div>
+        </div>
+    </section>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <div class="left">
+            <span class="filter-btn active" data-filter="all" onclick="setFilter('all')">全部</span>
+            <span class="filter-btn" data-filter="pending" onclick="setFilter('pending')">待审批</span>
+            <span class="filter-btn" data-filter="approved" onclick="setFilter('approved')">已批准</span>
+            <span class="filter-btn" data-filter="rejected" onclick="setFilter('rejected')">已拒绝</span>
+            <span class="filter-btn" data-filter="escalated" onclick="setFilter('escalated')">已升级</span>
+            <span class="filter-btn" onclick="refreshData()"><i class="fas fa-sync-alt"></i> 刷新</span>
+        </div>
+        <span class="timestamp"><i class="fas fa-robot"></i> L1 → L2 → L3 多层 Agent 协作</span>
+    </div>
+
+    <!-- 任务列表 -->
+    <div class="task-list" id="taskList">
+        <!-- JS 渲染 -->
+    </div>
+
+    <!-- 全局日志 -->
+    <div class="log-panel-global" id="logPanelGlobal">
+        <div class="log-entry"><span class="time">11:20:35</span><span class="msg">系统就绪，加载 RAG 建议队列...</span></div>
+        <div class="log-entry"><span class="time">11:20:36</span><span class="msg">共 <span class="highlight">8</span> 条待审批建议。</span></div>
+    </div>
+</div>
+
+<!-- ===== 模态框 ===== -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+    <div class="modal-box" onclick="event.stopPropagation()">
+        <button class="close-modal" onclick="closeModal()"><i class="fas fa-times"></i></button>
+        <div class="modal-title" id="modalTitle">工单标题</div>
+        <div class="modal-subtitle" id="modalSubtitle"><i class="fas fa-ticket-alt"></i> INC-XXXXXX · 服务: unknown</div>
+
+        <!-- 决策链路 -->
+        <div style="font-size:14px;font-weight:600;color:#94a9c9;margin-bottom:6px;">
+            <i class="fas fa-code-branch"></i> 决策链路
+        </div>
+        <div class="chain-steps" id="modalChain">
+            <!-- 动态渲染 -->
+        </div>
+
+        <!-- 详情网格 -->
+        <div class="detail-grid" id="modalDetailGrid">
+            <!-- 动态渲染 -->
+        </div>
+
+        <!-- 审批操作 -->
+        <div class="approval-actions" id="modalActions">
+            <!-- 动态渲染 -->
+        </div>
+    </div>
+</div>
+
+<script>
+    // ================================================================
+    //  模拟数据
+    // ================================================================
+    const initialData = [{
+        id: 'RAG-001',
+        ticket: 'INC-001234',
+        title: 'SIP 呼叫建立失败，错误码 503',
+        description: '外呼时偶发 503，影响部分用户，需要排查中继配置。',
+        solution: '检查并更新运营商中继配置，重启 SIP 网关服务。',
+        source: 'ServiceNow',
+        sourceId: 'SNOW-INC-8821',
+        confidence: 94,
+        status: 'pending',
+        chain: [
+            { step: 'L1 工单分类', agent: 'L1-Classifier', status: 'done', detail: '识别为 "SIP 服务异常"，匹配 RAG 检索策略' },
+            { step: 'L2 RAG 检索', agent: 'L2-RAG-Engine', status: 'done', detail: '从 ServiceNow 检索到 3 个相似案例' },
+            { step: 'L3 方案生成', agent: 'L3-Solution-Adapter', status: 'done', detail: '生成解决方案，置信度 94%' },
+            { step: '人工审批', agent: 'Human Reviewer', status: 'pending', detail: '等待 Operation 审批' }
+        ],
+        similarCases: [
+            { id: 'SNOW-INC-7721', title: 'SIP 503 中继线路异常', similarity: 96, source: 'ServiceNow' },
+            { id: 'SNOW-INC-6634', title: '外呼失败，中继配置错误', similarity: 88, source: 'ServiceNow' },
+            { id: 'JIRA-OP-221', title: 'SIP 网关重启后 503 恢复', similarity: 82, source: 'Jira' }
+        ],
+        logs: [
+            { time: '11:18:02', msg: '📥 工单 INC-001234 进入 L1 分类队列' },
+            { time: '11:18:05', msg: '🤖 L1 Agent 判定: "SIP 服务异常"，触发 RAG 检索' },
+            { time: '11:18:08', msg: '🔍 L2 RAG 检索完成，找到 3 个相似历史工单' },
+            { time: '11:18:12', msg: '🧠 L3 Agent 生成解决方案，置信度 94%' },
+            { time: '11:18:15', msg: '📋 已提交至 Approval Center，等待人工审批' }
+        ],
+        escalated: false
+    }, {
+        id: 'RAG-002',
+        ticket: 'INC-001235',
+        title: '媒体服务器 CPU 飙高，音质卡顿',
+        description: 'RTP 流丢包严重，CPU 利用率达 95%。',
+        solution: '调整媒体服务器的编解码参数，增加 CPU 资源限制，并重启实例。',
+        source: 'Jira',
+        sourceId: 'JIRA-OP-332',
+        confidence: 82,
+        status: 'pending',
+        chain: [
+            { step: 'L1 工单分类', agent: 'L1-Classifier', status: 'done', detail: '识别为 "媒体服务性能"，匹配 RAG 检索策略' },
+            { step: 'L2 RAG 检索', agent: 'L2-RAG-Engine', status: 'done', detail: '从 Jira 检索到 2 个相似案例' },
+            { step: 'L3 方案生成', agent: 'L3-Solution-Adapter', status: 'done', detail: '生成解决方案，置信度 82%' },
+            { step: '人工审批', agent: 'Human Reviewer', status: 'pending', detail: '等待 Operation 审批' }
+        ],
+        similarCases: [
+            { id: 'JIRA-OP-221', title: '媒体服务器 CPU 优化', similarity: 91, source: 'Jira' },
+            { id: 'SNOW-INC-5123', title: 'RTP 丢包处理方案', similarity: 76, source: 'ServiceNow' }
+        ],
+        logs: [
+            { time: '11:16:30', msg: '📥 工单 INC-001235 进入 L1 分类队列' },
+            { time: '11:16:33', msg: '🤖 L1 Agent 判定: "媒体服务性能"，触发 RAG 检索' },
+            { time: '11:16:37', msg: '🔍 L2 RAG 检索完成，找到 2 个相似历史工单' },
+            { time: '11:16:41', msg: '🧠 L3 Agent 生成解决方案，置信度 82%' },
+            { time: '11:16:44', msg: '📋 已提交至 Approval Center，等待人工审批' }
+        ],
+        escalated: false
+    }, {
+        id: 'RAG-003',
+        ticket: 'INC-001236',
+        title: '数据库连接池耗尽，应用无响应',
+        description: 'PostgreSQL 连接数达到上限，应用层抛出超时。',
+        solution: '增加 max_connections 参数，并优化慢查询索引。',
+        source: 'ServiceNow',
+        sourceId: 'SNOW-INC-6734',
+        confidence: 96,
+        status: 'approved',
+        chain: [
+            { step: 'L1 工单分类', agent: 'L1-Classifier', status: 'done', detail: '识别为 "数据库性能"，匹配 RAG 检索策略' },
+            { step: 'L2 RAG 检索', agent: 'L2-RAG-Engine', status: 'done', detail: '从 ServiceNow 检索到 4 个相似案例' },
+            { step: 'L3 方案生成', agent: 'L3-Solution-Adapter', status: 'done', detail: '生成解决方案，置信度 96%' },
+            { step: '人工审批', agent: 'Human Reviewer', status: 'done', detail: '✅ 已批准，回写 ServiceNow 并关单' }
+        ],
+        similarCases: [
+            { id: 'SNOW-INC-5542', title: 'PostgreSQL 连接池优化', similarity: 98, source: 'ServiceNow' },
+            { id: 'SNOW-INC-4431', title: '慢查询索引优化案例', similarity: 92, source: 'ServiceNow' },
+            { id: 'JIRA-OP-119', title: '数据库超时处理', similarity: 85, source: 'Jira' }
+        ],
+        logs: [
+            { time: '10:45:10', msg: '📥 工单 INC-001236 进入 L1 分类队列' },
+            { time: '10:45:13', msg: '🤖 L1 Agent 判定: "数据库性能"，触发 RAG 检索' },
+            { time: '10:45:17', msg: '🔍 L2 RAG 检索完成，找到 4 个相似历史工单' },
+            { time: '10:45:22', msg: '🧠 L3 Agent 生成解决方案，置信度 96%' },
+            { time: '10:45:26', msg: '📋 已提交至 Approval Center，等待人工审批' },
+            { time: '10:48:10', msg: '✅ 人工审批通过，已回写 ServiceNow 并关闭工单' }
+        ],
+        escalated: false
+    }, {
+        id: 'RAG-004',
+        ticket: 'INC-001237',
+        title: 'CRM 同步失败，API 返回 500',
+        description: '销售团队无法更新客户资料，需要紧急修复。',
+        solution: '重启 CRM 同步服务，并检查认证 Token 过期问题。',
+        source: 'Jira',
+        sourceId: 'JIRA-OP-445',
+        confidence: 71,
+        status: 'rejected',
+        chain: [
+            { step: 'L1 工单分类', agent: 'L1-Classifier', status: 'done', detail: '识别为 "API 服务异常"，匹配 RAG 检索策略' },
+            { step: 'L2 RAG 检索', agent: 'L2-RAG-Engine', status: 'done', detail: '从 Jira 检索到 2 个相似案例' },
+            { step: 'L3 方案生成', agent: 'L3-Solution-Adapter', status: 'done', detail: '生成解决方案，置信度 71% (低)' },
+            { step: '人工审批', agent: 'Human Reviewer', status: 'done', detail: '❌ 已拒绝，转 Operation 人工处理' }
+        ],
+        similarCases: [
+            { id: 'JIRA-OP-334', title: 'CRM 同步 500 错误修复', similarity: 74, source: 'Jira' },
+            { id: 'SNOW-INC-2210', title: 'Token 过期处理方案', similarity: 68, source: 'ServiceNow' }
+        ],
+        logs: [
+            { time: '10:30:05', msg: '📥 工单 INC-001237 进入 L1 分类队列' },
+            { time: '10:30:08', msg: '🤖 L1 Agent 判定: "API 服务异常"，触发 RAG 检索' },
+            { time: '10:30:12', msg: '🔍 L2 RAG 检索完成，找到 2 个相似历史工单' },
+            { time: '10:30:16', msg: '🧠 L3 Agent 生成解决方案，置信度 71% (较低)' },
+            { time: '10:30:20', msg: '📋 已提交至 Approval Center，等待人工审批' },
+            { time: '10:35:00', msg: '❌ 人工拒绝，转 Operation 团队人工处理' }
+        ],
+        escalated: false
+    }, {
+        id: 'RAG-005',
+        ticket: 'INC-001238',
+        title: '日志采集 Agent 停止上报',
+        description: '部分节点日志丢失，影响监控可视化。',
+        solution: '重新部署采集 Agent，调整 buffer 大小并重启。',
+        source: 'ServiceNow',
+        sourceId: 'SNOW-INC-9210',
+        confidence: 88,
+        status: 'escalated',
+        chain: [
+            { step: 'L1 工单分类', agent: 'L1-Classifier', status: 'done', detail: '识别为 "日志采集故障"，匹配 RAG 检索策略' },
+            { step: 'L2 RAG 检索', agent: 'L2-RAG-Engine', status: 'done', detail: '从 ServiceNow 检索到 3 个相似案例' },
+            { step: 'L3 方案生成', agent: 'L3-Solution-Adapter', status: 'done', detail: '生成解决方案，置信度 88%' },
+            { step: '人工审批', agent: 'Human Reviewer', status: 'done', detail: '⚠️ 已升级 L3 → 人工介入 (方案存在风险)' }
+        ],
+        similarCases: [
+            { id: 'SNOW-INC-8832', title: '采集 Agent 重新部署方案', similarity: 92, source: 'ServiceNow' },
+            { id: 'SNOW-INC-7723', title: 'Buffer 配置优化', similarity: 84, source: 'ServiceNow' }
+        ],
+        logs: [
+            { time: '10:15:20', msg: '📥 工单 INC-001238 进入 L1 分类队列' },
+            { time: '10:15:23', msg: '🤖 L1 Agent 判定: "日志采集故障"，触发 RAG 检索' },
+            { time: '10:15:27', msg: '🔍 L2 RAG 检索完成，找到 3 个相似历史工单' },
+            { time: '10:15:31', msg: '🧠 L3 Agent 生成解决方案，置信度 88%' },
+            { time: '10:15:35', msg: '📋 已提交至 Approval Center，等待人工审批' },
+            { time: '10:18:20', msg: '⚠️ 人工审核发现方案存在风险，已升级转交 L3 人工处理' }
+        ],
+        escalated: true
+    }];
+
+    // ================================================================
+    //  状态管理
+    // ================================================================
+    let data = [];
+    let currentFilter = 'all';
+    let globalLogs = [];
+
+    function addGlobalLog(msg, type = 'info') {
+        const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        globalLogs.push({ time, msg, type });
+        renderGlobalLogs();
+    }
+
+    function renderGlobalLogs() {
+        const panel = document.getElementById('logPanelGlobal');
+        let html = globalLogs.map(log => {
+            const cls = log.type === 'success' ? 'success' :
+                log.type === 'error' ? 'error' :
+                log.type === 'warning' ? 'warning' : 'highlight';
+            return `<div class="log-entry"><span class="time">${log.time}</span><span class="msg"><span class="${cls}">${log.msg}</span></span></div>`;
+        }).join('');
+        panel.innerHTML = html;
+        panel.scrollTop = panel.scrollHeight;
+    }
+
+    // 处理审批
+    function handleApproval(id, approved) {
+        const item = data.find(d => d.id === id);
+        if (!item || item.status !== 'pending') return;
+
+        if (approved) {
+            item.status = 'approved';
+            item.chain[3] = { step: '人工审批', agent: 'Human Reviewer', status: 'done', detail: '✅ 已批准，回写 ServiceNow 并关单' };
+            item.logs.push({ time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), msg: '✅ 人工审批通过，已回写 ServiceNow 并关闭工单' });
+            addGlobalLog(`✅ 建议 ${item.id} (${item.ticket}) 已批准，回写 SNOW 并关单`, 'success');
+        } else {
+            item.status = 'rejected';
+            item.chain[3] = { step: '人工审批', agent: 'Human Reviewer', status: 'done', detail: '❌ 已拒绝，转 Operation 人工处理' };
+            item.logs.push({ time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), msg: '❌ 人工拒绝，转 Operation 团队人工处理' });
+            addGlobalLog(`❌ 建议 ${item.id} (${item.ticket}) 已拒绝，转人工处理`, 'error');
+        }
+
+        renderStats();
+        renderList(currentFilter);
+        closeModal();
+    }
+
+    function handleEscalate(id) {
+        const item = data.find(d => d.id === id);
+        if (!item || item.status !== 'pending') return;
+
+        item.status = 'escalated';
+        item.escalated = true;
+        item.chain[3] = { step: '人工审批', agent: 'Human Reviewer', status: 'done', detail: '⚠️ 已升级 L3 → 人工介入 (方案存在风险)' };
+        item.logs.push({ time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), msg: '⚠️ 人工审核发现方案存在风险，已升级转交 L3 人工处理' });
+        addGlobalLog(`⚠️ 建议 ${item.id} (${item.ticket}) 已升级，转 L3 人工处理`, 'warning');
+
+        renderStats();
+        renderList(currentFilter);
+        closeModal();
+    }
+
+    // 统计
+    function renderStats() {
+        const pending = data.filter(d => d.status === 'pending').length;
+        const approved = data.filter(d => d.status === 'approved').length;
+        const rejected = data.filter(d => d.status === 'rejected').length;
+        const escalated = data.filter(d => d.status === 'escalated').length;
+        const total = data.length;
+        const avgConf = total > 0 ? Math.round(data.reduce((acc, d) => acc + d.confidence, 0) / total) : 0;
+
+        document.getElementById('pendingCount').textContent = pending;
+        document.getElementById('approvedCount').textContent = approved;
+        document.getElementById('rejectedCount').textContent = rejected;
+        document.getElementById('escalatedCount').textContent = escalated;
+        document.getElementById('avgConfidence').textContent = avgConf + '%';
+    }
+
+    // 渲染列表 (Agent Tasks 风格)
+    function renderList(filter = 'all') {
+        const container = document.getElementById('taskList');
+        let filtered = data;
+        if (filter !== 'all') {
+            filtered = filtered.filter(d => d.status === filter);
+        }
+
+        if (filtered.length === 0) {
+            container.innerHTML = `<div class="empty-state"><i class="fas fa-inbox"></i><p>没有匹配的审批建议</p></div>`;
+            return;
+        }
+
+        let html = '';
+        filtered.forEach(item => {
+            const statusMap = {
+                'pending': '<span class="status-badge pending"><i class="fas fa-clock"></i> 待审批</span>',
+                'approved': '<span class="status-badge approved"><i class="fas fa-check-circle"></i> 已批准</span>',
+                'rejected': '<span class="status-badge rejected"><i class="fas fa-times-circle"></i> 已拒绝</span>',
+                'escalated': '<span class="status-badge escalated"><i class="fas fa-arrow-up"></i> 已升级</span>'
+            };
+            const confClass = item.confidence >= 80 ? 'high' : (item.confidence >= 60 ? 'medium' : 'low');
+            const sourceClass = item.source === 'ServiceNow' ? 'servicenow' : 'jira';
+
+            let activeAgent = 'L1';
+            if (item.status === 'pending') activeAgent = 'L3';
+            else if (item.status === 'approved' || item.status === 'rejected') activeAgent = 'Human';
+            else if (item.status === 'escalated') activeAgent = 'L3';
+
+            const agentTagMap = {
+                'L1': '<span class="agent-tag l1"><i class="fas fa-robot"></i> L1 分类</span>',
+                'L2': '<span class="agent-tag l2"><i class="fas fa-brain"></i> L2 RAG</span>',
+                'L3': '<span class="agent-tag l3"><i class="fas fa-lightbulb"></i> L3 方案</span>',
+                'Human': '<span class="agent-tag human"><i class="fas fa-user"></i> 人工审批</span>'
+            };
+
+            html += `
+                <div class="task-row" onclick="openModal('${item.id}')">
+                    <div class="info">
+                        <div class="title">${item.ticket} - ${item.title}</div>
+                        <div class="sub"><i class="fas fa-tag"></i> ${item.description}</div>
+                    </div>
+                    <div>${statusMap[item.status]}</div>
+                    <div>${agentTagMap[activeAgent]}</div>
+                    <div class="conf-badge ${confClass}">${item.confidence}%</div>
+                    <div><span class="source-tag ${sourceClass}"><i class="fas fa-database"></i> ${item.source}</span></div>
+                    <div class="arrow"><i class="fas fa-chevron-right"></i></div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+        renderStats();
+    }
+
+    // ================================================================
+    //  模态框操作
+    // ================================================================
+    function openModal(id) {
+        const item = data.find(d => d.id === id);
+        if (!item) return;
+
+        document.getElementById('modalTitle').textContent = `${item.ticket} - ${item.title}`;
+        document.getElementById('modalSubtitle').innerHTML = `<i class="fas fa-ticket-alt"></i> ${item.ticket} · 服务: ${item.source} (${item.sourceId}) · 置信度 ${item.confidence}%`;
+
+        // 渲染决策链路
+        const chainContainer = document.getElementById('modalChain');
+        let chainHtml = '';
+        item.chain.forEach((step, idx) => {
+            const statusClass = step.status === 'done' ? 'done' :
+                               (step.status === 'pending' ? 'waiting' : 'active');
+            const iconHtml = statusClass === 'done' ? '<i class="fas fa-check"></i>' :
+                             (statusClass === 'waiting' ? '<i class="fas fa-clock"></i>' :
+                              '<i class="fas fa-spinner fa-spin"></i>');
+            chainHtml += `
+                <div class="chain-step">
+                    <div class="step-icon ${statusClass}">${iconHtml}</div>
+                    <span style="font-size:12px;white-space:nowrap;">${step.step}</span>
+                    <span style="font-size:11px;color:#4a6a8a;">${step.agent}</span>
+                </div>
+                ${idx < item.chain.length - 1 ? '<span class="chain-arrow"><i class="fas fa-chevron-right"></i></span>' : ''}
+            `;
+        });
+        chainContainer.innerHTML = chainHtml;
+
+        // 渲染详情网格
+        const gridContainer = document.getElementById('modalDetailGrid');
+        gridContainer.innerHTML = `
+            <div class="detail-item">
+                <div class="label">工单描述</div>
+                <div class="value">${item.description}</div>
+            </div>
+            <div class="detail-item">
+                <div class="label">推荐解决方案</div>
+                <div class="value"><i class="fas fa-lightbulb" style="color:#fbbf24;margin-right:6px;"></i>${item.solution}</div>
+                <div class="value" style="font-size:12px;color:#7a93b5;margin-top:4px;">
+                    来源: <span class="highlight">${item.source}</span> (${item.sourceId})
+                </div>
+            </div>
+            <div class="detail-item" style="grid-column: 1 / -1;">
+                <div class="label">RAG 检索到的历史相似案例</div>
+                <div class="value">
+                    <ul class="case-list">
+                        ${item.similarCases.map(c => `
+                            <li>
+                                <span><span class="highlight">${c.id}</span> — ${c.title}</span>
+                                <span>
+                                    <span class="case-source"><i class="fas fa-database"></i> ${c.source}</span>
+                                    <span class="case-similarity">${c.similarity}% 相似</span>
+                                </span>
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+            </div>
+            <div class="detail-item" style="grid-column: 1 / -1;">
+                <div class="label">执行日志 (L1 → L2 → L3 → Human)</div>
+                <div class="log-panel-modal">
+                    ${item.logs.map(l => `
+                        <div class="log-entry">
+                            <span class="time">${l.time}</span>
+                            <span class="msg">${l.msg}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+
+        // 渲染审批操作
+        const actionsContainer = document.getElementById('modalActions');
+        if (item.status === 'pending') {
+            actionsContainer.innerHTML = `
+                <button class="btn btn-success" onclick="handleApproval('${item.id}', true)"><i class="fas fa-check"></i> 同意 · 回写 SNOW 并关单</button>
+                <button class="btn btn-danger" onclick="handleApproval('${item.id}', false)"><i class="fas fa-times"></i> 拒绝 · 转人工处理</button>
+                <button class="btn btn-outline" onclick="handleEscalate('${item.id}')"><i class="fas fa-arrow-up"></i> 升级 · 转 L3 人工</button>
+            `;
+        } else {
+            const statusText = item.status === 'approved' ? '✅ 已批准，工单已关闭' :
+                               item.status === 'rejected' ? '❌ 已拒绝，转人工处理' :
+                               '⚠️ 已升级，L3 人工介入';
+            actionsContainer.innerHTML = `
+                <span style="color:#4a6a8a;font-size:13px;padding:6px 0;">${statusText}</span>
+                <button class="btn btn-outline btn-sm" onclick="closeModal()">关闭</button>
+            `;
+        }
+
+        document.getElementById('modalOverlay').classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal(event) {
+        if (event && event.target !== event.currentTarget) return;
+        document.getElementById('modalOverlay').classList.remove('active');
+        document.body.style.overflow = 'auto';
+    }
+
+    // 过滤切换
+    function setFilter(filter) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-btn[data-filter]').forEach(el => {
+            el.classList.toggle('active', el.dataset.filter === filter);
+        });
+        renderList(filter);
+    }
+
+    // 刷新重置
+    function refreshData() {
+        data = initialData.map(d => ({
+            ...d,
+            status: d.status === 'approved' ? 'approved' :
+                    d.status === 'rejected' ? 'rejected' :
+                    d.status === 'escalated' ? 'escalated' : 'pending',
+            chain: d.chain.map(c => ({ ...c })),
+            logs: d.logs.map(l => ({ ...l }))
+        }));
+        data.forEach(d => {
+            if (d.status === 'pending') {
+                d.chain[3] = { step: '人工审批', agent: 'Human Reviewer', status: 'pending', detail: '等待 Operation 审批' };
+            }
+        });
+        globalLogs = [];
+        addGlobalLog('🔄 系统刷新，数据已重置。', 'highlight');
+        const pendingCount = data.filter(d => d.status === 'pending').length;
+        addGlobalLog(`📋 共 ${data.length} 条记录，其中 ${pendingCount} 条待审批。`, 'highlight');
+        renderList(currentFilter);
+        renderStats();
+        closeModal();
+    }
+
+    // 初始化
+    function init() {
+        data = initialData.map(d => ({
+            ...d,
+            chain: d.chain.map(c => ({ ...c })),
+            logs: d.logs.map(l => ({ ...l }))
+        }));
+        addGlobalLog('🤖 RAG 引擎已加载，多层 Agent 协作就绪。', 'highlight');
+        const pendingCount = data.filter(d => d.status === 'pending').length;
+        addGlobalLog(`📌 当前有 ${pendingCount} 条建议待审批。`, 'highlight');
+        renderList('all');
+        renderStats();
+    }
+
+    // 暴露全局
+    window.openModal = openModal;
+    window.closeModal = closeModal;
+    window.handleApproval = handleApproval;
+    window.handleEscalate = handleEscalate;
+    window.setFilter = setFilter;
+    window.refreshData = refreshData;
+
+    init();
+</script>
+</body>
+</html>

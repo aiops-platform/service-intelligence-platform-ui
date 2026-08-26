@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIP Platform - 应用服务智能检测列表</title>
+    <style>
+        :root {
+            --bg-primary: #f0f4f8;
+            --bg-card: #ffffff;
+            --bg-header: #0a1e3d;
+            --text-primary: #1a2332;
+            --text-secondary: #5a6d80;
+            --text-light: #ffffff;
+            --accent-blue: #2b6fdf;
+            --accent-blue-light: #e8f0fd;
+            --accent-green: #10b981;
+            --accent-green-light: #ecfdf5;
+            --accent-orange: #f59e0b;
+            --accent-orange-light: #fffbeb;
+            --accent-red: #ef4444;
+            --accent-red-light: #fef2f2;
+            --accent-purple: #7c3aed;
+            --accent-purple-light: #f5f3ff;
+            --border-color: #e2e8f0;
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+            --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            --font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', 'Monaco', 'Menlo', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .header {
+            background: var(--bg-header);
+            color: var(--text-light);
+            padding: 0 28px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 1.15rem;
+            letter-spacing: 0.3px;
+            color: #fff;
+        }
+        .header-logo .logo-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        .header-divider {
+            width: 1px;
+            height: 26px;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 1px;
+        }
+        .header-subtitle {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: rgba(255, 255, 255, 0.85);
+            letter-spacing: 0.4px;
+        }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .header-badge {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 14px;
+            border-radius: 20px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        .badge-detecting {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.35);
+        }
+        .badge-alerting {
+            background: rgba(239, 68, 68, 0.25);
+            color: #f87171;
+            border: 1px solid rgba(239, 68, 68, 0.45);
+            animation: badgePulse 1.2s ease-in-out infinite;
+        }
+        @keyframes badgePulse {
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+            }
+            50% {
+                box-shadow: 0 0 16px 6px rgba(239, 68, 68, 0.3);
+            }
+        }
+        .dot-indicator {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .dot-green {
+            background: #34d399;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+        }
+        .dot-red {
+            background: #f87171;
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+            animation: dotBlink 0.8s ease-in-out infinite;
+        }
+        @keyframes dotBlink {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.3;
+            }
+        }
+        .header-time {
+            font-size: 0.82rem;
+            color: rgba(255, 255, 255, 0.7);
+            font-family: var(--font-mono);
+        }
+
+        .main-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 22px 24px 32px;
+        }
+
+        /* 统计卡片区域 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 18px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 20px 22px;
+            box-shadow: var(--shadow-md);
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            flex-shrink: 0;
+        }
+        .icon-total {
+            background: #e8f0fd;
+            color: #2b6fdf;
+        }
+        .icon-healthy {
+            background: #ecfdf5;
+            color: #10b981;
+        }
+        .icon-warning {
+            background: #fffbeb;
+            color: #f59e0b;
+        }
+        .icon-critical {
+            background: #fef2f2;
+            color: #ef4444;
+        }
+        .icon-alert-count {
+            background: #f5f3ff;
+            color: #7c3aed;
+        }
+        .stat-info {
+            flex: 1;
+        }
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            font-family: var(--font-mono);
+            letter-spacing: -1px;
+            line-height: 1.2;
+        }
+
+        /* 列表标题栏 */
+        .list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .list-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .ml-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: var(--accent-purple-light);
+            color: var(--accent-purple);
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            white-space: nowrap;
+            border: 1px solid rgba(124, 58, 237, 0.2);
+        }
+        .ml-badge .ml-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--accent-purple);
+            animation: mlPulse 2s ease-in-out infinite;
+        }
+        @keyframes mlPulse {
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.6);
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(124, 58, 237, 0);
+            }
+        }
+
+        /* 服务列表表格 */
+        .service-table-card {
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            padding: 20px 22px;
+            box-shadow: var(--shadow-md);
+            overflow-x: auto;
+        }
+        .service-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+            min-width: 900px;
+        }
+        .service-table th {
+            text-align: left;
+            padding: 12px 16px;
+            background: #f8fafc;
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-radius: 6px 6px 0 0;
+            white-space: nowrap;
+        }
+        .service-table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+        }
+        .service-table tbody tr {
+            transition: background 0.2s ease;
+        }
+        .service-table tbody tr:hover {
+            background: #fafbfc;
+        }
+        .service-table tbody tr.row-critical {
+            background: #fffbfb;
+            border-left: 4px solid #ef4444;
+        }
+        .service-table tbody tr.row-warning {
+            background: #fffdf7;
+            border-left: 4px solid #f59e0b;
+        }
+        .service-name-cell {
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .service-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            background: #f1f5f9;
+        }
+        .service-type {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            background: #f8fafc;
+            padding: 2px 8px;
+            border-radius: 10px;
+            margin-left: 6px;
+        }
+        .metric-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .metric-value-text {
+            font-family: var(--font-mono);
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        .metric-value-text.normal {
+            color: #10b981;
+        }
+        .metric-value-text.warning {
+            color: #f59e0b;
+        }
+        .metric-value-text.critical {
+            color: #ef4444;
+            animation: valueFlash 0.7s infinite;
+        }
+        @keyframes valueFlash {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.55;
+            }
+        }
+        .metric-progress-bg {
+            width: 100%;
+            height: 5px;
+            border-radius: 3px;
+            background: #e2e8f0;
+            overflow: hidden;
+            position: relative;
+        }
+        .metric-progress-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease, background 0.5s ease;
+        }
+        .metric-progress-fill.normal {
+            background: #10b981;
+        }
+        .metric-progress-fill.warning {
+            background: #f59e0b;
+        }
+        .metric-progress-fill.critical {
+            background: #ef4444;
+        }
+        .alert-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 32px;
+            height: 28px;
+            border-radius: 14px;
+            font-weight: 700;
+            font-size: 0.85rem;
+            padding: 0 10px;
+            background: #f1f5f9;
+            color: var(--text-primary);
+        }
+        .alert-count-badge.has-alert {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+            animation: pulseBadge 2s infinite;
+        }
+        @keyframes pulseBadge {
+            0%,
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+            }
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        .status-healthy {
+            background: #ecfdf5;
+            color: #059669;
+        }
+        .status-warning {
+            background: #fffbeb;
+            color: #b45309;
+        }
+        .status-critical {
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 0 14px;
+                height: 50px;
+            }
+            .main-container {
+                padding: 12px 10px 20px;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+            .stat-value {
+                font-size: 1.5rem;
+            }
+            .service-table {
+                font-size: 0.75rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <div class="header-logo">
+                <div class="logo-icon">🛡️</div>
+                <span>SIP Platform</span>
+            </div>
+            <div class="header-divider"></div>
+            <span class="header-subtitle">Smart Inspection 智能检测 · 应用服务</span>
+        </div>
+        <div class="header-right">
+            <span class="header-time" id="headerTime">--</span>
+            <div class="header-badge badge-detecting" id="headerBadge">
+                <span class="dot-indicator dot-green" id="headerDot"></span>
+                <span id="headerStatusText">系统正常</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <!-- 统计卡片 -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon icon-total">📋</div>
+                <div class="stat-info">
+                    <div class="stat-label">总应用服务</div>
+                    <div class="stat-value" id="statTotal">7</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon icon-healthy">✅</div>
+                <div class="stat-info">
+                    <div class="stat-label">健康服务</div>
+                    <div class="stat-value" id="statHealthy">5</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon icon-warning">⚠️</div>
+                <div class="stat-info">
+                    <div class="stat-label">警告服务</div>
+                    <div class="stat-value" id="statWarning">1</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon icon-critical">🚨</div>
+                <div class="stat-info">
+                    <div class="stat-label">严重警报服务</div>
+                    <div class="stat-value" id="statCritical">1</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon icon-alert-count">🔔</div>
+                <div class="stat-info">
+                    <div class="stat-label">累计警报次数</div>
+                    <div class="stat-value" id="statTotalAlerts">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 列表标题 -->
+        <div class="list-header">
+            <div class="list-title">📱 应用服务健康列表</div>
+            <div class="ml-badge">
+                <span class="ml-dot"></span> ML Baseline 已激活 · 检测间隔 3s
+            </div>
+        </div>
+
+        <!-- 服务列表表格 -->
+        <div class="service-table-card">
+            <table class="service-table">
+                <thead>
+                    <tr>
+                        <th>服务名称</th>
+                        <th>类型</th>
+                        <th>CPU 使用率</th>
+                        <th>内存使用率</th>
+                        <th>磁盘使用率</th>
+                        <th>警报次数</th>
+                        <th>当前状态</th>
+                    </tr>
+                </thead>
+                <tbody id="serviceTableBody">
+                    <!-- 动态生成 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // ==================== 应用服务定义 (仅应用服务) ====================
+            const applicationServices = [{
+                id: 'customer-service',
+                name: '客户服务',
+                icon: '👥',
+                type: '核心应用',
+                metrics: {
+                    cpu: { label: 'CPU使用率', unit: '%', baseline: 70, min: 30, max: 92, normalRange: [40, 68],
+                        color: '#2b6fdf' },
+                    memory: { label: '内存使用率', unit: '%', baseline: 82, min: 40, max: 96, normalRange: [55, 78],
+                        color: '#7c3aed' },
+                    disk: { label: '磁盘使用率', unit: '%', baseline: 65, min: 30, max: 85, normalRange: [38, 63],
+                        color: '#10b981' },
+                }
+            }, {
+                id: 'insurance-service',
+                name: '保险服务',
+                icon: '🛡️',
+                type: '核心应用',
+                metrics: {
+                    cpu: { label: 'CPU使用率', unit: '%', baseline: 75, min: 35, max: 94, normalRange: [45, 72],
+                        color: '#2b6fdf' },
+                    memory: { label: '内存使用率', unit: '%', baseline: 80, min: 50, max: 95, normalRange: [55, 77],
+                        color: '#7c3aed' },
+                    disk: { label: '磁盘使用率', unit: '%', baseline: 70, min: 35, max: 88, normalRange: [40, 67],
+                        color: '#10b981' },
+                }
+            }, {
+                id: 'payment-service',
+                name: '支付服务',
+                icon: '💳',
+                type: '核心应用',
+                metrics: {
+                    cpu: { label: 'CPU使用率', unit: '%', baseline: 68, min: 40, max: 90, normalRange: [48, 66],
+                        color: '#2b6fdf' },
+                    memory: { label: '内存使用率', unit: '%', baseline: 78, min: 45, max: 93, normalRange: [52, 76],
+                        color: '#7c3aed' },
+                    disk: { label: '磁盘使用率', unit: '%', baseline: 72, min: 30, max: 86, normalRange: [42, 70],
+                        color: '#10b981' },
+                }
+            }, {
+                id: 'auth-service',
+                name: '认证服务',
+                icon: '🔐',
+                type: '基础服务',
+                metrics: {
+                    cpu: { label: 'CPU使用率', unit: '%', baseline: 72, min: 30, max: 91, normalRange: [42, 70],
+                        color: '#2b6fdf' },
+                    memory: { label: '内存使用率', unit: '%', baseline: 85, min: 45, max: 98, normalRange: [55, 80],
+                        color: '#7c3aed' },
+                    disk: { label: '磁盘使用率', unit: '%', baseline: 68, min: 35, max: 84, normalRange: [40, 65],
+                        color: '#10b981' },
+                }
+            }, {
+                id: 'order-service',
+                name: '订单服务',
+                icon: '📦',
+                type: '核心应用',
+                metrics: {
+                    cpu: { label: 'CPU使用率', unit: '%', baseline: 74, min: 38, max: 93, normalRange: [48, 71],
+                        color: '#2b6fdf' },
+                    memory: { label: '内存使用率', unit: '%', baseline: 79, min: 48, max: 94, normalRange: [56, 76],
+                        color: '#7c3aed' },
+                    disk: { label: '磁盘使用率', unit: '%', baseline: 67, min: 32, max: 87, normalRange: [41, 64],
+                        color: '#10b981' },
+                }
+            }, {
+                id: 'notification-service',
+                name: '通知服务',
+                icon: '🔔',
+                type: '支撑服务',
+                metrics: {
+                    cpu: { label: 'CPU使用率', unit: '%', baseline: 66, min: 28, max: 88, normalRange: [36, 62],
+                        color: '#2b6fdf' },
+                    memory: { label: '内存使用率', unit: '%', baseline: 76, min: 42, max: 92, normalRange: [52, 73],
+                        color: '#7c3aed' },
+                    disk: { label: '磁盘使用率', unit: '%', baseline: 63, min: 30, max: 82, normalRange: [38, 60],
+                        color: '#10b981' },
+                }
+            }, {
+                id: 'report-service',
+                name: '报表服务',
+                icon: '📊',
+                type: '支撑服务',
+                metrics: {
+                    cpu: { label: 'CPU使用率', unit: '%', baseline: 71, min: 35, max: 89, normalRange: [43, 68],
+                        color: '#2b6fdf' },
+                    memory: { label: '内存使用率', unit: '%', baseline: 81, min: 46, max: 95, normalRange: [54, 78],
+                        color: '#7c3aed' },
+                    disk: { label: '磁盘使用率', unit: '%', baseline: 69, min: 34, max: 86, normalRange: [40, 66],
+                        color: '#10b981' },
+                }
+            }];
+
+            // 为每个服务增加运行状态数据
+            const servicesData = applicationServices.map(s => ({
+                ...s,
+                currentValues: {
+                    cpu: 0,
+                    memory: 0,
+                    disk: 0,
+                },
+                alertCount: 0,
+                status: 'healthy', // healthy, warning, critical
+            }));
+
+            const DATA_REFRESH_MS = 3000;
+            let globalAlertTriggered = false;
+            let globalAlertTimeout = null;
+
+            // DOM 元素
+            const $serviceTableBody = document.getElementById('serviceTableBody');
+            const $headerBadge = document.getElementById('headerBadge');
+            const $headerDot = document.getElementById('headerDot');
+            const $headerStatusText = document.getElementById('headerStatusText');
+            const $headerTime = document.getElementById('headerTime');
+            const $statTotal = document.getElementById('statTotal');
+            const $statHealthy = document.getElementById('statHealthy');
+            const $statWarning = document.getElementById('statWarning');
+            const $statCritical = document.getElementById('statCritical');
+            const $statTotalAlerts = document.getElementById('statTotalAlerts');
+
+            // 生成指标值
+            function generateMetricValue(metricConfig) {
+                const roll = Math.random();
+                const [normLow, normHigh] = metricConfig.normalRange;
+                let value;
+                if (roll < 0.7) {
+                    value = normLow + Math.random() * (normHigh - normLow);
+                } else if (roll < 0.85) {
+                    value = metricConfig.baseline * 0.85 + Math.random() * (metricConfig.baseline * 0.15);
+                } else if (roll < 0.95) {
+                    value = metricConfig.baseline + Math.random() * (metricConfig.baseline * 0.12);
+                } else {
+                    value = metricConfig.baseline * 1.12 + Math.random() * (metricConfig.baseline * 0.18);
+                }
+                return Math.round(Math.max(metricConfig.min, Math.min(metricConfig.max, value)) * 10) / 10;
+            }
+
+            // 更新所有服务的当前值，并处理警报计数
+            function updateServiceMetrics() {
+                let anyCriticalNow = false;
+                servicesData.forEach(service => {
+                    const cpuVal = generateMetricValue(service.metrics.cpu);
+                    const memVal = generateMetricValue(service.metrics.memory);
+                    const diskVal = generateMetricValue(service.metrics.disk);
+                    service.currentValues.cpu = cpuVal;
+                    service.currentValues.memory = memVal;
+                    service.currentValues.disk = diskVal;
+
+                    // 判断是否超过基线
+                    const cpuExceed = cpuVal >= service.metrics.cpu.baseline;
+                    const memExceed = memVal >= service.metrics.memory.baseline;
+                    const diskExceed = diskVal >= service.metrics.disk.baseline;
+                    const isCritical = cpuExceed || memExceed || diskExceed;
+                    const isWarning = !isCritical && (
+                        cpuVal >= service.metrics.cpu.baseline * 0.85 ||
+                        memVal >= service.metrics.memory.baseline * 0.85 ||
+                        diskVal >= service.metrics.disk.baseline * 0.85
+                    );
+
+                    if (isCritical) {
+                        // 如果之前不是critical状态，或者刚变成critical，增加警报计数
+                        if (service.status !== 'critical') {
+                            service.alertCount += 1;
+                            anyCriticalNow = true;
+                        }
+                        service.status = 'critical';
+                    } else if (isWarning) {
+                        service.status = 'warning';
+                    } else {
+                        service.status = 'healthy';
+                    }
+                });
+
+                // 如果存在任何critical服务，触发全局警报指示
+                if (anyCriticalNow && !globalAlertTriggered) {
+                    globalAlertTriggered = true;
+                    $headerBadge.className = 'header-badge badge-alerting';
+                    $headerDot.className = 'dot-indicator dot-red';
+                    $headerStatusText.textContent = '检测到警报';
+                    if (globalAlertTimeout) clearTimeout(globalAlertTimeout);
+                    globalAlertTimeout = setTimeout(() => {
+                        // 检查是否所有critical已恢复
+                        const stillCritical = servicesData.some(s => s.status === 'critical');
+                        if (!stillCritical) {
+                            globalAlertTriggered = false;
+                            $headerBadge.className = 'header-badge badge-detecting';
+                            $headerDot.className = 'dot-indicator dot-green';
+                            $headerStatusText.textContent = '系统正常';
+                        } else {
+                            globalAlertTriggered = true; // 保持警报状态
+                        }
+                        globalAlertTimeout = null;
+                    }, DATA_REFRESH_MS * 2);
+                } else if (!anyCriticalNow && globalAlertTriggered) {
+                    // 所有服务恢复正常
+                    globalAlertTriggered = false;
+                    $headerBadge.className = 'header-badge badge-detecting';
+                    $headerDot.className = 'dot-indicator dot-green';
+                    $headerStatusText.textContent = '系统正常';
+                    if (globalAlertTimeout) clearTimeout(globalAlertTimeout);
+                }
+            }
+
+            // 计算统计数据
+            function updateStatistics() {
+                const total = servicesData.length;
+                const healthy = servicesData.filter(s => s.status === 'healthy').length;
+                const warning = servicesData.filter(s => s.status === 'warning').length;
+                const critical = servicesData.filter(s => s.status === 'critical').length;
+                const totalAlerts = servicesData.reduce((sum, s) => sum + s.alertCount, 0);
+
+                $statTotal.textContent = total;
+                $statHealthy.textContent = healthy;
+                $statWarning.textContent = warning;
+                $statCritical.textContent = critical;
+                $statTotalAlerts.textContent = totalAlerts;
+            }
+
+            // 获取指标状态类
+            function getMetricStatusClass(value, baseline) {
+                if (value >= baseline) return 'critical';
+                if (value >= baseline * 0.85) return 'warning';
+                return 'normal';
+            }
+
+            function getServiceRowClass(status) {
+                if (status === 'critical') return 'row-critical';
+                if (status === 'warning') return 'row-warning';
+                return '';
+            }
+
+            function getStatusBadge(status) {
+                if (status === 'critical') return '<span class="status-badge status-critical">🔴 严重警报</span>';
+                if (status === 'warning') return '<span class="status-badge status-warning">🟡 警告</span>';
+                return '<span class="status-badge status-healthy">🟢 健康</span>';
+            }
+
+            // 渲染表格
+            function renderTable() {
+                $serviceTableBody.innerHTML = servicesData.map(service => {
+                    const cpu = service.currentValues.cpu;
+                    const mem = service.currentValues.memory;
+                    const disk = service.currentValues.disk;
+                    const cpuStatus = getMetricStatusClass(cpu, service.metrics.cpu.baseline);
+                    const memStatus = getMetricStatusClass(mem, service.metrics.memory.baseline);
+                    const diskStatus = getMetricStatusClass(disk, service.metrics.disk.baseline);
+                    const cpuProgress = Math.min(100, (cpu / (service.metrics.cpu.baseline * 1.4)) * 100);
+                    const memProgress = Math.min(100, (mem / (service.metrics.memory.baseline * 1.4)) * 100);
+                    const diskProgress = Math.min(100, (disk / (service.metrics.disk.baseline * 1.4)) * 100);
+                    const alertBadgeClass = service.alertCount > 0 ? 'has-alert' : '';
+
+                    return `
+                        <tr class="${getServiceRowClass(service.status)}">
+                            <td>
+                                <div class="service-name-cell">
+                                    <div class="service-icon">${service.icon}</div>
+                                    <span>${service.name}</span>
+                                </div>
+                            </td>
+                            <td><span class="service-type">${service.type}</span></td>
+                            <td>
+                                <div class="metric-cell">
+                                    <span class="metric-value-text ${cpuStatus}">${cpu}%</span>
+                                    <div class="metric-progress-bg">
+                                        <div class="metric-progress-fill ${cpuStatus}" style="width:${cpuProgress}%;"></div>
+                                    </div>
+                                    <small style="font-size:0.65rem;color:#94a3b8;">基线 ${service.metrics.cpu.baseline}%</small>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="metric-cell">
+                                    <span class="metric-value-text ${memStatus}">${mem}%</span>
+                                    <div class="metric-progress-bg">
+                                        <div class="metric-progress-fill ${memStatus}" style="width:${memProgress}%;"></div>
+                                    </div>
+                                    <small style="font-size:0.65rem;color:#94a3b8;">基线 ${service.metrics.memory.baseline}%</small>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="metric-cell">
+                                    <span class="metric-value-text ${diskStatus}">${disk}%</span>
+                                    <div class="metric-progress-bg">
+                                        <div class="metric-progress-fill ${diskStatus}" style="width:${diskProgress}%;"></div>
+                                    </div>
+                                    <small style="font-size:0.65rem;color:#94a3b8;">基线 ${service.metrics.disk.baseline}%</small>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="alert-count-badge ${alertBadgeClass}">${service.alertCount}</span>
+                            </td>
+                            <td>${getStatusBadge(service.status)}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            function updateHeaderTime() {
+                const now = new Date();
+                $headerTime.textContent = now.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                });
+            }
+
+            function tick() {
+                updateServiceMetrics();
+                updateStatistics();
+                renderTable();
+                updateHeaderTime();
+            }
+
+            // 初始化：给每个服务一个初始值
+            servicesData.forEach(service => {
+                service.currentValues.cpu = generateMetricValue(service.metrics.cpu);
+                service.currentValues.memory = generateMetricValue(service.metrics.memory);
+                service.currentValues.disk = generateMetricValue(service.metrics.disk);
+                // 初始状态计算
+                const cpuExceed = service.currentValues.cpu >= service.metrics.cpu.baseline;
+                const memExceed = service.currentValues.memory >= service.metrics.memory.baseline;
+                const diskExceed = service.currentValues.disk >= service.metrics.disk.baseline;
+                const isCritical = cpuExceed || memExceed || diskExceed;
+                const isWarning = !isCritical && (
+                    service.currentValues.cpu >= service.metrics.cpu.baseline * 0.85 ||
+                    service.currentValues.memory >= service.metrics.memory.baseline * 0.85 ||
+                    service.currentValues.disk >= service.metrics.disk.baseline * 0.85
+                );
+                service.status = isCritical ? 'critical' : (isWarning ? 'warning' : 'healthy');
+                service.alertCount = 0; // 初始无警报
+            });
+
+            // 初始渲染
+            updateStatistics();
+            renderTable();
+            updateHeaderTime();
+
+            // 定时刷新
+            setInterval(tick, DATA_REFRESH_MS);
+
+            console.log('✅ SIP 应用服务智能检测列表已启动');
+            console.log('   📱 监控服务: 客户服务、保险服务、支付服务、认证服务、订单服务、通知服务、报表服务');
+            console.log('   📊 指标: CPU使用率 | 内存使用率 | 磁盘使用率');
+            console.log('   🧠 ML Baseline 已激活，自动检测中...');
+            console.log('   🔔 超过基线自动累计警报次数');
+        })();
+    </script>
+</body>
+</html>

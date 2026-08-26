@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Service Intelligence Platform</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="flex items-center">
+    <div class="brand-group">
+        <span class="accenture-brand">
+            <span class="accenture-chevron">&gt;</span>
+            <span class="accenture-name">accenture</span>
+        </span>
+        <a class="sip-wordmark" href="#" aria-label="Home">
+            <span class="sip-logo">SIP</span>
+            <span class="sip-tagline">Service Intelligence Platform</span>
+        </a>
+    </div>
+
+    <nav class="nav-links">
+        <a href="#" class="nav-item" data-panel="1/9 · CONSTELLATION" title="893 apps · 22 portfolios · 6 journeys · 173 teams"><span class="nav-dot" style="background:#8b5cf6;"></span> Constellation</a>
+        <a href="#" class="nav-item" data-panel="2/9 · BUSINESS OPS" title="XLA dashboard · journey health · freeze readiness"><span class="nav-dot" style="background:#ec4899;"></span> Business Ops</a>
+        <a href="#" class="nav-item active" data-panel="3/9 · SERVICE OPS"><span class="nav-dot" style="background:#10b981;"></span> Service Ops</a>
+        <a href="#" class="nav-item" data-panel="4/9 · ENGINEERING OPS" title="Code velocity · change calendar · Claude Code workbench"><span class="nav-dot" style="background:#3b82f6;"></span> Engineering Ops</a>
+        <a href="#" class="nav-item" data-panel="5/9 · ARCHITECTURE" title="6R classification · modernization queues"><span class="nav-dot" style="background:#14b8a6;"></span> Architecture</a>
+        <a href="#" class="nav-item" data-panel="6/9 · FINOPS" title="Cloud trajectory · vendor consolidation · untagged spend"><span class="nav-dot" style="background:#f59e0b;"></span> FinOps</a>
+        <a href="#" class="nav-item" data-panel="7/9 · SECURITY OPS" title="Vulnerability heatmap · attack surface · freeze risk"><span class="nav-dot" style="background:#f97316;"></span> Security Ops</a>
+        <a href="#" class="nav-item" data-panel="8/9 · AGENTS" title="AI agent registry · performance · usage"><span class="nav-dot" style="background:#6366f1;"></span> Agents</a>
+        <a href="#" class="nav-item" data-panel="9/9 · VALUE POOL" title="Value realization · ROI tracking"><span class="nav-dot" style="background:#10b981;"></span> Value Pool</a>
+    </nav>
+
+    <div class="header-right">
+        <div class="status-pill"><span class="live-dot"></span> san.zhang</div>
+    </div>
+</header>
+
+<div class="app-body">
+    <aside class="sidebar" id="sidebar-eng-ops">
+        <div class="sidebar-section-title">Engineering Ops</div>
+        <div class="sidebar-nav">
+            <div class="sidebar-item has-children expanded" data-toggle="knowledge-studio">
+                <span class="sidebar-arrow"></span>
+                <span class="sidebar-label">Knowledge Studio</span>
+            </div>
+            <div class="sidebar-children" id="knowledge-studio">
+                <div class="sidebar-item active" data-page="knowledge-reflow-log">
+                    <span class="sidebar-label">Knowledge Reflow Log</span>
+                </div>
+                <div class="sidebar-item" data-page="knowledge-search">
+                    <span class="sidebar-label">Knowledge Search</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <aside class="sidebar" id="sidebar-biz-ops">
+        <div class="sidebar-section-title">Business Ops</div>
+        <div class="sidebar-nav">
+            <div class="sidebar-item has-children expanded" data-toggle="ticket-workspace">
+                <span class="sidebar-arrow"></span>
+                <span class="sidebar-label">Ticket Workspace</span>
+            </div>
+            <div class="sidebar-children" id="ticket-workspace">
+                <div class="sidebar-item active" data-page="approval-center">
+                    <span class="sidebar-label">Approval Center</span>
+                </div>
+                <div class="sidebar-item" data-page="agent-tasks">
+                    <span class="sidebar-label">Agent Tasks</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <aside class="sidebar" id="sidebar-service-ops">
+        <div class="sidebar-section-title">Service Ops</div>
+        <div class="sidebar-nav">
+            <div class="sidebar-item has-children expanded" data-toggle="ticket-workspace-svc">
+                <span class="sidebar-arrow"></span>
+                <span class="sidebar-label">Ticket Workspace</span>
+            </div>
+            <div class="sidebar-children" id="ticket-workspace-svc">
+                <div class="sidebar-item" data-page="approval-center">
+                    <span class="sidebar-label">Approval Center</span>
+                </div>
+                <div class="sidebar-item" data-page="l1-automation">
+                    <span class="sidebar-label">L1 Automation</span>
+                </div>
+            </div>
+            <div class="sidebar-item has-children expanded" data-toggle="observability">
+                <span class="sidebar-arrow"></span>
+                <span class="sidebar-label">Observability</span>
+            </div>
+            <div class="sidebar-children" id="observability">
+                <div class="sidebar-item" data-page="smart-inspection">
+                    <span class="sidebar-label">Smart Inspection</span>
+                </div>
+                <div class="sidebar-item" data-page="metrics-analysis">
+                    <span class="sidebar-label">Metrics Analysis</span>
+                </div>
+                <div class="sidebar-item" data-page="log-analysis">
+                    <span class="sidebar-label">Log Analysis</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <main id="main-content">
+    <!-- ====== Service Ops Page ====== -->
+    <div id="page-service-ops" class="page-panel">
+    <div class="flex justify-between items-start page-header">
+        <div>
+            <h1 class="page-title">Service Ops</h1>
+            <p class="page-desc">The Run pillar in motion · 893 apps · 759K incidents · 18mo · the operational granularity that drives the demo's app-level depth.</p>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-yellow">SERVICE HEALTH</button>
+            <div class="btn-group">
+                <button class="btn active">WITH AGENTS</button>
+                <button class="btn">WITHOUT AGENTS</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Banner Green -->
+    <div class="banner-green">
+        <span class="banner-label">Today</span>
+        <span><strong>12,847</strong> incidents bot-resolved</span>
+        <span><strong>-38 hrs</strong> of human work freed</span>
+        <span><strong>1,809-child</strong> storm suppressed by parent gate</span>
+        <span><strong>44x</strong> MTTR multiplier</span>
+    </div>
+
+    <!-- Banner White -->
+    <div class="banner-white">
+        <div class="flex items-center">
+            <div class="live-badge"><span class="live-dot"></span> Live</div>
+            <strong>Storm Detector</strong> <span class="banner-separator">•</span> suppressed 1,809-child fan-out from INC13075702 <span class="banner-separator">•</span> parent gate engaged
+        </div>
+        <div class="text-secondary">12m</div>
+    </div>
+
+    <!-- KPI Grid -->
+    <div class="kpi-grid">
+        <!-- Card 1 -->
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span>Total Incidents · 18 Mo</span>
+                <span class="real-tag"><span class="real-dot"></span> REAL</span>
+            </div>
+            <div>
+                <div class="kpi-value">3.3M</div>
+                <div class="kpi-sub">~6,161/day · 2.8K problem records</div>
+            </div>
+            <div class="sparkline-container">
+                <svg viewBox="0 0 60 30" preserveAspectRatio="none">
+                    <polyline points="0,25 10,20 20,28 30,10 40,22 50,5 60,15" fill="none" stroke="#f43f5e" stroke-width="2"/>
+                </svg>
+            </div>
+        </div>
+        <!-- Card 2 -->
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span>MTTR Gap · Bot vs Human</span>
+                <span class="real-tag"><span class="real-dot"></span> REAL</span>
+            </div>
+            <div>
+                <div class="kpi-value">44x</div>
+                <div class="kpi-sub">bot 42m · human 30.8h · canonical finding</div>
+            </div>
+            <div class="sparkline-container">
+                <svg viewBox="0 0 60 30" preserveAspectRatio="none">
+                    <path d="M0,30 L60,0" stroke="#f59e0b" stroke-width="2" />
+                    <path d="M0,30 L60,0 L60,30 Z" fill="#fef3c7" opacity="0.5" />
+                </svg>
+            </div>
+        </div>
+        <!-- Card 3 -->
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span>Run Agents Live</span>
+                <span class="real-tag"><span class="real-dot"></span> REAL</span>
+            </div>
+            <div>
+                <div class="kpi-value black">18</div>
+                <div class="kpi-sub">of 36 AI-First Operations agents · T3 / T3+ tier</div>
+            </div>
+        </div>
+        <!-- Card 4 -->
+        <div class="kpi-card">
+            <div class="kpi-header">
+                <span>Issue-Generic %</span>
+                <span class="real-tag"><span class="real-dot"></span> REAL</span>
+            </div>
+            <div>
+                <div class="kpi-value red">92%</div>
+                <div class="kpi-sub">incidents tagged generic · routing degradation · sub-category lacking</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+        <span class="filter-label">Filter</span>
+        <button class="filter-chip active">All · 282</button>
+        <button class="filter-chip"><span class="chip-dot" style="background:#ef4444;"></span> T1 · 126</button>
+        <button class="filter-chip"><span class="chip-dot" style="background:#f59e0b;"></span> T2 · 100</button>
+        <button class="filter-chip"><span class="chip-dot" style="background:#6b7280;"></span> T3 · 56</button>
+        <button class="filter-chip"><span class="chip-dot" style="background:#eab308;"></span> Holiday-Critical · 108</button>
+        <button class="filter-chip"><span class="chip-dot" style="background:#ef4444;"></span> Bot < 50% · 121</button>
+        <button class="filter-chip">Browse · 61</button>
+        <button class="filter-chip">Buy · 92</button>
+        <button class="filter-chip">Pick · 61</button>
+        <button class="filter-chip">Ship · 18</button>
+        <button class="filter-chip">Return · 25</button>
+        <button class="filter-chip">Engage · 25</button>
+    </div>
+
+    <!-- Table -->
+    <div class="table-container">
+        <div class="table-info">
+            <svg class="icon-xs" viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></svg>
+            Top Apps by Incident Pressure · Click headers to sort · Top 20 of 282
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>App <svg class="icon-xs sort-icon" viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg></th>
+                    <th>Tier <svg class="icon-xs sort-icon" viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg></th>
+                    <th>Hc <svg class="icon-xs sort-icon" viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg></th>
+                    <th class="text-right">Incidents <svg class="icon-xs sort-icon" viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg></th>
+                    <th class="text-right">Bot % <svg class="icon-xs sort-icon" viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg></th>
+                    <th class="text-right">Risk <svg class="icon-xs sort-icon" viewBox="0 0 24 24"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"/></svg></th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="col-num">01</td>
+                    <td class="col-app">
+                        <span class="app-name">WMS</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">525</td>
+                    <td class="text-right text-bot">61.4%</td>
+                    <td class="text-right text-risk">96.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">02</td>
+                    <td class="col-app">
+                        <span class="app-name">Inventory-EMEA-Cloud</span>
+                        <span class="app-tier-sub">Tier 1</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td>—</td>
+                    <td class="text-right">451</td>
+                    <td class="text-right text-bot">54.9%</td>
+                    <td class="text-right text-risk">58.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">03</td>
+                    <td class="col-app">
+                        <span class="app-name">OMS</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">423</td>
+                    <td class="text-right text-bot">71.0%</td>
+                    <td class="text-right text-risk">97.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">04</td>
+                    <td class="col-app">
+                        <span class="app-name">Pricing</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">408</td>
+                    <td class="text-right text-bot">62.3%</td>
+                    <td class="text-right text-risk">83.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">05</td>
+                    <td class="col-app">
+                        <span class="app-name">Storefront</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">405</td>
+                    <td class="text-right text-bot">59.5%</td>
+                    <td class="text-right text-risk">103.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">06</td>
+                    <td class="col-app">
+                        <span class="app-name">Inventory</span>
+                        <span class="app-tier-sub">Tier 1</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td>—</td>
+                    <td class="text-right">404</td>
+                    <td class="text-right text-bot">57.9%</td>
+                    <td class="text-right text-risk">91.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">07</td>
+                    <td class="col-app">
+                        <span class="app-name">OMS-EMEA-Cloud</span>
+                        <span class="app-tier-sub">Tier 1</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td>—</td>
+                    <td class="text-right">392</td>
+                    <td class="text-right text-bot">66.9%</td>
+                    <td class="text-right text-risk">95.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">08</td>
+                    <td class="col-app">
+                        <span class="app-name">Loyalty Hub</span>
+                        <span class="app-tier-sub">Tier 2</span>
+                    </td>
+                    <td><span class="badge-tier">T2</span></td>
+                    <td>—</td>
+                    <td class="text-right">382</td>
+                    <td class="text-right text-bot">48.1%</td>
+                    <td class="text-right text-risk">53.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">09</td>
+                    <td class="col-app">
+                        <span class="app-name">OMS Direct DR</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">375</td>
+                    <td class="text-right text-bot">65.4%</td>
+                    <td class="text-right text-risk">101.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">10</td>
+                    <td class="col-app">
+                        <span class="app-name">Storefront Direct DR</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">370</td>
+                    <td class="text-right text-bot">57.4%</td>
+                    <td class="text-right text-risk">85.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">11</td>
+                    <td class="col-app">
+                        <span class="app-name">Promotions</span>
+                        <span class="app-tier-sub">Tier 2</span>
+                    </td>
+                    <td><span class="badge-tier">T2</span></td>
+                    <td>—</td>
+                    <td class="text-right">335</td>
+                    <td class="text-right text-bot">46.4%</td>
+                    <td class="text-right text-risk">47.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">12</td>
+                    <td class="col-app">
+                        <span class="app-name">ERP</span>
+                        <span class="app-tier-sub">Tier 2 · Finance-freeze</span>
+                    </td>
+                    <td><span class="badge-tier">T2</span></td>
+                    <td>—</td>
+                    <td class="text-right">328</td>
+                    <td class="text-right text-bot">42.5%</td>
+                    <td class="text-right text-risk">43.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">13</td>
+                    <td class="col-app">
+                        <span class="app-name">Returns</span>
+                        <span class="app-tier-sub">Tier 2</span>
+                    </td>
+                    <td><span class="badge-tier">T2</span></td>
+                    <td>—</td>
+                    <td class="text-right">321</td>
+                    <td class="text-right text-bot">54.2%</td>
+                    <td class="text-right text-risk">69.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">14</td>
+                    <td class="col-app">
+                        <span class="app-name">ERP eComm</span>
+                        <span class="app-tier-sub">Tier 2</span>
+                    </td>
+                    <td><span class="badge-tier">T2</span></td>
+                    <td>—</td>
+                    <td class="text-right">321</td>
+                    <td class="text-right text-bot">42.1%</td>
+                    <td class="text-right text-risk">62.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">15</td>
+                    <td class="col-app">
+                        <span class="app-name">POS</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">317</td>
+                    <td class="text-right text-bot">62.5%</td>
+                    <td class="text-right text-risk">86.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">16</td>
+                    <td class="col-app">
+                        <span class="app-name">Checkout-EMEA-Cloud</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">308</td>
+                    <td class="text-right text-bot">55.9%</td>
+                    <td class="text-right text-risk">99.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">17</td>
+                    <td class="col-app">
+                        <span class="app-name">Checkout-DC-Chicago</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">290</td>
+                    <td class="text-right text-bot">56.1%</td>
+                    <td class="text-right text-risk">80.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">18</td>
+                    <td class="col-app">
+                        <span class="app-name">POS-EMEA-Cloud</span>
+                        <span class="app-tier-sub">Tier 1 · Holiday-critical</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td><span class="badge-hc">HC</span></td>
+                    <td class="text-right">275</td>
+                    <td class="text-right text-bot">62.0%</td>
+                    <td class="text-right text-risk">85.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+                <tr>
+                    <td class="col-num">19</td>
+                    <td class="col-app">
+                        <span class="app-name">Storefront-EMEA-Cloud</span>
+                        <span class="app-tier-sub">Tier 1</span>
+                    </td>
+                    <td><span class="badge-tier">T1</span></td>
+                    <td>—</td>
+                    <td class="text-right">273</td>
+                    <td class="text-right text-bot">64.7%</td>
+                    <td class="text-right text-risk">83.00</td>
+                    <td class="text-right chevron">›</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    </div><!-- /#page-service-ops -->
+
+    <!-- ====== Knowledge Reflow Log Page ====== -->
+    <div id="page-reflow-log" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Engineering Ops <span class="breadcrumb-sep">&rsaquo;</span> Knowledge Studio <span class="breadcrumb-sep">&rsaquo;</span> <strong>Knowledge Reflow Log</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Knowledge Reflow Log</h1>
+            <span class="text-secondary text-sm" id="lastExecutionTime">Last execution: N/A</span>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats" style="grid-template-columns:300px 300px 1fr;">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Chunks</span></div>
+                <div>
+                    <div class="kpi-value" id="kpiTotalProcessed">0</div>
+                    <div class="kpi-sub">total knowledge chunks indexed</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Reflow Entries</span></div>
+                <div>
+                    <div class="kpi-value" id="kpiYesterday">0</div>
+                    <div class="kpi-sub">knowledge documents in reflow log</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Source Breakdown</span></div>
+                <div id="sourceBreakdown" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;padding-top:4px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:#3b82f6;flex-shrink:0;"></span>
+                        <span style="font-size:12px;color:var(--text-secondary);">Jira</span>
+                        <span style="font-size:16px;font-weight:700;color:#3b82f6;margin-left:4px;" id="kpiJira">0</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:#10b981;flex-shrink:0;"></span>
+                        <span style="font-size:12px;color:var(--text-secondary);">ServiceNow</span>
+                        <span style="font-size:16px;font-weight:700;color:#10b981;margin-left:4px;" id="kpiServiceNow">0</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:#7c3aed;flex-shrink:0;"></span>
+                        <span style="font-size:12px;color:var(--text-secondary);">Confluence</span>
+                        <span style="font-size:16px;font-weight:700;color:#7c3aed;margin-left:4px;" id="kpiConfluence">0</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:#d97706;flex-shrink:0;"></span>
+                        <span style="font-size:12px;color:var(--text-secondary);">Manual</span>
+                        <span style="font-size:16px;font-weight:700;color:#d97706;margin-left:4px;" id="kpiManual">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="reflow-filter-bar">
+            <select id="reflowSourceFilter">
+                <option value="all">All Sources</option>
+                <option value="jira">Jira</option>
+                <option value="servicenow">ServiceNow</option>
+                <option value="confluence">Confluence</option>
+                <option value="manual">Manual</option>
+            </select>
+            <input type="date" class="date-input" id="reflowDateFilter" value="2026-07-05">
+            <input type="text" placeholder="Search tags or summary..." id="reflowSearch">
+            <button class="btn btn-dark" id="reflowSearchBtn">Search</button>
+            <button class="btn btn-outline" id="reflowResetBtn">Reset</button>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container">
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Original Ticket</th>
+                        <th>Title / Problem Summary</th>
+                        <th>Chunks</th>
+                        <th>Reflow Time</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="reflowTableBody"></tbody>
+            </table>
+            <div class="pagination" id="reflowPagination"></div>
+        </div>
+    </div><!-- /#page-reflow-log -->
+
+    <!-- ====== Knowledge Search Page ====== -->
+    <div id="page-knowledge-search" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Engineering Ops <span class="breadcrumb-sep">&rsaquo;</span> Knowledge Studio <span class="breadcrumb-sep">&rsaquo;</span> <strong>Knowledge Search</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Knowledge Search</h1>
+            <span class="text-secondary text-sm" id="ksResultCount"></span>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats" style="grid-template-columns:300px 300px 1fr;">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Chunks</span></div>
+                <div>
+                    <div class="kpi-value" id="ksTotalChunks">0</div>
+                    <div class="kpi-sub">knowledge fragments indexed</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Reflow Entries</span></div>
+                <div>
+                    <div class="kpi-value" id="ksReflowEntries">0</div>
+                    <div class="kpi-sub">knowledge documents in reflow log</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Source Breakdown</span></div>
+                <div id="ksSourceBreakdown" style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;padding-top:4px;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:#3b82f6;flex-shrink:0;"></span>
+                        <span style="font-size:12px;color:var(--text-secondary);">Jira</span>
+                        <span style="font-size:16px;font-weight:700;color:#3b82f6;margin-left:4px;" id="ksKpiJira">0</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:#10b981;flex-shrink:0;"></span>
+                        <span style="font-size:12px;color:var(--text-secondary);">ServiceNow</span>
+                        <span style="font-size:16px;font-weight:700;color:#10b981;margin-left:4px;" id="ksKpiServiceNow">0</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:#7c3aed;flex-shrink:0;"></span>
+                        <span style="font-size:12px;color:var(--text-secondary);">Confluence</span>
+                        <span style="font-size:16px;font-weight:700;color:#7c3aed;margin-left:4px;" id="ksKpiConfluence">0</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <span style="width:8px;height:8px;border-radius:50%;background:#d97706;flex-shrink:0;"></span>
+                        <span style="font-size:12px;color:var(--text-secondary);">Manual</span>
+                        <span style="font-size:16px;font-weight:700;color:#d97706;margin-left:4px;" id="ksKpiManual">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="reflow-filter-bar">
+            <select id="ksSourceFilter">
+                <option value="all">All Workspaces</option>
+                <option value="jira">Jira</option>
+                <option value="servicenow">ServiceNow</option>
+                <option value="confluence">Confluence</option>
+                <option value="manual">Manual</option>
+            </select>
+            <input type="text" placeholder="Enter your question, e.g. How to handle order timeout?" id="ksSearchInput" style="flex:1;min-width:280px;">
+            <button class="btn btn-dark" id="ksSearchBtn">Search</button>
+            <button class="btn btn-outline" id="ksResetBtn">Reset</button>
+        </div>
+
+        <!-- Results -->
+        <div id="ksResultsContainer"></div>
+    </div><!-- /#page-knowledge-search -->
+
+    <!-- ====== Agent Tasks Page ====== -->
+    <div id="page-agent-tasks" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Business Ops <span class="breadcrumb-sep">&rsaquo;</span> Ticket Workspace <span class="breadcrumb-sep">&rsaquo;</span> <strong>Agent Tasks</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Agent Tasks</h1>
+            <span class="text-secondary text-sm">Last updated: 2026-07-07 15:12:30</span>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Tasks</span></div>
+                <div>
+                    <div class="kpi-value">6</div>
+                    <div class="kpi-sub">agent tasks in last 24 hours</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Avg Confidence</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#10b981;">79%</div>
+                    <div class="kpi-sub">root cause diagnosis accuracy</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Pending Approval</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#f59e0b;">1</div>
+                    <div class="kpi-sub">requires manual review</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Tokens</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#8b5cf6;">14,016</div>
+                    <div class="kpi-sub">LLM inference cost</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="reflow-filter-bar">
+            <input type="text" placeholder="Search Agent ID, ticket or service..." id="agentSearch" style="flex:1;min-width:200px;">
+            <button class="filter-chip active agent-filter" data-filter="all">All</button>
+            <button class="filter-chip agent-filter" data-filter="running"><span class="chip-dot" style="background:#3b82f6;"></span> Running</button>
+            <button class="filter-chip agent-filter" data-filter="approval"><span class="chip-dot" style="background:#f59e0b;"></span> Awaiting Approval</button>
+            <button class="filter-chip agent-filter" data-filter="done"><span class="chip-dot" style="background:#10b981;"></span> Done</button>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container">
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Agent Task ID</th>
+                        <th>Task Description</th>
+                        <th>Status</th>
+                        <th>Confidence</th>
+                        <th>Risk</th>
+                        <th>Tokens</th>
+                        <th>Trigger Time</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="agentTableBody"></tbody>
+            </table>
+            <div class="pagination">
+                <span>Total <span id="agentRowCount">0</span> tasks</span>
+                <span style="color:var(--text-tertiary);">Click row to view detail</span>
+            </div>
+        </div>
+    </div><!-- /#page-agent-tasks -->
+
+    <!-- ====== L1 Automation Page ====== -->
+    <div id="page-l1-automation" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> <strong>L1 Automation</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">L1 Automation <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">Auto-dispatch &amp; Close</span></h1>
+            <span class="text-secondary text-sm">Last updated: 2026-07-08 09:32:15</span>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Tickets</span></div>
+                <div>
+                    <div class="kpi-value">8</div>
+                    <div class="kpi-sub">processed today</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Own System (Keep)</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#10b981;">4</div>
+                    <div class="kpi-sub">escalated to L2 or handled</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Other System (Transfer)</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#f59e0b;">3</div>
+                    <div class="kpi-sub">auto-transferred &amp; closed</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Auto-Process Rate</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#8b5cf6;">87.5%</div>
+                    <div class="kpi-sub">L1 Agent closed-loop</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="reflow-filter-bar">
+            <input type="text" placeholder="Search ticket ID, title or system..." id="l1Search" style="flex:1;min-width:200px;">
+            <button class="filter-chip active l1-filter" data-filter="all">All</button>
+            <button class="filter-chip l1-filter" data-filter="own"><span class="chip-dot" style="background:#10b981;"></span> Own System</button>
+            <button class="filter-chip l1-filter" data-filter="other"><span class="chip-dot" style="background:#f59e0b;"></span> Other System</button>
+            <button class="filter-chip l1-filter" data-filter="pending"><span class="chip-dot" style="background:#3b82f6;"></span> Pending</button>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container">
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Ticket ID</th>
+                        <th>Title</th>
+                        <th>System</th>
+                        <th>Classification</th>
+                        <th>Confidence</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="l1TableBody"></tbody>
+            </table>
+            <div class="pagination">
+                <span>Total <span id="l1RowCount">0</span> tickets</span>
+                <span style="color:var(--text-tertiary);">Click row to view detail</span>
+            </div>
+        </div>
+    </div><!-- /#page-l1-automation -->
+
+    <!-- ====== Approval Center Page ====== -->
+    <div id="page-approval-center" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Ticket Workspace <span class="breadcrumb-sep">&rsaquo;</span> <strong>Approval Center</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Approval Center <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">RAG Solution Review</span></h1>
+            <span class="text-secondary text-sm">Last updated: 2026-07-08 11:20:35</span>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats" style="grid-template-columns: repeat(5, 1fr);">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Pending</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#f59e0b;" id="apPendingCount">2</div>
+                    <div class="kpi-sub">awaiting human decision</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Approved</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#10b981;" id="apApprovedCount">1</div>
+                    <div class="kpi-sub">wrote back to SNOW &amp; closed</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Rejected</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#ef4444;" id="apRejectedCount">1</div>
+                    <div class="kpi-sub">transferred to human Ops</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Escalated</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#8b5cf6;" id="apEscalatedCount">1</div>
+                    <div class="kpi-sub">L3 &rarr; human intervention</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Tokens</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#8b5cf6;" id="apTotalTokens">19,991</div>
+                    <div class="kpi-sub">LLM inference cost</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="reflow-filter-bar">
+            <input type="text" placeholder="Search ticket or title..." id="apSearch" style="flex:1;min-width:200px;">
+            <button class="filter-chip active ap-filter" data-filter="all">All</button>
+            <button class="filter-chip ap-filter" data-filter="pending"><span class="chip-dot" style="background:#f59e0b;"></span> Pending</button>
+            <button class="filter-chip ap-filter" data-filter="approved"><span class="chip-dot" style="background:#10b981;"></span> Approved</button>
+            <button class="filter-chip ap-filter" data-filter="rejected"><span class="chip-dot" style="background:#ef4444;"></span> Rejected</button>
+            <button class="filter-chip ap-filter" data-filter="escalated"><span class="chip-dot" style="background:#8b5cf6;"></span> Escalated</button>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container">
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Ticket</th>
+                        <th>Title</th>
+                        <th>Status</th>
+                        <th>Agent</th>
+                        <th>Confidence</th>
+                        <th>Tokens</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="apTableBody"></tbody>
+            </table>
+            <div class="pagination">
+                <span>Total <span id="apRowCount">0</span> suggestions</span>
+                <span style="color:var(--text-tertiary);">Click row or Approval button to review</span>
+            </div>
+        </div>
+    </div><!-- /#page-approval-center -->
+
+    <!-- ====== Smart Inspection Page ====== -->
+    <div id="page-smart-inspection" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> <strong>Smart Inspection</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Smart Inspection <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">App Indicators</span></h1>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button class="si-refresh-btn" id="siRefreshBtn" title="Refresh data">
+                    <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    Refresh
+                </button>
+                <div class="si-ml-badge">
+                    <span class="si-ml-dot"></span> ML Baseline Active &middot; 3s Interval
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats" style="grid-template-columns: repeat(5, 1fr);">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Services</span></div>
+                <div>
+                    <div class="kpi-value" style="color:var(--accent-blue);" id="siTotal">7</div>
+                    <div class="kpi-sub">monitored applications</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Healthy</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#10b981;" id="siHealthy">5</div>
+                    <div class="kpi-sub">within baseline</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Warning</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#f59e0b;" id="siWarning">1</div>
+                    <div class="kpi-sub">approaching baseline</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Critical</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#ef4444;" id="siCritical">1</div>
+                    <div class="kpi-sub">exceeded baseline</div>
+                </div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Alerts</span></div>
+                <div>
+                    <div class="kpi-value" style="color:#8b5cf6;" id="siTotalAlerts">0</div>
+                    <div class="kpi-sub">cumulative since start</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="reflow-filter-bar">
+            <input type="text" placeholder="Search service name or type..." id="siSearch" style="flex:1;min-width:200px;">
+            <button class="filter-chip active si-filter" data-filter="all">All</button>
+            <button class="filter-chip si-filter" data-filter="healthy"><span class="chip-dot" style="background:#10b981;"></span> Healthy</button>
+            <button class="filter-chip si-filter" data-filter="warning"><span class="chip-dot" style="background:#f59e0b;"></span> Warning</button>
+            <button class="filter-chip si-filter" data-filter="critical"><span class="chip-dot" style="background:#ef4444;"></span> Critical</button>
+            <button class="filter-chip si-filter" data-filter="offline"><span class="chip-dot" style="background:#9ca3af;"></span> Offline</button>
+        </div>
+
+        <!-- Error Bar -->
+        <div class="si-error-bar" id="siErrorBar">
+            <span class="si-error-msg"><span class="si-error-icon">!</span> <span id="siErrorText">Failed to load services</span></span>
+            <button class="si-refresh-btn" id="siRetryBtn">Retry</button>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container" id="siTableContainer">
+            <div class="si-loading-overlay" id="siLoadingOverlay">
+                <div class="si-loading-spinner"></div>
+                <div>Loading services...</div>
+            </div>
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Service Name</th>
+                        <th>Agent</th>
+                        <th>Type</th>
+                        <th>CPU %</th>
+                        <th>Memory %</th>
+                        <th>DISK I/O</th>
+                        <th>Alerts</th>
+                        <th>Log Anomalies</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="siTableBody"></tbody>
+            </table>
+            <div class="pagination">
+                <span>Total <span id="siRowCount">0</span> services</span>
+                <span style="color:var(--text-tertiary);">Click row to view detail</span>
+            </div>
+        </div>
+    </div><!-- /#page-smart-inspection -->
+
+    <!-- ====== Metrics Analysis Page ====== -->
+    <div id="page-metrics-analysis" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> <strong>Metrics Analysis</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Metrics Analysis <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">CPU / Memory Alerts</span></h1>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button class="si-refresh-btn" id="maRefreshBtn" title="Refresh data">
+                    <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    Refresh
+                </button>
+                <span class="text-secondary text-sm" id="maServiceLabel"></span>
+            </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats" style="grid-template-columns: repeat(5, 1fr);">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Metric Alerts</span></div>
+                <div><div class="kpi-value" style="color:var(--accent-blue);" id="maTotal">0</div><div class="kpi-sub">All metric alerts</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>CPU Alerts</span></div>
+                <div><div class="kpi-value" style="color:#f59e0b;" id="maCpu">0</div><div class="kpi-sub">CPU threshold violations</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Memory Alerts</span></div>
+                <div><div class="kpi-value" style="color:#8b5cf6;" id="maMemory">0</div><div class="kpi-sub">Memory threshold violations</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Critical</span></div>
+                <div><div class="kpi-value" style="color:#ef4444;" id="maCritical">0</div><div class="kpi-sub">CRITICAL severity</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Open</span></div>
+                <div><div class="kpi-value" style="color:#3b82f6;" id="maOpen">0</div><div class="kpi-sub">awaiting action</div></div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="reflow-filter-bar">
+            <select id="maServiceFilter"><option value="">All Services</option></select>
+            <button class="filter-chip active ma-filter" data-filter="all">All Types</button>
+            <button class="filter-chip ma-filter" data-filter="CPU"><span class="chip-dot" style="background:#f59e0b;"></span> CPU</button>
+            <button class="filter-chip ma-filter" data-filter="MEMORY"><span class="chip-dot" style="background:#8b5cf6;"></span> Memory</button>
+            <span style="margin-left:12px;"></span>
+            <button class="filter-chip active ma-sev-filter" data-filter="all">All Severity</button>
+            <button class="filter-chip ma-sev-filter" data-filter="WARNING"><span class="chip-dot" style="background:#f59e0b;"></span> Warning</button>
+            <button class="filter-chip ma-sev-filter" data-filter="CRITICAL"><span class="chip-dot" style="background:#ef4444;"></span> Critical</button>
+            <span style="margin-left:12px;"></span>
+            <button class="filter-chip active ma-status-filter" data-filter="all">Active</button>
+            <button class="filter-chip ma-status-filter" data-filter="OPEN"><span class="chip-dot" style="background:#ef4444;"></span> Open</button>
+            <button class="filter-chip ma-status-filter" data-filter="ACKNOWLEDGED"><span class="chip-dot" style="background:#3b82f6;"></span> Ack'd</button>
+            <button class="filter-chip ma-status-filter" data-filter="RESOLVED"><span class="chip-dot" style="background:#10b981;"></span> Resolved</button>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container" id="maTableContainer">
+            <div class="si-loading-overlay" id="maLoadingOverlay">
+                <div class="si-loading-spinner"></div>
+                <div>Loading metric alerts...</div>
+            </div>
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Service</th>
+                        <th>Type</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                        <th>Summary</th>
+                        <th>Time</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="maTableBody"></tbody>
+            </table>
+            <div class="pagination" id="maPagination">
+                <span>Total <span id="maRowCount">0</span> alerts</span>
+                <span style="color:var(--text-tertiary);">Click Detail for agent analysis</span>
+            </div>
+        </div>
+    </div><!-- /#page-metrics-analysis -->
+
+    <!-- ====== Log Analysis Page ====== -->
+    <div id="page-log-analysis" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> <strong>Log Analysis</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Log Analysis <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">Error Log Anomalies</span></h1>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button class="si-refresh-btn" id="laRefreshBtn" title="Refresh data">
+                    <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    Refresh
+                </button>
+                <span class="text-secondary text-sm" id="laServiceLabel"></span>
+            </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats" style="grid-template-columns: repeat(5, 1fr);">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Log Anomalies</span></div>
+                <div><div class="kpi-value" style="color:var(--accent-blue);" id="laTotal">0</div><div class="kpi-sub">All error log alerts</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Unique Services</span></div>
+                <div><div class="kpi-value" style="color:#10b981;" id="laServices">0</div><div class="kpi-sub">services affected</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Critical</span></div>
+                <div><div class="kpi-value" style="color:#ef4444;" id="laCritical">0</div><div class="kpi-sub">CRITICAL severity</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Open</span></div>
+                <div><div class="kpi-value" style="color:#f59e0b;" id="laOpen">0</div><div class="kpi-sub">awaiting action</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Resolved</span></div>
+                <div><div class="kpi-value" style="color:#10b981;" id="laResolved">0</div><div class="kpi-sub">error logs resolved</div></div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="reflow-filter-bar">
+            <select id="laServiceFilter"><option value="">All Services</option></select>
+            <span style="margin-left:12px;"></span>
+            <button class="filter-chip active la-sev-filter" data-filter="all">All Severity</button>
+            <button class="filter-chip la-sev-filter" data-filter="WARNING"><span class="chip-dot" style="background:#f59e0b;"></span> Warning</button>
+            <button class="filter-chip la-sev-filter" data-filter="CRITICAL"><span class="chip-dot" style="background:#ef4444;"></span> Critical</button>
+            <span style="margin-left:12px;"></span>
+            <button class="filter-chip active la-status-filter" data-filter="all">Active</button>
+            <button class="filter-chip la-status-filter" data-filter="OPEN"><span class="chip-dot" style="background:#ef4444;"></span> Open</button>
+            <button class="filter-chip la-status-filter" data-filter="ACKNOWLEDGED"><span class="chip-dot" style="background:#3b82f6;"></span> Ack'd</button>
+            <button class="filter-chip la-status-filter" data-filter="RESOLVED"><span class="chip-dot" style="background:#10b981;"></span> Resolved</button>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container" id="laTableContainer">
+            <div class="si-loading-overlay" id="laLoadingOverlay">
+                <div class="si-loading-spinner"></div>
+                <div>Loading log alerts...</div>
+            </div>
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Service</th>
+                        <th>Severity</th>
+                        <th>Status</th>
+                        <th>Summary</th>
+                        <th>Time</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="laTableBody"></tbody>
+            </table>
+            <div class="pagination" id="laPagination">
+                <span>Total <span id="laRowCount">0</span> alerts</span>
+                <span style="color:var(--text-tertiary);">Click Detail for agent analysis</span>
+            </div>
+        </div>
+    </div><!-- /#page-log-analysis -->
+
+    <!-- Approval Center Modal -->
+    <div class="ap-modal-overlay" id="apModalOverlay">
+        <div class="ap-modal">
+            <div class="ap-modal-header">
+                <h3 id="apModalTitle">Approval Detail</h3>
+                <button class="ap-modal-close" id="apModalClose">&times;</button>
+            </div>
+            <div class="ap-modal-body" id="apModalContent"></div>
+        </div>
+    </div>
+
+<!-- Alert List Modal -->
+<div class="ap-modal-overlay" id="alertModalOverlay">
+    <div class="ap-modal" style="max-width: 90vw;">
+        <div class="ap-modal-header">
+            <h3 id="alertModalTitle">Alerts</h3>
+            <button class="ap-modal-close" id="alertModalClose">&times;</button>
+        </div>
+        <div class="ap-modal-body" id="alertModalContent"></div>
+    </div>
+</div>
+
+<!-- Alert Detail Modal -->
+<div class="ap-modal-overlay" id="alertDetailOverlay">
+    <div class="ap-modal" style="max-width: 960px;">
+        <div class="ap-modal-header">
+            <h3 id="alertDetailTitle">Alert Detail</h3>
+            <button class="ap-modal-close" id="alertDetailClose">&times;</button>
+        </div>
+        <div class="ap-modal-body" id="alertDetailContent"></div>
+    </div>
+</div>
+
+    <!-- Detail Drawer Overlay -->
+    <div class="drawer-overlay" id="drawerOverlay">
+        <div class="drawer">
+            <div class="drawer-header">
+                <h3>Knowledge Entry Detail</h3>
+                <button class="drawer-close-btn" id="drawerCloseBtn">&times;</button>
+            </div>
+            <div class="drawer-body" id="drawerContent"></div>
+        </div>
+    </div>
+
+</main>
+</div>
+
+<footer>
+    <span class="footer-live"><span class="live-dot-green"></span> Live · 14m fresh</span>
+    <span class="footer-sep">|</span>
+    <span>SNAPSHOT <span class="footer-value">2026-05-12</span></span>
+    <span class="footer-sep">|</span>
+    <span>SCOPE <span class="footer-value">282A · SP · 6J · 54T</span></span>
+    <span class="footer-sep">|</span>
+    <span>TOTAL NODES <span class="footer-value">352</span></span>
+    <span class="footer-sep">|</span>
+    <span>PANEL <span class="footer-panel" id="footerPanel">3/9 · SERVICE OPS</span></span>
+    <span class="footer-sep">|</span>
+    <span class="footer-right-group">
+        <span class="footer-accenture"><span class="accenture-chevron">&gt;</span> accenture</span>
+        <span class="footer-sep">|</span>
+        <span class="footer-platform">SIP Platform</span>
+    </span>
+</footer>
+
+<script src="js/app.js"></script>
+<div class="toast-container" id="toastContainer"></div>
+</body>
+</html>

@@ -1,0 +1,237 @@
+Log Analysis Detail Page Layout
+================================
+
+整个详情页由 renderAlertAnalysisContent() 函数渲染，包含三个大区块：
+  Section A: Alert Overview（告警概览）
+  Section B: Agent Execution Flow（Agent 执行流程）
+  Section C: Analysis Report（分析报告，调用 renderAnalysisResult()）
+
+============================================================
+SECTION A: ALERT OVERVIEW（告警概览）
+============================================================
+
+┌─ Alert Overview ──────────────────────────────────────────┐
+│                                                           │
+│  [severity] [status] [alertType]                          │  ← 标签行
+│                                                           │
+│  ┌─ Log-Specific Fields (条件渲染) ────────────────────┐  │
+│  │  Source File:  src/xxx.java:42                       │  │
+│  │  Git Commit:   abc123def456                          │  │
+│  │  Fingerprint:  NullPointerExc:Or...                  │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                           │
+│  ┌─ Error Message (条件) ───────────────────────────────┐  │
+│  │  java.lang.NullPointerException at ...               │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                           │
+│  ┌─ Stack Trace (条件) ─────────────────────────────────┐  │
+│  │  at com.example.Service.method(Service.java:42)      │  │
+│  │  at com.example.Controller.get(Controller.java:18)   │  │
+│  │  ...                                                 │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                           │
+│  ┌─ Description (条件) ─────────────────────────────────┐  │
+│  │  Agent 生成的告警摘要说明...                          │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
+
+
+============================================================
+SECTION B: AGENT EXECUTION FLOW（Agent 执行流程）
+============================================================
+
+┌─ Agent Execution Flow ────────────────────────────────────┐
+│                                                           │
+│  ┌─ Invocation Meta ────────────────────────────────────┐ │
+│  │  Agent: agent-log-error-analysis                     │ │
+│  │  Model: deepseek-v4-pro                              │ │
+│  │  Latency: 45000ms  Tokens: 12,345  Status: success   │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌─ Investigation Summary ──────────────────────────────┐ │
+│  │  诊断流程概览（工具调用次数、异常类型、分析范围等）    │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌─ Step 1/4: Tool ◥ ───────────────────────────────────┐ │  ← 可折叠
+│  │  query_app_logs, check_service_health  1,234 tok ▶   │ │
+│  │  ┌──────────────────────────────────────────────────┐ │ │
+│  │  │  Tool: query_app_logs                            │ │ │
+│  │  │  Args: {"service":"xxx",...}                     │ │ │
+│  │  │  Result: [{"message":"NullPointerException"...}] │ │ │
+│  │  └──────────────────────────────────────────────────┘ │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ... Step 2 ... Step 3 ...                                │
+│                                                           │
+│  ┌─ Step 4/4: Final ◥ ──────────────────────────────────┐ │  ← 可折叠
+│  │  Analysis output  567 tok ▶                          │ │
+│  │  Analysis complete. See Analysis Report below.       │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
+
+
+============================================================
+SECTION C: ANALYSIS REPORT（分析报告）
+============================================================
+由 renderAnalysisResult() 渲染，分为两个子卡片：
+
+
+C1. EXECUTIVE SUMMARY（总结卡片 — 深色标题栏）
+────────────────────────────────────────────────────────────
+
+┌─ ● Executive Summary ─────────────────────────────────────┐  ← 深灰渐变底色
+│                                                           │
+│  ┌─ Risk & Confidence Banner ───────────────────────────┐ │
+│  │  [HIGH RISK]  [High Confidence]                      │ │
+│  │  风险原因说明文字...                                    │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌─ Root Cause ─────────────────────────────────────────┐ │  ← 黄色左边框卡片
+│  │  ROOT CAUSE                                           │ │
+│  │  NullPointerException                                 │ │
+│  │                                                        │ │
+│  │  在 xxx 方法中，由于未对上游返回的 null 值进行判空，     │ │
+│  │  直接调用 .getField() 导致空指针异常...                 │ │
+│  │                                                        │ │
+│  │  ┌─ 详细分析 ───────────────────────────────────────┐ │ │
+│  │  │  ...                                             │ │ │
+│  │  └──────────────────────────────────────────────────┘ │ │
+│  │                                                        │ │
+│  │  KEY EVIDENCE                                         │ │
+│  │  ● 错误日志中堆栈指向 AppService.java:156             │ │
+│  │  ● 该文件最近一次 commit 在 2026-08-01                │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  RECOMMENDATIONS                                          │
+│  ┌─ ● Immediate Actions ────────────────────────────────┐ │  ← 红色底
+│  │  ● 在 AppService.java:156 添加 null 检查              │ │
+│  │  ● 重启该服务实例                                     │ │
+│  └──────────────────────────────────────────────────────┘ │
+│  ┌─ ● Short-Term Improvements ──────────────────────────┐ │  ← 黄色底
+│  │  ● 添加单元测试覆盖 null 路径                         │ │
+│  │  ● 引入 @Nullable 注解                               │ │
+│  └──────────────────────────────────────────────────────┘ │
+│  ┌─ ● Long-Term Recommendations ────────────────────────┐ │  ← 绿色底
+│  │  ● 升级到 Java 17 并使用 Optional 重构               │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌─ KB Match ───────────────────────────────────────────┐ │  ← 条件渲染
+│  │  [标题]  [source_id]                  [95% match]    │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
+
+
+C2. EVIDENCE & ANALYSIS（证据卡片 — 浅灰标题栏）
+────────────────────────────────────────────────────────────
+
+┌─ ● EVIDENCE & ANALYSIS ───────────────────────────────────┐  ← 浅灰底色
+│                                                           │
+│  ┌─ Diagnosis Chain ────────────────────────────────────┐ │
+│  │  ┌ Step 1 │ 检查异常日志 ─────────────────────────┐  │ │
+│  │  │  FINDING: 发现 NullPointerException 在...       │  │ │
+│  │  │  DECISION: 进入下一步分析                       │  │ │
+│  │  └────────────────────────────────────────────────┘  │ │
+│  │  ┌ Step 2 │ Git Blame 定位 ───────────────────────┐  │ │
+│  │  │  FINDING: commit abc123 由 张三 提交            │  │ │
+│  │  │  DECISION: 关联到本次变更                       │  │ │
+│  │  └────────────────────────────────────────────────┘  │ │
+│  │  ┌ Step 3 │ 评估影响范围 ───── [SKIPPED] ────────┐  │ │  ← 虚线边框
+│  │  │  FINDING: 仅影响单服务                         │  │ │
+│  │  │  DECISION: 跳过，无需进一步分析                │  │ │
+│  │  └────────────────────────────────────────────────┘  │ │
+│  │  ┌ Step 4 │ 生成修复建议 ──────── [最终步骤] ────┐  │ │  ← 绿色边框
+│  │  │  FINDING: ...                                  │  │ │
+│  │  │  DECISION: 输出修复方案                        │  │ │
+│  │  └────────────────────────────────────────────────┘  │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌─ Error Snapshot ─────────────────────────────────────┐ │  ← 红色网格
+│  │  ┌──Service───────┐  ┌──Exception Type──┐            │ │
+│  │  │  my-service    │  │  NullPointerExc  │            │ │
+│  │  └────────────────┘  └──────────────────┘            │ │
+│  │  ┌──Error Message───────────────────────────────────┐ │ │  ← 全宽
+│  │  │  Cannot invoke "String.isEmpty()" because       │ │ │
+│  │  │  the return value is null                        │ │ │
+│  │  └───────────────────────────────────────────────────┘ │ │
+│  │  ┌──Error Count───┐  ┌──First Seen────┐               │ │
+│  │  │  156           │  │  2026-08-07... │               │ │
+│  │  └────────────────┘  └────────────────┘               │ │
+│  │  ┌──Last Seen─────┐                                    │ │
+│  │  │  2026-08-07... │                                    │ │
+│  │  └────────────────┘                                    │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌─ Code Traceability ──────────────────────────────────┐ │  ← 紫色网格
+│  │  ┌──Primary File──┐  ┌──Primary Method──┐            │ │
+│  │  │  AppService... │  │  processRequest  │            │ │
+│  │  └────────────────┘  └──────────────────┘            │ │
+│  │  ┌──Last Author───┐  ┌──Last Commit─────┐            │ │
+│  │  │  张三          │  │  abc123def       │            │ │
+│  │  └────────────────┘  └──────────────────┘            │ │
+│  │  ┌──Commit Date───┐  ┌──Commit Message──┐            │ │
+│  │  │  2026-08-01    │  │  feat: add xxx   │            │ │
+│  │  └────────────────┘  └──────────────────┘            │ │
+│  │                                                        │ │
+│  │  AFFECTED APIs                                         │ │
+│  │  ┌ GET │ /api/v1/orders │ 订单查询接口 ─────────────┐ │ │
+│  │  └ POST│ /api/v1/orders │ 创建订单 ──────────────────┘ │ │
+│  │                                                        │ │
+│  │  RECENT CHANGES                                        │ │
+│  │  ┌ abc123 │ 张三 │ 2026-08-01 │ feat: add xxx ──────┐ │ │
+│  │  └ def456 │ 李四 │ 2026-07-28 │ refactor: ... ───────┘ │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+│  ┌─ Impact Assessment ──────────────────────────────────┐ │  ← 红色网格
+│  │  ┌──Severity──────┐                                    │ │
+│  │  │  CRITICAL      │                                    │ │
+│  │  └────────────────┘                                    │ │
+│  │  ┌──Business Impact──────────────────────────────────┐ │ │  ← 全宽
+│  │  │  订单创建接口不可用，影响所有创建订单的用户操作     │ │ │
+│  │  └───────────────────────────────────────────────────┘ │ │
+│  │  ┌──Downstream Risks─────────────────────────────────┐ │ │  ← 全宽
+│  │  │  ● 订单积压导致库存系统延迟                        │ │ │
+│  │  │  ● 前端用户体验严重下降                            │ │ │
+│  │  └───────────────────────────────────────────────────┘ │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
+
+
+============================================================
+完整渲染条件总结
+============================================================
+
+Section A (Alert Overview):
+  - 始终渲染: severity, status, alertType 标签
+  - 条件渲染: sourceFile/gitCommit/fingerprint → error-detail-grid
+  - 条件渲染: errorMessage → error-msg-block
+  - 条件渲染: stackTrace → stack-block
+  - 条件渲染: summary → Description
+
+Section B (Agent Execution Flow):
+  - 始终渲染: Invocation meta (agent, model, latency, tokens, status)
+  - 条件渲染: thinkingChain > 0 → InvestigationSummary + 可折叠步骤卡片
+  - 条件渲染: thinkingChain == 0 → "No thinking chain data available"
+
+Section C (Analysis Report):
+  - 条件渲染: analysisResult 存在 → renderAnalysisResult()
+      C1 Executive Summary:
+        - 条件: risk_level | root_cause | recommendations 任一存在
+          - 条件: risk_level → risk badge
+          - 条件: confidence → confidence badge
+          - 条件: risk_reason | confidence_reason → banner reason
+          - 条件: rootCause.type | rootCause.summary → Root Cause 卡片
+          - 条件: recommendations 任一非空 → 建议卡片(红色/黄色/绿色)
+          - 条件: kb_match → KB Match 行
+      C2 Evidence & Analysis:
+        - 条件: diagnosisChain|errorSnapshot|codeAnalysis|impactAssessment
+          - 条件: diagnosisChain.length > 0 → 步骤卡片
+          - 条件: errorSnapshot 有值 → Error Snapshot 网格
+          - 条件: codeAnalysis 有值 → Code Traceability + APIs + Changes
+          - 条件: impactAssessment 有值 → Impact Assessment
+  - 条件渲染: rawOutput (无 analysisResult) → raw text
+  - 条件渲染: 都无 → "no output captured"
+  - 兜底: 无任何已知字段 → raw JSON dump
