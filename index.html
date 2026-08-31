@@ -103,6 +103,36 @@
                 <div class="sidebar-item" data-page="log-analysis">
                     <span class="sidebar-label">Log Analysis</span>
                 </div>
+                <div class="sidebar-item" data-page="problems">
+                    <span class="sidebar-label">Problem Center</span>
+                </div>
+                <div class="sidebar-item has-children expanded" data-toggle="apm">
+                    <span class="sidebar-arrow"></span>
+                    <span class="sidebar-label">APM</span>
+                </div>
+                <div class="sidebar-children" id="apm">
+                    <div class="sidebar-item" data-page="monitor-targets">
+                        <span class="sidebar-label">Monitor Targets</span>
+                    </div>
+                    <div class="sidebar-item" data-page="domain-config">
+                        <span class="sidebar-label">Domain Rules</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <aside class="sidebar" id="sidebar-agents">
+        <div class="sidebar-section-title">Agents</div>
+        <div class="sidebar-nav">
+            <div class="sidebar-item has-children expanded" data-toggle="agent-fleet">
+                <span class="sidebar-arrow"></span>
+                <span class="sidebar-label">Agent Fleet</span>
+            </div>
+            <div class="sidebar-children" id="agent-fleet">
+                <div class="sidebar-item active" data-page="agent-registry">
+                    <span class="sidebar-label">Agent Registry</span>
+                </div>
             </div>
         </div>
     </aside>
@@ -1148,6 +1178,427 @@
         </div>
     </div><!-- /#page-log-analysis -->
 
+    <!-- ====== Problem Center Page ====== -->
+    <div id="page-problems" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> <strong>Problem Center</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Problem Center <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">Detected Problems</span></h1>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button class="si-refresh-btn" id="pcRefreshBtn" title="Refresh data">
+                    <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    Refresh
+                </button>
+                <span class="text-secondary text-sm" id="pcServiceLabel"></span>
+            </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats" style="grid-template-columns: repeat(5, 1fr);">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Problems</span></div>
+                <div><div class="kpi-value" style="color:var(--accent-blue);" id="pcTotal">0</div><div class="kpi-sub">all detected problems</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Unique Services</span></div>
+                <div><div class="kpi-value" style="color:#10b981;" id="pcServices">0</div><div class="kpi-sub">services affected</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Critical</span></div>
+                <div><div class="kpi-value" style="color:#ef4444;" id="pcCritical">0</div><div class="kpi-sub">CRITICAL severity</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Open</span></div>
+                <div><div class="kpi-value" style="color:#f59e0b;" id="pcOpen">0</div><div class="kpi-sub">awaiting action</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Resolved</span></div>
+                <div><div class="kpi-value" style="color:#10b981;" id="pcResolved">0</div><div class="kpi-sub">problems resolved</div></div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="reflow-filter-bar">
+            <select id="pcServiceFilter"><option value="">All Services</option></select>
+            <span style="margin-left:12px;"></span>
+            <button class="filter-chip active pc-sev-filter" data-filter="all">All Severity</button>
+            <button class="filter-chip pc-sev-filter" data-filter="warning"><span class="chip-dot" style="background:#f59e0b;"></span> Warning</button>
+            <button class="filter-chip pc-sev-filter" data-filter="high"><span class="chip-dot" style="background:#ef4444;"></span> High</button>
+            <button class="filter-chip pc-sev-filter" data-filter="critical"><span class="chip-dot" style="background:#ef4444;"></span> Critical</button>
+            <span style="margin-left:12px;"></span>
+            <button class="filter-chip active pc-state-filter" data-filter="all">All States</button>
+            <button class="filter-chip pc-state-filter" data-filter="open"><span class="chip-dot" style="background:#ef4444;"></span> Open</button>
+            <button class="filter-chip pc-state-filter" data-filter="in_progress"><span class="chip-dot" style="background:#3b82f6;"></span> In Progress</button>
+            <button class="filter-chip pc-state-filter" data-filter="resolved"><span class="chip-dot" style="background:#10b981;"></span> Resolved</button>
+            <button class="filter-chip pc-state-filter" data-filter="closed"><span class="chip-dot" style="background:#6b7280;"></span> Closed</button>
+        </div>
+
+        <!-- Table -->
+        <div class="table-container" id="pcTableContainer">
+            <div class="si-loading-overlay" id="pcLoadingOverlay">
+                <div class="si-loading-spinner"></div>
+                <div>Loading problems...</div>
+            </div>
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th class="col-problem">Problem</th>
+                        <th>Service</th>
+                        <th>Domain</th>
+                        <th>Severity</th>
+                        <th>State</th>
+                        <th>Occurrences</th>
+                        <th>First Seen</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="pcTableBody"></tbody>
+            </table>
+            <div class="pagination" id="pcPagination">
+                <span>Total <span id="pcRowCount">0</span> problems</span>
+                <span style="color:var(--text-tertiary);">Analyze for detail · Ignore marks as false positive</span>
+            </div>
+        </div>
+    </div><!-- /#page-problems -->
+
+    <!-- ====== Monitor Targets Page ====== -->
+    <div id="page-monitor-targets" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> APM <span class="breadcrumb-sep">&rsaquo;</span> <strong>Monitor Targets</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Monitor Targets <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">configure once, auto-scheduled</span></h1>
+        </div>
+
+        <!-- ===== Targets List ===== -->
+        <div class="reflow-filter-bar">
+            <input type="text" placeholder="Search service or target id..." id="apmSearch" style="flex:1;min-width:200px;">
+            <select id="apmSignalFilter">
+                <option value="">All Signal Types</option>
+                <option value="metric">metric</option>
+                <option value="log">log</option>
+                <option value="change">change</option>
+            </select>
+            <button class="btn btn-primary" id="apmNewBtn" style="margin-left:auto;">New</button>
+        </div>
+        <div class="table-container" id="apmTableContainer">
+            <div class="si-loading-overlay" id="apmLoadingOverlay">
+                <div class="si-loading-spinner"></div>
+                <div>Loading monitor targets...</div>
+            </div>
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Target ID</th>
+                        <th>Service</th>
+                        <th>Signal Type</th>
+                        <th>Source Type</th>
+                        <th>Domain</th>
+                        <th>Interval</th>
+                        <th>Enabled</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="apmTableBody"></tbody>
+            </table>
+            <div class="pagination">
+                <span>Total <span id="apmRowCount">0</span> targets</span>
+                <span style="color:var(--text-tertiary);">Edit / Test / Delete</span>
+            </div>
+        </div>
+    </div><!-- /#page-monitor-targets -->
+
+    <!-- ===== Domain Rules ===== -->
+    <div id="page-domain-config" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> APM <span class="breadcrumb-sep">&rsaquo;</span> <strong>Domain Rules</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Domain Rules <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">per-domain detection rules, form-editable</span></h1>
+        </div>
+
+        <!-- ===== Domains List ===== -->
+        <div class="reflow-filter-bar">
+            <input type="text" placeholder="Search domain..." id="dcSearch" style="flex:1;min-width:200px;">
+            <button class="btn btn-primary" id="dcNewBtn" style="margin-left:auto;">New Domain</button>
+        </div>
+        <div class="table-container" id="dcTableContainer">
+            <div class="si-loading-overlay" id="dcLoadingOverlay">
+                <div class="si-loading-spinner"></div>
+                <div>Loading domain rules...</div>
+            </div>
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Domain</th>
+                        <th>Enabled</th>
+                        <th>Version</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="dcTableBody"></tbody>
+            </table>
+            <div class="pagination">
+                <span>Total <span id="dcRowCount">0</span> domains</span>
+                <span style="color:var(--text-tertiary);">Edit / Delete</span>
+            </div>
+        </div>
+    </div><!-- /#page-domain-config -->
+
+    <!-- ====== Agent Registry Page ====== -->
+    <div id="page-agents" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Agents <span class="breadcrumb-sep">&rsaquo;</span> Agent Fleet <span class="breadcrumb-sep">&rsaquo;</span> <strong>Agent Registry</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Agent Registry <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">AI agent fleet · detect &rarr; diagnose &rarr; fix &rarr; verify &rarr; deliver &rarr; learn</span></h1>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button class="si-refresh-btn" id="agRefreshBtn" title="Refresh data">
+                    <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="reflow-stats" style="grid-template-columns: repeat(5, 1fr);">
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Agents</span></div>
+                <div><div class="kpi-value" style="color:var(--accent-blue);" id="agTotalAgents">0</div><div class="kpi-sub">agents in fleet</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Total Tools</span></div>
+                <div><div class="kpi-value" style="color:#8b5cf6;" id="agTotalTools">0</div><div class="kpi-sub">tools across fleet</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Distinct Tools</span></div>
+                <div><div class="kpi-value" style="color:#3b82f6;" id="agDistinctTools">0</div><div class="kpi-sub">unique capabilities</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Pipeline Stages</span></div>
+                <div><div class="kpi-value" style="color:#f59e0b;" id="agStages">0</div><div class="kpi-sub">stages with agents</div></div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-header"><span>Ready</span></div>
+                <div><div class="kpi-value" style="color:#10b981;" id="agReady">0</div><div class="kpi-sub">agents with tools</div></div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="reflow-filter-bar">
+            <input type="text" placeholder="Search agent name or description..." id="agSearch" style="flex:1;min-width:200px;">
+            <button class="btn btn-outline" id="agResetBtn">Reset</button>
+        </div>
+
+        <!-- Fleet Container -->
+        <div class="table-container" id="agFleetContainer">
+            <div class="si-loading-overlay" id="agLoadingOverlay">
+                <div class="si-loading-spinner"></div>
+                <div>Loading agent fleet...</div>
+            </div>
+            <div class="si-error-bar" id="agErrorBar">
+                <span class="si-error-msg"><span class="si-error-icon">!</span> <span id="agErrorText">Failed to load agents</span></span>
+                <button class="si-refresh-btn" id="agRetryBtn">Retry</button>
+            </div>
+            <div id="agFleet"></div>
+            <div class="agent-empty" id="agEmptyState" style="display:none;">
+                <div>No agents match the current filters.</div>
+                <div class="text-secondary">Try a different search term or clear the tool filter.</div>
+            </div>
+        </div>
+    </div><!-- /#page-agents -->
+
+    <!-- ===== Domain Config Modal (New/Edit) ===== -->
+    <div class="ap-modal-overlay" id="dcModalOverlay">
+        <div class="ap-modal">
+            <div class="ap-modal-header">
+                <h3 id="dcFormTitle">Domain Rules Form <span class="text-secondary" style="font-size:12px;font-weight:400;margin-left:8px;" id="dcFormHint">New Domain</span></h3>
+                <button class="ap-modal-close" id="dcModalClose">&times;</button>
+            </div>
+            <div class="ap-modal-body">
+                <div class="apm-form-grid">
+                    <div class="apm-field apm-field-wide">
+                        <label for="dcDomainName">Domain Name <span class="apm-req">*</span> <span class="apm-hint">a-z 0-9 _ -，≤32 字符（编辑态锁定）</span></label>
+                        <input type="text" id="dcDomainName" placeholder="application" maxlength="32" pattern="[a-zA-Z0-9_-]+">
+                    </div>
+                </div>
+
+                <!-- ===== SUPPRESSORS (L0) ===== -->
+                <div class="dc-section">
+                    <div class="dc-section-title">SUPPRESSORS (L0)</div>
+                    <div id="dcSuppressors"></div>
+                    <button class="btn btn-outline dc-add-btn" id="dcAddSuppressor" type="button">+ Add Suppressor</button>
+                </div>
+
+                <!-- ===== DETECTORS (L1) ===== -->
+                <div class="dc-section">
+                    <div class="dc-section-title">DETECTORS (L1)</div>
+                    <div id="dcDetectors"></div>
+                    <button class="btn btn-outline dc-add-btn" id="dcAddDetector" type="button">+ Add Detector</button>
+                </div>
+
+                <!-- ===== CORRELATION (L2) ===== -->
+                <div class="dc-section">
+                    <div class="dc-section-title">CORRELATION (L2)</div>
+                    <div class="apm-form-grid dc-static-grid">
+                        <div class="apm-field">
+                            <label for="dcMetricLogWindow">Metric-Log Window (sec)</label>
+                            <input type="number" id="dcMetricLogWindow" value="300">
+                        </div>
+                        <div class="apm-field">
+                            <label for="dcChangeWindow">Change Window (sec)</label>
+                            <input type="number" id="dcChangeWindow" value="300">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== VERIFY (L3) ===== -->
+                <div class="dc-section">
+                    <div class="dc-section-title">VERIFY (L3)</div>
+                    <div class="apm-form-grid dc-static-grid">
+                        <div class="apm-field">
+                            <label for="dcPersistenceRounds">Persistence Rounds</label>
+                            <input type="number" id="dcPersistenceRounds" value="2">
+                        </div>
+                        <div class="apm-field">
+                            <label for="dcFpThreshold">FP Threshold</label>
+                            <input type="number" step="0.1" min="0" max="1" id="dcFpThreshold" value="0.6">
+                        </div>
+                        <div class="apm-field">
+                            <label for="dcMinSamples">Min Samples</label>
+                            <input type="number" id="dcMinSamples" value="20">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="apm-form-actions">
+                    <button class="btn btn-primary" id="dcSaveBtn">Save</button>
+                    <button class="btn btn-outline" id="dcResetBtn">Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Monitor Target Modal ===== -->
+    <div class="ap-modal-overlay" id="apmModalOverlay">
+        <div class="ap-modal">
+            <div class="ap-modal-header">
+                <h3 id="apmFormTitle">Monitor Target Form <span class="text-secondary" style="font-size:12px;font-weight:400;margin-left:8px;" id="apmFormHint">New Target</span></h3>
+                <button class="ap-modal-close" id="apmModalClose">&times;</button>
+            </div>
+            <div class="ap-modal-body">
+                <div class="apm-form-grid">
+                    <div class="apm-field">
+                        <label for="apmService">Service <span class="apm-req">*</span></label>
+                        <input type="text" id="apmService" placeholder="order-management">
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmSignalType">Signal Type</label>
+                        <select id="apmSignalType">
+                            <option value="metric">metric</option>
+                            <option value="log">log</option>
+                            <option value="change">change</option>
+                        </select>
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmSourceType">Source Type</label>
+                        <select id="apmSourceType">
+                            <option value="prometheus">prometheus</option>
+                            <option value="http">http</option>
+                            <option value="elk">elk</option>
+                            <option value="mock">mock</option>
+                        </select>
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmDomain">Domain</label>
+                        <input type="text" id="apmDomain" value="application">
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmInterval">Interval (sec)</label>
+                        <input type="number" id="apmInterval" value="60" min="1">
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmRowsPath">Rows Path</label>
+                        <input type="text" id="apmRowsPath" value="data.result" placeholder="data.result / hits.hits">
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmSignatureFrames">Signature Frames</label>
+                        <input type="number" id="apmSignatureFrames" value="3" min="1">
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmWindowSec">Window (sec)</label>
+                        <input type="number" id="apmWindowSec" placeholder="180" min="1">
+                    </div>
+                    <div class="apm-field apm-field-check">
+                        <label class="apm-checkbox">
+                            <input type="checkbox" id="apmEnabled" checked>
+                            <span>Enabled</span>
+                        </label>
+                    </div>
+                    <div class="apm-field apm-field-wide">
+                        <label for="apmUrl">Source URL <span class="apm-req">*</span> <span class="apm-hint">http/https only · SSRF 拦截私网 (127/10/172.16/192.168/169.254/::1)</span></label>
+                        <input type="text" id="apmUrl" placeholder="https://prometheus.example.com:9090/api/v1/query">
+                    </div>
+                    <div class="apm-field apm-field-wide">
+                        <div class="apm-label-row">
+                            <label for="apmFieldMapping">Field Mapping <span class="apm-req">*</span></label>
+                            <select id="apmFieldTemplate">
+                                <option value="">— Template —</option>
+                                <option value="prometheus">Prometheus</option>
+                                <option value="flat">Flat row</option>
+                                <option value="elk">ELK log</option>
+                            </select>
+                        </div>
+                        <textarea id="apmFieldMapping" rows="3" placeholder='{"metric": "metric.__name__", "value": "value[1]", "timestamp": "value[0]", "service": "service"}'></textarea>
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmHeaders">Headers (JSON)</label>
+                        <textarea id="apmHeaders" rows="3" placeholder='{"Authorization": "${env:APM_TOKEN}"}'></textarea>
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmParams">Params (JSON)</label>
+                        <textarea id="apmParams" rows="3" placeholder='{"level": "error"}'></textarea>
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmTimeParams">Time Params (JSON)</label>
+                        <textarea id="apmTimeParams" rows="3" placeholder='{"start": "start", "end": "end"}'></textarea>
+                    </div>
+                    <div class="apm-field">
+                        <label for="apmTimezone">Timezone <span class="apm-hint">IANA · Spring 源按本地墙钟解析时间</span></label>
+                        <input type="text" id="apmTimezone" placeholder="Asia/Shanghai">
+                    </div>
+                </div>
+                <div class="apm-form-actions">
+                    <button class="btn btn-primary" id="apmSaveBtn">Save</button>
+                    <button class="btn btn-secondary" id="apmTestBtn">Connectivity Test</button>
+                    <button class="btn btn-outline" id="apmResetBtn">Reset</button>
+                </div>
+                <details class="apm-result" id="apmResult" open>
+                    <summary>Test Result</summary>
+                    <div class="apm-result-body" id="apmResultBody"><span class="text-secondary">— idle —</span></div>
+                </details>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal（通用确认弹窗，适配 SIP 风格） -->
+    <div class="ap-modal-overlay" id="confirmModalOverlay">
+        <div class="ap-modal" style="max-width: 420px;">
+            <div class="ap-modal-header">
+                <h3 id="confirmModalTitle">Confirm</h3>
+                <button class="ap-modal-close" id="confirmModalClose">&times;</button>
+            </div>
+            <div class="ap-modal-body">
+                <p class="apm-confirm-msg" id="confirmModalMsg"></p>
+                <div class="apm-confirm-actions">
+                    <button class="btn btn-secondary" id="confirmModalCancel">Cancel</button>
+                    <button class="btn btn-danger" id="confirmModalOk">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Approval Center Modal -->
     <div class="ap-modal-overlay" id="apModalOverlay">
         <div class="ap-modal">
@@ -1178,6 +1629,17 @@
             <button class="ap-modal-close" id="alertDetailClose">&times;</button>
         </div>
         <div class="ap-modal-body" id="alertDetailContent"></div>
+    </div>
+</div>
+
+<!-- Problem Center Detail Modal：宽模态框，尺寸对齐 Monitor Target 的 Test/net 弹窗（1200px） -->
+<div class="ap-modal-overlay" id="pcDetailOverlay">
+    <div class="ap-modal">
+        <div class="ap-modal-header">
+            <h3 id="pcDetailTitle">Problem Detail</h3>
+            <button class="ap-modal-close" id="pcDetailClose">&times;</button>
+        </div>
+        <div class="ap-modal-body" id="pcDetailContent"></div>
     </div>
 </div>
 

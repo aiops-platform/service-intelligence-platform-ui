@@ -45,6 +45,13 @@
         });
         var target = document.getElementById(pageId);
         if (target) target.style.display = 'block';
+        // 关闭 Monitor Target / Domain Config 模态框与确认弹窗（fixed 遮罩若残留会盖住其他页面）
+        var apmModal = document.getElementById('apmModalOverlay');
+        if (apmModal) apmModal.classList.remove('open');
+        var dcModal = document.getElementById('dcModalOverlay');
+        if (dcModal) dcModal.classList.remove('open');
+        var confirmModal = document.getElementById('confirmModalOverlay');
+        if (confirmModal) confirmModal.classList.remove('open');
         // Trigger page refresh if handler registered
         var refresh = _pageRefreshers[pageId];
         if (typeof refresh === 'function') refresh();
@@ -91,6 +98,14 @@
                         showPage('page-metrics-analysis');
                     } else if (page === 'log-analysis') {
                         showPage('page-log-analysis');
+                    } else if (page === 'problems') {
+                        showPage('page-problems');
+                    } else if (page === 'monitor-targets') {
+                        showPage('page-monitor-targets');
+                    } else if (page === 'domain-config') {
+                        showPage('page-domain-config');
+                    } else if (page === 'agent-registry') {
+                        showPage('page-agents');
                     }
                 });
             });
@@ -528,6 +543,7 @@
         var sidebarEngOps = document.getElementById('sidebar-eng-ops');
         var sidebarBizOps = document.getElementById('sidebar-biz-ops');
         var sidebarServiceOps = document.getElementById('sidebar-service-ops');
+        var sidebarAgents = document.getElementById('sidebar-agents');
         var pageTitle = document.querySelector('.page-title');
         var pageDesc = document.querySelector('.page-desc');
 
@@ -569,6 +585,15 @@
                         if (svcPage === 'l1-automation') showPage('page-l1-automation');
                         else if (svcPage === 'approval-center') showPage('page-approval-center');
                         else if (svcPage === 'smart-inspection') showPage('page-smart-inspection');
+                        else if (svcPage === 'monitor-targets') showPage('page-monitor-targets');
+                    }
+                } else if (text === 'Agents') {
+                    hideAllSidebars();
+                    if (sidebarAgents) sidebarAgents.classList.add('visible');
+                    var activeAgItem = sidebarAgents.querySelector('.sidebar-item.active[data-page]');
+                    if (activeAgItem) {
+                        var agPage = activeAgItem.getAttribute('data-page');
+                        if (agPage === 'agent-registry') showPage('page-agents');
                     }
                 } else {
                     hideAllSidebars();
@@ -3563,6 +3588,448 @@
         };
     }
 
+    // ── Problem Center Page ──────────────────────────────────
+    function initProblems() {
+        // 后端地址（同 Monitor Targets）：默认 http://localhost:7070，localStorage 可覆盖。
+        var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
+        var TENANT_ID = localStorage.getItem('apmTenantId') || 'default';
+        var API_KEY = localStorage.getItem('apmApiKey') || '';
+
+        var PAGE_SIZE = 10;
+        var currentPage = 0;
+        var currentService = '';
+        var currentSeverity = 'all';
+        var currentState = 'all';
+        var allProblems = [];
+
+        function getEl(id) { return document.getElementById(id); }
+
+        // ── API 封装（统一 X-Tenant-Id / 可选 Bearer）────
+        function apmApi(path, options) {
+            var opts = options || {};
+            var headers = {};
+            headers['X-Tenant-Id'] = TENANT_ID;
+            if (API_KEY) headers['Authorization'] = 'Bearer ' + API_KEY;
+            if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+            return fetch(APM_BASE_URL + path, {
+                method: opts.method || 'GET',
+                headers: headers,
+                body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
+            }).then(function (res) {
+                return res.text().then(function (text) {
+                    var data = null;
+                    if (text) { try { data = JSON.parse(text); } catch (e) { data = text; } }
+                    if (!res.ok) {
+                        var reason = 'HTTP ' + res.status;
+                        if (data && typeof data === 'object' && data.reason) reason = data.reason;
+                        var err = new Error(reason);
+                        err.status = res.status;
+                        err.data = data;
+                        throw err;
+                    }
+                    return data;
+                });
+            });
+        }
+
+        // ── Confirm dialog（复用全局确认弹窗）──
+        var _confirmCb = null;
+        function confirmDialog(message, onConfirm) {
+            _confirmCb = onConfirm || null;
+            getEl('confirmModalMsg').textContent = message;
+            getEl('confirmModalOverlay').classList.add('open');
+        }
+        function closeConfirm() {
+            _confirmCb = null;
+            getEl('confirmModalOverlay').classList.remove('open');
+        }
+        function runConfirm() {
+            var cb = _confirmCb;
+            closeConfirm();
+            if (typeof cb === 'function') cb();
+        }
+
+        function formatTime(detectedAt) {
+            if (!detectedAt) return '-';
+            var utcTime = String(detectedAt).replace(/[+-]\d{2}:\d{2}$/, '');
+            var d = new Date(utcTime + 'Z');
+            if (!isNaN(d.getTime())) {
+                return d.toLocaleString('zh-CN', {
+                    timeZone: 'Asia/Shanghai',
+                    year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    hour12: false
+                });
+            }
+            return String(detectedAt);
+        }
+
+        function loadServiceFilter() {
+            var sel = getEl('pcServiceFilter');
+            if (!sel) return;
+            var seen = {};
+            allProblems.forEach(function (p) {
+                if (p.service && !seen[p.service]) {
+                    seen[p.service] = true;
+                    var opt = document.createElement('option');
+                    opt.value = p.service;
+                    opt.textContent = p.service;
+                    sel.appendChild(opt);
+                }
+            });
+            if (currentService && seen[currentService]) sel.value = currentService;
+        }
+
+        function renderKpi() {
+            var total = allProblems.length;
+            var services = {};
+            var critical = 0, open = 0, resolved = 0;
+            allProblems.forEach(function (p) {
+                if (p.service) services[p.service] = true;
+                if ((p.severity || '').toLowerCase() === 'critical') critical++;
+                var st = (p.state || '').toLowerCase();
+                if (st === 'pending' || st === 'in_progress') open++;
+                if (st === 'resolved') resolved++;
+            });
+            getEl('pcTotal').textContent = total;
+            getEl('pcServices').textContent = Object.keys(services).length;
+            getEl('pcCritical').textContent = critical;
+            getEl('pcOpen').textContent = open;
+            getEl('pcResolved').textContent = resolved;
+        }
+
+        function filteredProblems() {
+            return allProblems.filter(function (p) {
+                if (currentService && p.service !== currentService) return false;
+                if (currentSeverity !== 'all' && (p.severity || '').toLowerCase() !== currentSeverity) return false;
+                if (currentState !== 'all') {
+                    var st = (p.state || '').toLowerCase();
+                    if (currentState === 'open') {
+                        if (st !== 'pending' && st !== 'in_progress') return false;
+                    } else if (currentState === 'closed') {
+                        if (st !== 'closed' && st !== 'archived') return false;
+                    } else if (st !== currentState) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+        }
+
+        // 列表标题：日志问题取签名冒号后的 message（去掉堆栈帧）；指标问题取 metric = value；兜底用 summary
+        function problemTitle(p) {
+            if (p.log_anomalies && p.log_anomalies.length) {
+                var sig = p.log_anomalies[0].signature || p.log_anomalies[0].pattern || '';
+                if (sig) {
+                    var firstLine = sig.split('|')[0];          // 去掉 | 之后的堆栈帧
+                    var idx = firstLine.indexOf(':');
+                    if (idx >= 0) {
+                        var msg = firstLine.slice(idx + 1).trim();
+                        if (msg) return msg;                     // ExceptionType: message → message
+                    }
+                    return firstLine;                            // 无冒号（无堆栈时签名即 message）
+                }
+            }
+            if (p.metric_anomalies && p.metric_anomalies.length) {
+                var m = p.metric_anomalies[0];
+                if (m.metric) return m.metric + ' = ' + m.value;
+            }
+            return (p.symptom && p.symptom.summary) ? p.symptom.summary : (p.record_id || 'Untitled');
+        }
+
+        function renderTable() {
+            var filtered = filteredProblems();
+            var total = filtered.length;
+            var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+            if (currentPage >= totalPages) currentPage = totalPages - 1;
+            var start = currentPage * PAGE_SIZE;
+            var rows = filtered.slice(start, start + PAGE_SIZE);
+
+            var tbody = getEl('pcTableBody');
+            var html = '';
+            if (total === 0) {
+                html = '<tr class="alert-empty-row"><td colspan="8" class="pc-empty-state">No problems match the current filters.</td></tr>';
+            } else {
+            for (var i = 0; i < PAGE_SIZE; i++) {
+                if (i < rows.length) {
+                    var p = rows[i];
+                    var title = problemTitle(p);
+                    var sev = (p.severity || 'warning').toLowerCase();
+                    var st = (p.state || 'pending').toLowerCase();
+                    html += '<tr>' +
+                        '<td class="col-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</td>' +
+                        '<td>' + escapeHtml(p.service || '-') + '</td>' +
+                        '<td>' + escapeHtml(p.domain || '-') + '</td>' +
+                        '<td><span class="alert-tag severity-' + sev + '">' + escapeHtml(p.severity || 'warning') + '</span></td>' +
+                        '<td><span class="alert-tag status-' + st + '">' + escapeHtml(p.state || 'pending') + '</span></td>' +
+                        '<td>' + (p.occurrence_count || 1) + '</td>' +
+                        '<td class="col-time">' + formatTime(p.detected_at || p.first_seen_at) + '</td>' +
+                        '<td class="pc-actions">' +
+                        '<button class="btn-alert-detail" data-id="' + escapeHtml(p.record_id) + '" data-act="detail">Detail</button>' +
+                        (st === 'pending' ? '<button class="btn-alert-detail pc-analyze-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="analyze">Analyze</button>' : '') +
+                        (st === 'pending' ? '<button class="btn-alert-detail pc-ignore-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="ignore">Ignore</button>' : '') +
+                        '</td>' +
+                        '</tr>';
+                } else {
+                    html += '<tr class="alert-empty-row"><td colspan="8">&nbsp;</td></tr>';
+                }
+            }
+            }
+            tbody.innerHTML = html;
+
+            // 客户端分页控件
+            var pg = getEl('pcPagination');
+            pg.innerHTML =
+                '<span>Total <span id="pcRowCount">' + total + '</span> problems</span>' +
+                '<span class="pc-pager">' +
+                '<button class="btn-page" data-pg="prev"' + (currentPage === 0 ? ' disabled' : '') + '>&lsaquo; Prev</button>' +
+                '<span class="pc-page-info">Page ' + (currentPage + 1) + ' / ' + totalPages + '</span>' +
+                '<button class="btn-page" data-pg="next"' + (currentPage >= totalPages - 1 ? ' disabled' : '') + '>Next &rsaquo;</button>' +
+                '</span>';
+
+            pg.querySelectorAll('.btn-page').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    if (btn.getAttribute('data-pg') === 'prev') {
+                        if (currentPage > 0) { currentPage--; renderTable(); }
+                    } else {
+                        if (currentPage < totalPages - 1) { currentPage++; renderTable(); }
+                    }
+                });
+            });
+
+            tbody.querySelectorAll('.btn-alert-detail').forEach(function (btn) {
+                btn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var id = btn.getAttribute('data-id');
+                    var act = btn.getAttribute('data-act');
+                    var rec = allProblems.find(function (p) { return p.record_id === id; });
+                    if (!rec) return;
+                    if (act === 'detail') openProblemDetail(rec);
+                    else if (act === 'ignore') confirmIgnore(rec);
+                });
+            });
+        }
+
+        function detailRow(label, value) {
+            if (value === undefined || value === null || value === '') return '';
+            return '<tr><td class="pd-label">' + escapeHtml(label) + '</td><td>' + escapeHtml(String(value)) + '</td></tr>';
+        }
+
+        // 日志签名完整展开：按 | 拆成「异常/消息首行 + 每帧堆栈」，各自独占一行，不截断
+        function logSignatureHtml(sig) {
+            var parts = (sig || '').split('|');
+            var html = '';
+            for (var i = 0; i < parts.length; i++) {
+                var part = parts[i];
+                if (!part) continue;
+                html += (i === 0 ? '<div class="pd-msg">' : '<div class="pd-frame">') +
+                    escapeHtml(part) + '</div>';
+            }
+            return html || escapeHtml(sig || '-');
+        }
+
+        function buildDetailHtml(rec) {
+            var html = '';
+            var sev = (rec.severity || 'warning').toLowerCase();
+            var st = (rec.state || 'pending').toLowerCase();
+            html += '<div class="pd-header">' +
+                '<span class="alert-tag severity-' + sev + '">' + escapeHtml(rec.severity || 'warning') + '</span> ' +
+                '<span class="alert-tag status-' + st + '">' + escapeHtml(rec.state || 'pending') + '</span>' +
+                '<span class="pd-occur">Occurrences: ' + (rec.occurrence_count || 1) + '</span>' +
+                '</div>';
+            var summary = (rec.symptom && rec.symptom.summary) ? rec.symptom.summary : '';
+            if (summary) html += '<div class="pd-summary">' + escapeHtml(summary) + '</div>';
+
+            html += '<h4 class="pd-section">Meta</h4>';
+            html += '<table class="pd-meta"><tbody>' +
+                detailRow('Record ID', rec.record_id) +
+                detailRow('Service', rec.service) +
+                detailRow('Domain', rec.domain) +
+                detailRow('Detected At', formatTime(rec.detected_at)) +
+                detailRow('First Seen', formatTime(rec.first_seen_at)) +
+                detailRow('Last Seen', formatTime(rec.last_seen_at)) +
+                detailRow('Resolved At', formatTime(rec.resolved_at)) +
+                detailRow('Resolve Reason', rec.resolve_reason) +
+                detailRow('Change Related', rec.change_related ? 'yes' : 'no') +
+                detailRow('Trace ID', rec.trace_id) +
+                '</tbody></table>';
+
+            if (rec.metric_anomalies && rec.metric_anomalies.length) {
+                html += '<h4 class="pd-section">Metric Anomalies (' + rec.metric_anomalies.length + ')</h4>';
+                html += '<table class="pd-anoms"><tbody>';
+                rec.metric_anomalies.forEach(function (a) {
+                    html += '<tr><td>' + escapeHtml(a.metric || '-') + '</td>' +
+                        '<td>value=' + (a.value !== undefined ? a.value : '-') + '</td>' +
+                        '<td>baseline=' + (a.baseline !== undefined ? a.baseline : '-') + '</td></tr>';
+                });
+                html += '</tbody></table>';
+            }
+
+            if (rec.log_anomalies && rec.log_anomalies.length) {
+                html += '<h4 class="pd-section">Log Anomalies (' + rec.log_anomalies.length + ')</h4>';
+                html += '<div class="pd-sig-list">';
+                rec.log_anomalies.forEach(function (a) {
+                    html += '<div class="pd-sig" title="' + escapeHtml(a.signature || '') + '">' +
+                        logSignatureHtml(a.signature || a.pattern || '-') + '</div>';
+                });
+                html += '</div>';
+            }
+
+            var corr = rec.correlation || {};
+            html += '<h4 class="pd-section">Correlation</h4>';
+            html += '<table class="pd-meta"><tbody>' +
+                detailRow('Related', corr.related === true ? 'yes' : 'no') +
+                detailRow('Reason', corr.reason) +
+                '</tbody></table>';
+
+            var ver = rec.verification || {};
+            html += '<h4 class="pd-section">Verification</h4>';
+            html += '<table class="pd-meta"><tbody>' +
+                detailRow('Persistence OK', ver.persistence_ok === true ? 'yes' : 'no') +
+                detailRow('False Positive Rate', ver.false_positive_rate !== undefined ? ver.false_positive_rate : '') +
+                detailRow('Final Severity', ver.final_severity) +
+                '</tbody></table>';
+
+            if (rec.evidence && rec.evidence.length) {
+                html += '<h4 class="pd-section">Evidence (' + rec.evidence.length + ')</h4>';
+                html += '<div class="pd-evidence">';
+                rec.evidence.forEach(function (ev) {
+                    var evHtml = '';
+                    if (ev.target_ids && ev.target_ids.length) {
+                        evHtml += '<div class="pd-ev-line"><span class="pd-ev-label">targets</span><span class="pd-ev-ids">' +
+                            ev.target_ids.map(function (t) { return escapeHtml(String(t)); }).join(', ') + '</span></div>';
+                    }
+                    if (ev.trace_ids && ev.trace_ids.length) {
+                        evHtml += '<div class="pd-ev-line"><span class="pd-ev-label">traces</span><span class="pd-ev-ids">' +
+                            ev.trace_ids.map(function (t) { return escapeHtml(String(t)); }).join(', ') + '</span></div>';
+                    }
+                    if (!evHtml) evHtml = '<div class="pd-ev-line"><span class="pd-ev-ids">' + escapeHtml(JSON.stringify(ev)) + '</span></div>';
+                    html += '<div class="pd-ev-item">' +
+                        '<div class="pd-ev-head">' +
+                        '<span class="pd-ev-type">' + escapeHtml(ev.type || 'unknown') + '</span>' +
+                        (ev.round_id ? '<span class="pd-ev-round" title="detection round id (= trace_id)">round ' + escapeHtml(ev.round_id) + '</span>' : '') +
+                        (ev.count !== undefined ? '<span class="pd-ev-count">count ' + ev.count + '</span>' : '') +
+                        '</div>' +
+                        evHtml +
+                        '</div>';
+                });
+                html += '</div>';
+            }
+
+            return html;
+        }
+
+        function openProblemDetail(rec) {
+            // 专用宽模态框 pcDetailOverlay（1200px，对齐 Monitor Target 的 Test/net 弹窗）
+            var overlay = getEl('pcDetailOverlay');
+            var content = getEl('pcDetailContent');
+            var title = getEl('pcDetailTitle');
+            if (!overlay || !content) return;
+            title.textContent = 'Problem Detail - ' + (rec.record_id || '');
+            content.innerHTML = buildDetailHtml(rec);
+            overlay.classList.add('open');
+        }
+
+        function closeProblemDetail() {
+            var overlay = getEl('pcDetailOverlay');
+            if (overlay) overlay.classList.remove('open');
+        }
+
+        function confirmIgnore(rec) {
+            confirmDialog('Ignore problem ' + rec.record_id + '? This resolves it and records it as a false positive.', function () {
+                apmApi('/v1/problems/' + encodeURIComponent(rec.record_id) + '/resolve', { method: 'POST', body: { false_positive: true } })
+                    .then(function () {
+                        window._showToast('Ignored ' + rec.record_id, 'success');
+                        refresh();
+                    })
+                    .catch(function (err) {
+                        window._showToast('Ignore failed: ' + err.message, 'error');
+                    });
+            });
+        }
+
+        function refresh() {
+            var overlay = getEl('pcLoadingOverlay');
+            if (overlay) overlay.classList.add('visible');
+            allProblems = [];
+            apmApi('/v1/problems?limit=500')
+                .then(function (data) {
+                    allProblems = (data && data.items) ? data.items : [];
+                    if (overlay) overlay.classList.remove('visible');
+                    var sel = getEl('pcServiceFilter');
+                    if (sel) sel.innerHTML = '<option value="">All Services</option>';
+                    currentPage = 0;
+                    loadServiceFilter();
+                    renderKpi();
+                    renderTable();
+                })
+                .catch(function (err) {
+                    if (overlay) overlay.classList.remove('visible');
+                    window._showToast('Load problems failed: ' + err.message, 'error');
+                    renderKpi();
+                    renderTable();
+                });
+        }
+
+        // Filter bindings
+        var svcFilter = getEl('pcServiceFilter');
+        if (svcFilter) svcFilter.addEventListener('change', function () {
+            currentService = this.value;
+            currentPage = 0;
+            var label = getEl('pcServiceLabel');
+            if (label) label.textContent = currentService ? 'Filtered: ' + currentService : '';
+            renderTable();
+        });
+
+        document.querySelectorAll('.pc-sev-filter').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('.pc-sev-filter').forEach(function (b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                currentSeverity = this.getAttribute('data-filter');
+                currentPage = 0;
+                renderTable();
+            });
+        });
+
+        document.querySelectorAll('.pc-state-filter').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.querySelectorAll('.pc-state-filter').forEach(function (b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                currentState = this.getAttribute('data-filter');
+                currentPage = 0;
+                renderTable();
+            });
+        });
+
+        var pcRefreshBtn = getEl('pcRefreshBtn');
+        if (pcRefreshBtn) pcRefreshBtn.addEventListener('click', refresh);
+
+        // Confirm 弹窗按钮（同 initDomainConfig 的通用确认弹窗绑定）
+        getEl('confirmModalOk').addEventListener('click', runConfirm);
+        getEl('confirmModalCancel').addEventListener('click', closeConfirm);
+        getEl('confirmModalClose').addEventListener('click', closeConfirm);
+        getEl('confirmModalOverlay').addEventListener('click', function (e) {
+            if (e.target === this) closeConfirm();
+        });
+
+        // 详情弹窗关闭（宽模态 pcDetailOverlay）
+        var pcDetailClose = getEl('pcDetailClose');
+        if (pcDetailClose) pcDetailClose.addEventListener('click', closeProblemDetail);
+        var pcDetailOverlay = getEl('pcDetailOverlay');
+        if (pcDetailOverlay) pcDetailOverlay.addEventListener('click', function (e) {
+            if (e.target === this) closeProblemDetail();
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && getEl('pcDetailOverlay') && getEl('pcDetailOverlay').classList.contains('open')) closeProblemDetail();
+        });
+
+        // 切回本页时自动刷新
+        _pageRefreshers['page-problems'] = function () { refresh(); };
+
+        // 初始化加载
+        refresh();
+    }
+
     // ── Helper: format time ago ──────────────────────────────
     function formatTimeAgo(dateStr) {
         if (!dateStr) return '';
@@ -3650,6 +4117,1057 @@
         }, 2500);
     };
 
+    // ── Monitor Targets (APM) ─────────────────────────────────
+    function initMonitorTargets() {
+        // 后端地址（可配置）：默认 http://localhost:7070（后端 .env APM_PORT=7070）。
+        // 可用 localStorage 覆盖：apmBaseUrl / apmTenantId / apmApiKey。
+        var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
+        var TENANT_ID = localStorage.getItem('apmTenantId') || 'default';
+        var API_KEY = localStorage.getItem('apmApiKey') || '';
+
+        var targets = [];
+        var currentTarget = null;   // 编辑中的端点 {target_id, ...}；null = New
+        var currentSignalFilter = '';
+        var currentSearch = '';
+
+        // ── API 封装（统一 X-Tenant-Id / 可选 Bearer）────
+        function apmApi(path, options) {
+            var opts = options || {};
+            var headers = {};
+            headers['X-Tenant-Id'] = TENANT_ID;
+            if (API_KEY) headers['Authorization'] = 'Bearer ' + API_KEY;
+            if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+            return fetch(APM_BASE_URL + path, {
+                method: opts.method || 'GET',
+                headers: headers,
+                body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
+            }).then(function (res) {
+                return res.text().then(function (text) {
+                    var data = null;
+                    if (text) { try { data = JSON.parse(text); } catch (e) { data = text; } }
+                    if (!res.ok) {
+                        var reason = 'HTTP ' + res.status;
+                        if (data && typeof data === 'object' && data.reason) reason = data.reason;
+                        var err = new Error(reason);
+                        err.status = res.status;
+                        err.data = data;
+                        throw err;
+                    }
+                    return data;
+                });
+            });
+        }
+
+        function getEl(id) { return document.getElementById(id); }
+
+        // ── Modal open / close ──
+        function openModal() {
+            getEl('apmModalOverlay').classList.add('open');
+        }
+        function closeModal() {
+            getEl('apmModalOverlay').classList.remove('open');
+        }
+
+        // ── Confirm dialog（通用确认弹窗，适配 SIP 风格）──
+        var _confirmCb = null;
+        function confirmDialog(message, onConfirm) {
+            _confirmCb = onConfirm || null;
+            getEl('confirmModalMsg').textContent = message;
+            getEl('confirmModalOverlay').classList.add('open');
+        }
+        function closeConfirm() {
+            _confirmCb = null;
+            getEl('confirmModalOverlay').classList.remove('open');
+        }
+        function runConfirm() {
+            var cb = _confirmCb;
+            closeConfirm();
+            if (typeof cb === 'function') cb();
+        }
+
+        function parseJson(id, isRequired) {
+            var raw = getEl(id).value.trim();
+            if (!raw) {
+                if (isRequired) throw new Error('Required JSON is empty');
+                return {};
+            }
+            try { return JSON.parse(raw); } catch (e) { throw new Error('Invalid JSON in ' + id + ': ' + e.message); }
+        }
+
+        // ── Form read / write ──
+        function readForm() {
+            var signalType = getEl('apmSignalType').value;
+            var service = getEl('apmService').value.trim();
+            var url = getEl('apmUrl').value.trim();
+
+            if (!service) throw new Error('Service is required');
+            if (!url) throw new Error('Source URL is required');
+            if (!/^https?:\/\//i.test(url)) throw new Error('Source URL must start with http:// or https://');
+
+            var needsMapping = signalType === 'metric' || signalType === 'log';
+            var fm = parseJson('apmFieldMapping', needsMapping);
+            var headers = parseJson('apmHeaders', false);
+            var params = parseJson('apmParams', false);
+            var timeParams = parseJson('apmTimeParams', false);
+
+            var sc = { url: url };
+            var rowsPath = getEl('apmRowsPath').value.trim();
+            if (rowsPath) sc.rows_path = rowsPath;
+            if (signalType === 'log') {
+                var sigFrames = parseInt(getEl('apmSignatureFrames').value, 10);
+                if (!isNaN(sigFrames)) sc.signature_frames = sigFrames;
+            }
+            var windowSec = parseInt(getEl('apmWindowSec').value, 10);
+            if (!isNaN(windowSec) && windowSec > 0) sc.window_sec = windowSec;
+            var timezone = getEl('apmTimezone').value.trim();
+            if (timezone) sc.timezone = timezone;
+            if (Object.keys(fm).length) sc.field_mapping = fm;
+            if (Object.keys(headers).length) sc.headers = headers;
+            if (Object.keys(params).length) sc.params = params;
+            if (Object.keys(timeParams).length) sc.time_params = timeParams;
+
+            return {
+                service: service,
+                signal_type: signalType,
+                source_type: getEl('apmSourceType').value,
+                domain: getEl('apmDomain').value.trim() || 'application',
+                enabled: getEl('apmEnabled').checked,
+                schedule: { interval_sec: parseInt(getEl('apmInterval').value, 10) || 60 },
+                source_config: sc
+            };
+        }
+
+        function fillForm(target) {
+            var sc = target.source_config || {};
+            var sched = target.schedule || {};
+            getEl('apmService').value = target.service || '';
+            getEl('apmSignalType').value = target.signal_type || 'metric';
+            getEl('apmSourceType').value = target.source_type || 'prometheus';
+            getEl('apmDomain').value = target.domain || 'application';
+            getEl('apmEnabled').checked = !!target.enabled;
+            getEl('apmInterval').value = sched.interval_sec || 60;
+            getEl('apmUrl').value = sc.url || '';
+            getEl('apmRowsPath').value = sc.rows_path || 'data.result';
+            getEl('apmSignatureFrames').value = sc.signature_frames || 3;
+            getEl('apmWindowSec').value = sc.window_sec || '';
+            getEl('apmFieldMapping').value = sc.field_mapping ? JSON.stringify(sc.field_mapping, null, 2) : '';
+            getEl('apmHeaders').value = sc.headers && Object.keys(sc.headers).length ? JSON.stringify(sc.headers, null, 2) : '';
+            getEl('apmParams').value = sc.params && Object.keys(sc.params).length ? JSON.stringify(sc.params, null, 2) : '';
+            getEl('apmTimeParams').value = sc.time_params && Object.keys(sc.time_params).length ? JSON.stringify(sc.time_params, null, 2) : '';
+            getEl('apmTimezone').value = sc.timezone || '';
+            getEl('apmFieldTemplate').value = '';
+            currentTarget = target;
+            setFormState(target.target_id);
+        }
+
+        function resetForm(silent) {
+            if (currentTarget) {
+                // 编辑态：Reset 恢复该条记录已保存的内容（丢弃未保存的修改）
+                fillForm(currentTarget);
+                if (!silent) window._showToast('Form reset to saved values', 'info');
+                return;
+            }
+            currentTarget = null;
+            getEl('apmService').value = '';
+            getEl('apmSignalType').value = 'metric';
+            getEl('apmSourceType').value = 'prometheus';
+            getEl('apmDomain').value = 'application';
+            getEl('apmEnabled').checked = true;
+            getEl('apmInterval').value = 60;
+            getEl('apmUrl').value = '';
+            getEl('apmRowsPath').value = 'data.result';
+            getEl('apmSignatureFrames').value = 3;
+            getEl('apmWindowSec').value = '';
+            getEl('apmFieldMapping').value = '';
+            getEl('apmHeaders').value = '';
+            getEl('apmParams').value = '';
+            getEl('apmTimeParams').value = '';
+            getEl('apmTimezone').value = '';
+            getEl('apmFieldTemplate').value = '';
+            setFormState(null);
+            if (!silent) window._showToast('Form reset to New', 'info');
+        }
+
+        function setFormState(targetId) {
+            getEl('apmFormHint').textContent = targetId ? 'Editing ' + targetId : 'New Target';
+        }
+
+        // ── Actions ──
+        function saveTarget() {
+            var body;
+            try { body = readForm(); } catch (e) { window._showToast(e.message, 'error'); return; }
+            var isEdit = !!currentTarget;
+            var path = isEdit ? '/v1/monitors/' + encodeURIComponent(currentTarget.target_id) : '/v1/monitors';
+            apmApi(path, { method: isEdit ? 'PUT' : 'POST', body: body })
+                .then(function (data) {
+                    var savedId = (data && data.target_id) || (isEdit && currentTarget ? currentTarget.target_id : '');
+                    window._showToast(isEdit ? 'Updated ' + savedId : 'Created ' + savedId, 'success');
+                    closeModal();
+                    refreshList();
+                })
+                .catch(function (err) {
+                    window._showToast('Save failed: ' + err.message, 'error');
+                });
+        }
+
+        function requireLoaded() {
+            if (!currentTarget || !currentTarget.target_id) {
+                window._showToast('Save the target first, then run Test / Run', 'info');
+                return false;
+            }
+            return true;
+        }
+
+        function renderSignal(s) {
+            if (s.kind === 'log') {
+                return '<div class="apm-signal-row">' +
+                    '<span class="apm-signal-svc">' + escapeHtml(s.service) + '</span>' +
+                    '<span class="apm-signal-kind">log</span>' +
+                    '<span class="apm-signal-msg">[' + escapeHtml(s.level || '') + '] ' + escapeHtml(s.message || '') + '</span>' +
+                    '<span class="apm-signal-ts">' + escapeHtml(String(s.timestamp || '')) + '</span>' +
+                    '</div>';
+            }
+            return '<div class="apm-signal-row">' +
+                '<span class="apm-signal-svc">' + escapeHtml(s.service) + '</span>' +
+                '<span class="apm-signal-kind">metric</span>' +
+                '<span class="apm-signal-msg">' + escapeHtml(s.metric || '') + ' = ' + escapeHtml(String(s.value)) + '</span>' +
+                '<span class="apm-signal-ts">' + escapeHtml(String(s.timestamp || '')) + '</span>' +
+                '</div>';
+        }
+
+        function setResult(html) {
+            getEl('apmResultBody').innerHTML = html;
+            getEl('apmResult').open = true;
+        }
+
+        function connectivityTest() {
+            if (!requireLoaded()) return;
+            setResult('<div class="si-loading-spinner" style="display:inline-block;"></div> Testing connectivity...');
+            apmApi('/v1/monitors/' + encodeURIComponent(currentTarget.target_id) + '/test', { method: 'POST' })
+                .then(function (data) {
+                    if (!data) throw new Error('empty response');
+                    if (data.status === 'error') {
+                        setResult('<div class="apm-result-error">Test failed: ' + escapeHtml(String(data.reason || 'unknown')) + '</div>');
+                        return;
+                    }
+                    var html = '<div class="apm-result-ok">status: <strong>ok</strong> · signal_count: <strong>' + data.signal_count + '</strong></div>';
+                    if (data.signals && data.signals.length) {
+                        html += '<div class="apm-signal-list">' + data.signals.map(renderSignal).join('') + '</div>';
+                    }
+                    setResult(html);
+                })
+                .catch(function (err) {
+                    setResult('<div class="apm-result-error">' + escapeHtml(err.message) + '</div>');
+                });
+        }
+
+        // ── List ──
+        function loadOverlay(show) {
+            var ov = getEl('apmLoadingOverlay');
+            if (ov) ov.classList.toggle('visible', !!show);
+        }
+
+        function refreshList() {
+            loadOverlay(true);
+            apmApi('/v1/monitors', {})
+                .then(function (data) {
+                    // 后端 /v1/monitors 已按 created_at DESC 排序（新创建的排最前），前端直接按序渲染
+                    targets = (data && data.items) || [];
+                    renderList();
+                })
+                .catch(function (err) {
+                    window._showToast('Load targets failed: ' + err.message, 'error');
+                })
+                .finally(function () { loadOverlay(false); });
+        }
+
+        function renderList() {
+            var tbody = getEl('apmTableBody');
+            if (!tbody) return;
+            var filtered = targets.filter(function (t) {
+                if (currentSignalFilter && t.signal_type !== currentSignalFilter) return false;
+                if (currentSearch) {
+                    var svc = (t.service || '').toLowerCase();
+                    var tid = (t.target_id || '').toLowerCase();
+                    return svc.indexOf(currentSearch) !== -1 || tid.indexOf(currentSearch) !== -1;
+                }
+                return true;
+            });
+            tbody.innerHTML = filtered.map(function (t) {
+                var sched = t.schedule || {};
+                return '<tr data-id="' + escapeHtml(t.target_id) + '">' +
+                    '<td class="apm-tid">' + escapeHtml(t.target_id) + '</td>' +
+                    '<td>' + escapeHtml(t.service) + '</td>' +
+                    '<td>' + escapeHtml(t.signal_type) + '</td>' +
+                    '<td>' + escapeHtml(t.source_type) + '</td>' +
+                    '<td>' + escapeHtml(t.domain) + '</td>' +
+                    '<td>' + (sched.interval_sec || '-') + 's</td>' +
+                    '<td>' + (t.enabled ? '<span class="apm-badge apm-badge-on">enabled</span>' : '<span class="apm-badge apm-badge-off">disabled</span>') + '</td>' +
+                    '<td class="apm-actions">' +
+                        '<button class="btn btn-outline apm-row-btn" data-act="edit" data-id="' + escapeHtml(t.target_id) + '">Edit</button>' +
+                        '<button class="btn btn-outline apm-row-btn" data-act="test" data-id="' + escapeHtml(t.target_id) + '">Test</button>' +
+                        '<button class="btn apm-row-btn apm-row-del" data-act="del" data-id="' + escapeHtml(t.target_id) + '">Delete</button>' +
+                    '</td>' +
+                    '</tr>';
+            }).join('');
+            getEl('apmRowCount').textContent = filtered.length;
+        }
+
+        function findTarget(id) {
+            for (var i = 0; i < targets.length; i++) { if (targets[i].target_id === id) return targets[i]; }
+            return null;
+        }
+
+        function onListAction(e) {
+            var btn = e.target.closest('.apm-row-btn');
+            if (!btn) return;
+            e.stopPropagation();
+            var id = btn.getAttribute('data-id');
+            var act = btn.getAttribute('data-act');
+            var t = findTarget(id);
+            if (!t) return;
+            if (act === 'edit') {
+                openModal();
+                fillForm(t);
+            } else if (act === 'test') {
+                openModal();
+                fillForm(t);
+                connectivityTest();
+            } else if (act === 'del') {
+                confirmDialog('Delete monitor target ' + id + '?', function () {
+                    apmApi('/v1/monitors/' + encodeURIComponent(id), { method: 'DELETE' })
+                        .then(function () {
+                            window._showToast('Deleted ' + id, 'success');
+                            refreshList();
+                        })
+                        .catch(function (err) {
+                            window._showToast('Delete failed: ' + err.message, 'error');
+                        });
+                });
+            }
+        }
+
+        // ── Template dropdown ──
+        function applyTemplate() {
+            var v = getEl('apmFieldTemplate').value;
+            var tmpl = {
+                prometheus: { metric: 'metric.__name__', value: 'value[1]', timestamp: 'value[0]', service: 'service' },
+                flat: { metric: 'metric', value: 'value', timestamp: 'timestamp', service: 'service' },
+                elk: { level: '_source.level', message: '_source.message', stack_trace: '_source.stack_trace', timestamp: '_source.@timestamp' }
+            };
+            if (tmpl[v]) getEl('apmFieldMapping').value = JSON.stringify(tmpl[v], null, 2);
+        }
+
+        // ── Wire events ──
+        getEl('apmSaveBtn').addEventListener('click', saveTarget);
+        getEl('apmTestBtn').addEventListener('click', connectivityTest);
+        getEl('apmResetBtn').addEventListener('click', function () { resetForm(); });
+        getEl('apmNewBtn').addEventListener('click', function () {
+            resetForm(true);
+            openModal();
+        });
+        getEl('apmFieldTemplate').addEventListener('change', applyTemplate);
+        getEl('apmSearch').addEventListener('input', function () {
+            var self = this;
+            clearTimeout(self._timer);
+            self._timer = setTimeout(function () {
+                currentSearch = self.value.trim().toLowerCase();
+                renderList();
+            }, 200);
+        });
+        getEl('apmSignalFilter').addEventListener('change', function () {
+            currentSignalFilter = this.value;
+            renderList();
+        });
+        getEl('apmTableBody').addEventListener('click', onListAction);
+        getEl('apmModalClose').addEventListener('click', closeModal);
+        getEl('apmModalOverlay').addEventListener('click', function (e) {
+            if (e.target === this) closeModal();
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && getEl('apmModalOverlay').classList.contains('open')) closeModal();
+        });
+        // ── Confirm dialog 事件 ──
+        getEl('confirmModalOk').addEventListener('click', runConfirm);
+        getEl('confirmModalCancel').addEventListener('click', closeConfirm);
+        getEl('confirmModalClose').addEventListener('click', closeConfirm);
+        getEl('confirmModalOverlay').addEventListener('click', function (e) {
+            if (e.target === this) closeConfirm();
+        });
+
+        // 切回本页时自动刷新列表
+        _pageRefreshers['page-monitor-targets'] = function () { refreshList(); };
+
+        // 初始化加载
+        refreshList();
+    }
+
+    // ── Domain Rules ────────────────────────────────────────────
+    function initDomainConfig() {
+        // 后端地址（可配置）：默认 http://localhost:7070（后端 .env APM_PORT=7070）。
+        // 可用 localStorage 覆盖：apmBaseUrl / apmTenantId / apmApiKey。
+        var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
+        var TENANT_ID = localStorage.getItem('apmTenantId') || 'default';
+        var API_KEY = localStorage.getItem('apmApiKey') || '';
+
+        var domains = [];
+        var currentDomain = '';        // 编辑中的域；'' = New Domain
+        var currentDomainData = null;  // currentDomain 已保存的完整 config（Reset 用）
+        var currentSearch = '';
+        var pluginDetectors = [];    // GET /v1/plugins 的 detector 名（后端返回单数键）
+        var pluginSuppressors = [];  // GET /v1/plugins 的 suppressor 名
+
+        var SEVERITIES = ['warning', 'high', 'critical'];
+
+        // ── API 封装（同 initMonitorTargets）──
+        function apmApi(path, options) {
+            var opts = options || {};
+            var headers = {};
+            headers['X-Tenant-Id'] = TENANT_ID;
+            if (API_KEY) headers['Authorization'] = 'Bearer ' + API_KEY;
+            if (opts.body !== undefined) headers['Content-Type'] = 'application/json';
+            return fetch(APM_BASE_URL + path, {
+                method: opts.method || 'GET',
+                headers: headers,
+                body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
+            }).then(function (res) {
+                return res.text().then(function (text) {
+                    var data = null;
+                    if (text) { try { data = JSON.parse(text); } catch (e) { data = text; } }
+                    if (!res.ok) {
+                        var reason = 'HTTP ' + res.status;
+                        if (data && typeof data === 'object' && data.reason) reason = data.reason;
+                        var err = new Error(reason);
+                        err.status = res.status;
+                        err.data = data;
+                        throw err;
+                    }
+                    return data;
+                });
+            });
+        }
+
+        function getEl(id) { return document.getElementById(id); }
+
+        function openDcModal() { getEl('dcModalOverlay').classList.add('open'); }
+        function closeDcModal() { getEl('dcModalOverlay').classList.remove('open'); }
+        function loadOverlay(show) {
+            var ov = getEl('dcLoadingOverlay');
+            if (ov) ov.classList.toggle('visible', !!show);
+        }
+        function loadPlugins() {
+            return apmApi('/v1/plugins').then(function (data) {
+                pluginDetectors = (data && data.detector) || [];
+                pluginSuppressors = (data && data.suppressor) || [];
+            }).catch(function () {
+                // 插件列表拉取失败 → 回退文本输入，不阻塞编辑
+                pluginDetectors = [];
+                pluginSuppressors = [];
+            });
+        }
+
+        // ── Confirm dialog（同 initMonitorTargets 的通用确认弹窗）──
+        // 两模块共用 confirmModalOverlay，靠各自闭包 _confirmCb null 守卫互不干扰。
+        var _confirmCb = null;
+        function confirmDialog(message, onConfirm) {
+            _confirmCb = onConfirm || null;
+            getEl('confirmModalMsg').textContent = message;
+            getEl('confirmModalOverlay').classList.add('open');
+        }
+        function closeConfirm() {
+            _confirmCb = null;
+            getEl('confirmModalOverlay').classList.remove('open');
+        }
+        function runConfirm() {
+            var cb = _confirmCb;
+            closeConfirm();
+            if (typeof cb === 'function') cb();
+        }
+
+        // ── 键值对行 ──
+        function addParamRow(rowsEl, key, value) {
+            var row = document.createElement('div');
+            row.className = 'kv-row';
+            row.innerHTML =
+                '<input type="text" class="kv-key" placeholder="param name" value="' + escapeHtml(key || '') + '">' +
+                '<span class="kv-eq">=</span>' +
+                '<input type="text" class="kv-value" placeholder="value (JSON)" value="' + escapeHtml(value !== undefined && value !== null ? String(value) : '') + '">' +
+                '<button type="button" class="kv-del" title="Remove param">&times;</button>';
+            rowsEl.appendChild(row);
+        }
+
+        function kvHtmlFromParams(params) {
+            var keys = Object.keys(params || {});
+            if (!keys.length) return '';
+            return keys.map(function (k) {
+                var v = params[k];
+                return '<div class="kv-row">' +
+                    '<input type="text" class="kv-key" placeholder="param name" value="' + escapeHtml(k) + '">' +
+                    '<span class="kv-eq">=</span>' +
+                    '<input type="text" class="kv-value" placeholder="value (JSON)" value="' + escapeHtml(v !== null && v !== undefined ? String(v) : '') + '">' +
+                    '<button type="button" class="kv-del" title="Remove param">&times;</button></div>';
+            }).join('');
+        }
+
+        function parseParamValue(raw) {
+            var trimmed = (raw || '').trim();
+            if (trimmed === '') return '';
+            try { return JSON.parse(trimmed); } catch (e) { return raw; }
+        }
+
+        function collectParams(card) {
+            var params = {};
+            var rows = card.querySelectorAll('.kv-row');
+            for (var i = 0; i < rows.length; i++) {
+                var key = rows[i].querySelector('.kv-key').value.trim();
+                if (!key) continue;
+                params[key] = parseParamValue(rows[i].querySelector('.kv-value').value);
+            }
+            return params;
+        }
+
+        function severityOptions(selected) {
+            return SEVERITIES.map(function (s) {
+                return '<option value="' + s + '"' + (s === selected ? ' selected' : '') + '>' + s + '</option>';
+            }).join('');
+        }
+
+        // 插件下拉：plugins 拉取成功用下拉，失败回退文本输入（不阻塞编辑）
+        function pluginSelect(cls, options, value) {
+            if (options.length) {
+                return '<select class="' + cls + '">' + options.map(function (p) {
+                    return '<option value="' + escapeHtml(p) + '"' + (p === value ? ' selected' : '') + '>' + escapeHtml(p) + '</option>';
+                }).join('') + '</select>';
+            }
+            return '<input type="text" class="' + cls + '" value="' + escapeHtml(value || '') + '" placeholder="plugin name">';
+        }
+
+        function renderDetectors(list) {
+            var container = getEl('dcDetectors');
+            container.innerHTML = '';
+            (list || []).forEach(function (d, i) {
+                var signal = typeof d.signal === 'string' ? d.signal : (d.signal ? JSON.stringify(d.signal) : '');
+                var card = document.createElement('div');
+                card.className = 'rule-card';
+                card.innerHTML =
+                    '<div class="rule-card-head">' +
+                        '<span class="rule-card-title">Detector ' + (i + 1) + '</span>' +
+                        '<button type="button" class="btn apm-row-btn apm-row-del rule-del">Delete</button>' +
+                    '</div>' +
+                    '<div class="rule-card-fields">' +
+                        '<label class="rule-field">Signal <input type="text" class="dc-signal" placeholder="cpu_usage or JSON matcher" value="' + escapeHtml(signal) + '"></label>' +
+                        '<label class="rule-field">Plugin ' + pluginSelect('dc-plugin', pluginDetectors, d.plugin) + '</label>' +
+                        '<label class="rule-field">Severity <select class="dc-severity">' + severityOptions(d.severity || 'warning') + '</select></label>' +
+                    '</div>' +
+                    '<div class="rule-params">' +
+                        '<div class="rule-params-title">Params:</div>' +
+                        '<div class="kv-rows">' + (kvHtmlFromParams(d.params) || '<div class="kv-empty">No params</div>') + '</div>' +
+                        '<button type="button" class="btn btn-outline kv-add">+ Add Param</button>' +
+                    '</div>';
+                container.appendChild(card);
+            });
+        }
+
+        function renderSuppressors(list) {
+            var container = getEl('dcSuppressors');
+            container.innerHTML = '';
+            (list || []).forEach(function (s, i) {
+                var card = document.createElement('div');
+                card.className = 'rule-card';
+                // 内置抑制器（blacklist/maintenance_window）不消费 params，条目在独立表，故卡片无需 Params
+                card.innerHTML =
+                    '<div class="rule-card-head">' +
+                        '<span class="rule-card-title">Suppressor ' + (i + 1) + '</span>' +
+                        '<button type="button" class="btn apm-row-btn apm-row-del rule-del">Delete</button>' +
+                    '</div>' +
+                    '<div class="rule-card-fields">' +
+                        '<label class="rule-field">Name ' + pluginSelect('dc-name', pluginSuppressors, s.name) + '</label>' +
+                    '</div>';
+                container.appendChild(card);
+            });
+        }
+
+        function addEmptyCard(containerId, isDetector) {
+            var container = getEl(containerId);
+            var card = document.createElement('div');
+            card.className = 'rule-card';
+            var n = container.querySelectorAll('.rule-card').length + 1;
+            card.innerHTML =
+                '<div class="rule-card-head">' +
+                    '<span class="rule-card-title">' + (isDetector ? 'Detector' : 'Suppressor') + ' ' + n + '</span>' +
+                    '<button type="button" class="btn apm-row-btn apm-row-del rule-del">Delete</button>' +
+                '</div>' +
+                '<div class="rule-card-fields">' +
+                    (isDetector
+                        ? '<label class="rule-field">Signal <input type="text" class="dc-signal" placeholder="cpu_usage or JSON matcher"></label>' +
+                          '<label class="rule-field">Plugin ' + pluginSelect('dc-plugin', pluginDetectors, '') + '</label>' +
+                          '<label class="rule-field">Severity <select class="dc-severity">' + severityOptions('warning') + '</select></label>'
+                        : '<label class="rule-field">Name ' + pluginSelect('dc-name', pluginSuppressors, '') + '</label>') +
+                '</div>' +
+                // 只有 Detector 需要 Params；Suppressor 的 params 内置插件不消费，不渲染
+                (isDetector
+                    ? '<div class="rule-params">' +
+                        '<div class="rule-params-title">Params:</div>' +
+                        '<div class="kv-rows"><div class="kv-empty">No params</div></div>' +
+                        '<button type="button" class="btn btn-outline kv-add">+ Add Param</button>' +
+                      '</div>'
+                    : '');
+            container.appendChild(card);
+            renumberCards();
+        }
+
+        function renumberCards() {
+            ['dcDetectors', 'dcSuppressors'].forEach(function (id) {
+                var container = getEl(id);
+                var label = id === 'dcDetectors' ? 'Detector' : 'Suppressor';
+                var cards = container.querySelectorAll('.rule-card');
+                for (var i = 0; i < cards.length; i++) {
+                    var title = cards[i].querySelector('.rule-card-title');
+                    if (title) title.textContent = label + ' ' + (i + 1);
+                }
+            });
+        }
+
+        // ── 卡片内交互（事件委托）──
+        function wireCardContainer(id) {
+            getEl(id).addEventListener('click', function (e) {
+                var t = e.target;
+                if (t.classList.contains('rule-del')) {
+                    var card = t.closest('.rule-card');
+                    var what = card.querySelector('.rule-card-title').textContent;
+                    confirmDialog('Delete ' + what + '?', function () {
+                        card.remove();
+                        renumberCards();
+                    });
+                } else if (t.classList.contains('kv-add')) {
+                    addParamRow(t.closest('.rule-card').querySelector('.kv-rows'), '', '');
+                } else if (t.classList.contains('kv-del')) {
+                    t.closest('.kv-row').remove();
+                }
+            });
+        }
+
+        // ── Collect → DomainConfig ──
+        function collectDetectors() {
+            var out = [];
+            var cards = getEl('dcDetectors').querySelectorAll('.rule-card');
+            for (var i = 0; i < cards.length; i++) {
+                var card = cards[i];
+                var signalRaw = card.querySelector('.dc-signal').value.trim();
+                if (!signalRaw) continue;
+                var signal = signalRaw;
+                if (signalRaw.charAt(0) === '{') {
+                    try { signal = JSON.parse(signalRaw); } catch (e) { signal = signalRaw; }
+                }
+                var d = {
+                    signal: signal,
+                    plugin: card.querySelector('.dc-plugin').value.trim(),
+                    severity: card.querySelector('.dc-severity').value
+                };
+                var params = collectParams(card);
+                if (Object.keys(params).length) d.params = params;
+                out.push(d);
+            }
+            return out;
+        }
+
+        function collectSuppressors() {
+            var out = [];
+            var cards = getEl('dcSuppressors').querySelectorAll('.rule-card');
+            for (var i = 0; i < cards.length; i++) {
+                var card = cards[i];
+                var name = card.querySelector('.dc-name').value.trim();
+                if (!name) continue;
+                // 抑制器只提交插件名；params 不消费（条目在 blacklist/maintenance_window 表）
+                out.push({ name: name });
+            }
+            return out;
+        }
+
+        function collect() {
+            // 按漏斗顺序组装：L0 suppressors → L1 detectors → L2 correlation → L3 verify
+            return {
+                suppressors: collectSuppressors(),
+                detectors: collectDetectors(),
+                correlation: {
+                    metric_log_window_sec: parseInt(getEl('dcMetricLogWindow').value, 10) || 300,
+                    change_window_sec: parseInt(getEl('dcChangeWindow').value, 10) || 300
+                },
+                verify: {
+                    persistence_rounds: parseInt(getEl('dcPersistenceRounds').value, 10) || 2,
+                    false_positive_threshold: parseFloat(getEl('dcFpThreshold').value) || 0.6,
+                    min_samples: parseInt(getEl('dcMinSamples').value, 10) || 20
+                }
+            };
+        }
+
+        // ── Load / Save ──
+        function fillStatic(config) {
+            var corr = config.correlation || {};
+            var ver = config.verify || {};
+            getEl('dcMetricLogWindow').value = corr.metric_log_window_sec != null ? corr.metric_log_window_sec : 300;
+            getEl('dcChangeWindow').value = corr.change_window_sec != null ? corr.change_window_sec : 300;
+            getEl('dcPersistenceRounds').value = ver.persistence_rounds != null ? ver.persistence_rounds : 2;
+            getEl('dcFpThreshold').value = ver.false_positive_threshold != null ? ver.false_positive_threshold : 0.6;
+            getEl('dcMinSamples').value = ver.min_samples != null ? ver.min_samples : 20;
+        }
+
+        // ── New / Edit ──
+        function newDomain() {
+            currentDomain = '';
+            currentDomainData = null;
+            getEl('dcDomainName').value = '';
+            getEl('dcDomainName').readOnly = false;
+            getEl('dcFormHint').textContent = 'New Domain';
+            getEl('dcDetectors').innerHTML = '';
+            getEl('dcSuppressors').innerHTML = '';
+            fillStatic({});
+            openDcModal();
+            loadPlugins(); // 预热插件下拉（失败回退文本输入）
+        }
+
+        function editDomain(domain) {
+            currentDomain = domain;
+            currentDomainData = null;
+            getEl('dcDomainName').value = domain;
+            getEl('dcDomainName').readOnly = true;  // 编辑态锁定域名
+            getEl('dcFormHint').textContent = 'Editing ' + domain;
+            Promise.all([
+                apmApi('/v1/config/' + encodeURIComponent(domain)),
+                loadPlugins()
+            ]).then(function (results) {
+                var data = results[0];
+                var config = data.config || {};
+                currentDomainData = config;
+                renderDetectors(config.detectors || []);
+                renderSuppressors(config.suppressors || []);
+                fillStatic(config);
+            }).catch(function (err) {
+                window._showToast('Load failed: ' + err.message, 'error');
+                closeDcModal();
+            });
+        }
+
+        // ── List ──
+        function renderList() {
+            var tbody = getEl('dcTableBody');
+            if (!tbody) return;
+            var filtered = domains.filter(function (d) {
+                if (!currentSearch) return true;
+                return (d.domain || '').toLowerCase().indexOf(currentSearch) !== -1;
+            });
+            if (!filtered.length) {
+                tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-tertiary);text-align:center;padding:24px;">No domains configured. Click "New Domain" to create one.</td></tr>';
+                getEl('dcRowCount').textContent = 0;
+                return;
+            }
+            tbody.innerHTML = filtered.map(function (d) {
+                return '<tr data-id="' + escapeHtml(d.domain) + '">' +
+                    '<td>' + escapeHtml(d.domain) + '</td>' +
+                    '<td>' + (d.enabled ? '<span class="apm-badge apm-badge-on">enabled</span>' : '<span class="apm-badge apm-badge-off">disabled</span>') + '</td>' +
+                    '<td>' + (d.version != null ? d.version : '-') + '</td>' +
+                    '<td class="apm-actions">' +
+                        '<button class="btn btn-outline apm-row-btn" data-act="edit" data-id="' + escapeHtml(d.domain) + '">Edit</button>' +
+                        '<button class="btn apm-row-btn apm-row-del" data-act="del" data-id="' + escapeHtml(d.domain) + '">Delete</button>' +
+                    '</td>' +
+                    '</tr>';
+            }).join('');
+            getEl('dcRowCount').textContent = filtered.length;
+        }
+
+        function refresh() {
+            loadOverlay(true);
+            apmApi('/v1/config').then(function (data) {
+                domains = (data && data.items) || [];
+                renderList();
+            }).catch(function (err) {
+                window._showToast('Failed to list domains: ' + err.message, 'error');
+            }).finally(function () { loadOverlay(false); });
+        }
+
+        function onListAction(e) {
+            var btn = e.target.closest('.apm-row-btn');
+            if (!btn) return;
+            var domain = btn.getAttribute('data-id');
+            if (!domain) return;
+            if (btn.getAttribute('data-act') === 'edit') {
+                openDcModal();
+                editDomain(domain);
+            } else if (btn.getAttribute('data-act') === 'del') {
+                confirmDialog('Delete domain config "' + domain + '"?', function () {
+                    deleteDomain(domain);
+                });
+            }
+        }
+
+        // ── Save / Delete / Reset ──
+        function save() {
+            var name = getEl('dcDomainName').value.trim();
+            if (!/^[a-zA-Z0-9_-]{1,32}$/.test(name)) {
+                window._showToast('Domain name: a-z 0-9 _ - only, ≤32 chars', 'error');
+                return;
+            }
+            if (currentDomain && name !== currentDomain) {
+                // readOnly 已锁，双保险防编辑态域名被篡改
+                window._showToast('Domain name is locked while editing', 'error');
+                return;
+            }
+            var body = collect();
+            apmApi('/v1/config/' + encodeURIComponent(name), { method: 'PUT', body: body })
+                .then(function (data) {
+                    window._showToast('Saved ' + name + ' v' + data.version, 'success');
+                    closeDcModal();
+                    refresh(); // 保存成功后刷新列表（新域 / version+1 可见）
+                })
+                .catch(function (err) {
+                    // 未配置 APM_API_KEYS 时 PUT 返回 401/403，展示后端 reason 引导配置
+                    window._showToast('Save failed: ' + err.message, 'error');
+                });
+        }
+
+        function deleteDomain(domain) {
+            apmApi('/v1/config/' + encodeURIComponent(domain), { method: 'DELETE' })
+                .then(function () {
+                    window._showToast('Deleted domain ' + domain, 'success');
+                    refresh();
+                })
+                .catch(function (err) {
+                    // 400（被引用）/ 404 展示后端 reason
+                    window._showToast('Delete failed: ' + err.message, 'error');
+                });
+        }
+
+        function resetForm() {
+            if (currentDomainData) {
+                // Edit 态：恢复已保存内容（丢弃未保存的修改）
+                renderDetectors(currentDomainData.detectors || []);
+                renderSuppressors(currentDomainData.suppressors || []);
+                fillStatic(currentDomainData);
+                window._showToast('Form reset to saved values', 'info');
+                return;
+            }
+            // New 态：清空
+            getEl('dcDomainName').value = '';
+            getEl('dcDetectors').innerHTML = '';
+            getEl('dcSuppressors').innerHTML = '';
+            fillStatic({});
+        }
+
+        // ── Wire events ──
+        getEl('dcNewBtn').addEventListener('click', newDomain);
+        getEl('dcSaveBtn').addEventListener('click', save);
+        getEl('dcResetBtn').addEventListener('click', function () { resetForm(); });
+        getEl('dcModalClose').addEventListener('click', closeDcModal);
+        getEl('dcModalOverlay').addEventListener('click', function (e) {
+            if (e.target === this) closeDcModal();
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && getEl('dcModalOverlay').classList.contains('open')) closeDcModal();
+        });
+        getEl('dcAddDetector').addEventListener('click', function () { addEmptyCard('dcDetectors', true); });
+        getEl('dcAddSuppressor').addEventListener('click', function () { addEmptyCard('dcSuppressors', false); });
+        wireCardContainer('dcDetectors');
+        wireCardContainer('dcSuppressors');
+        getEl('dcTableBody').addEventListener('click', onListAction);
+        getEl('dcSearch').addEventListener('input', function () {
+            var self = this;
+            clearTimeout(self._timer);
+            self._timer = setTimeout(function () {
+                currentSearch = self.value.trim().toLowerCase();
+                renderList();
+            }, 200);
+        });
+        getEl('confirmModalOk').addEventListener('click', runConfirm);
+        getEl('confirmModalCancel').addEventListener('click', closeConfirm);
+        getEl('confirmModalClose').addEventListener('click', closeConfirm);
+        getEl('confirmModalOverlay').addEventListener('click', function (e) {
+            if (e.target === this) closeConfirm();
+        });
+
+        // 切回本页时自动刷新域列表
+        _pageRefreshers['page-domain-config'] = function () { refresh(); };
+
+        // 初始化加载
+        refresh();
+    }
+
+    // ── Agent Registry（Agent Fleet）────────────────────────────
+    function initAgentRegistry() {
+        // 后端地址（可配置）：默认 http://localhost:8000。可用 localStorage 覆盖：agentsBaseUrl。
+        var AGENT_API_BASE = localStorage.getItem('agentsBaseUrl') || 'http://localhost:8000';
+
+        // 流水线阶段分组配置：key 对应后端 /agents 返回的 stage 字段
+        // （detect/diagnose/fix/verify/deliver/learn），按后端下发数据驱动分组。
+        var AGENT_GROUPS = {
+            detect:   { key: 'detect',   label: 'DETECT',   name: '检测', color: '#3b82f6' },
+            diagnose: { key: 'diagnose', label: 'DIAGNOSE', name: '诊断', color: '#8b5cf6' },
+            fix:      { key: 'fix',      label: 'FIX',      name: '修复', color: '#f59e0b' },
+            verify:   { key: 'verify',   label: 'VERIFY',   name: '验证', color: '#10b981' },
+            deliver:  { key: 'deliver',  label: 'DELIVER',  name: '发布', color: '#14b8a6' },
+            learn:    { key: 'learn',    label: 'LEARN',    name: '复盘', color: '#ec4899' }
+        };
+        var GROUP_ORDER = ['detect', 'diagnose', 'fix', 'verify', 'deliver', 'learn'];
+        var OTHER_GROUP = { key: 'other', label: 'OTHER', name: '未分组', color: '#6b7280' };
+
+        var agents = [];
+        var currentSearch = '';
+
+        function getEl(id) { return document.getElementById(id); }
+        function setText(id, val) {
+            var el = getEl(id);
+            if (el) el.textContent = String(val);
+        }
+
+        // 取 name 各连字符段首字母，最多 2 个（root-cause → RC）
+        function avatarInitials(name) {
+            var parts = String(name || '').split('-').filter(Boolean);
+            var initials = parts.slice(0, 2).map(function (p) { return p.charAt(0).toUpperCase(); }).join('');
+            return initials || '?';
+        }
+
+        function groupOf(agent) {
+            // 分组完全由后端下发的 stage 字段决定；未知/缺失 stage 归 OTHER 兜底
+            var g = AGENT_GROUPS[agent.stage];
+            return g ? g : OTHER_GROUP;
+        }
+
+        function loadAgents() {
+            var overlay = getEl('agLoadingOverlay');
+            var errorBar = getEl('agErrorBar');
+            if (overlay) overlay.classList.add('visible');
+            if (errorBar) errorBar.classList.remove('visible');
+            fetch(AGENT_API_BASE + '/agents').then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function (data) {
+                agents = Array.isArray(data) ? data : [];
+                renderFleet();
+                if (overlay) overlay.classList.remove('visible');
+            }).catch(function (err) {
+                if (overlay) overlay.classList.remove('visible');
+                if (errorBar) {
+                    setText('agErrorText', 'Failed to load agents: ' + (err && err.message ? err.message : 'network error'));
+                    errorBar.classList.add('visible');
+                }
+            });
+        }
+
+        function filteredAgents() {
+            var query = currentSearch.trim().toLowerCase();
+            return agents.filter(function (a) {
+                if (query) {
+                    var hay = (a.name || '').toLowerCase() + ' ' + (a.description || '').toLowerCase();
+                    if (hay.indexOf(query) === -1) return false;
+                }
+                return true;
+            });
+        }
+
+        function renderKpis(list) {
+            var toolCount = 0;
+            var distinct = {};
+            list.forEach(function (a) {
+                var tools = a.tools || [];
+                toolCount += tools.length;
+                tools.forEach(function (t) { distinct[t] = true; });
+            });
+            var stages = {};
+            list.forEach(function (a) { stages[groupOf(a).key] = true; });
+            var ready = list.filter(function (a) { return (a.tools || []).length > 0; }).length;
+            setText('agTotalAgents', list.length);
+            setText('agTotalTools', toolCount);
+            setText('agDistinctTools', Object.keys(distinct).length);
+            setText('agStages', Object.keys(stages).length);
+            setText('agReady', ready);
+        }
+
+        function renderAgentCard(a, g) {
+            var tools = a.tools || [];
+            var toolsHtml = tools.length > 0
+                ? tools.map(function (t) { return '<span class="agent-tool-badge">' + escapeHtml(t) + '</span>'; }).join('')
+                : '<span class="agent-tools-empty">no tools</span>';
+            return '<div class="agent-card">' +
+                '<div class="agent-card-head">' +
+                    '<span class="agent-avatar" style="background:' + g.color + ';">' + escapeHtml(avatarInitials(a.name)) + '</span>' +
+                    '<span class="agent-card-name">' + escapeHtml(a.name) + '</span>' +
+                    '<span class="agent-tool-count">' + tools.length + (tools.length === 1 ? ' tool' : ' tools') + '</span>' +
+                '</div>' +
+                '<div class="agent-card-desc">' + escapeHtml(a.description || '') + '</div>' +
+                '<div class="agent-tools">' + toolsHtml + '</div>' +
+            '</div>';
+        }
+
+        function renderFleet() {
+            var list = filteredAgents();
+            var container = getEl('agFleet');
+            var empty = getEl('agEmptyState');
+            if (!container) return;
+            renderKpis(list);
+            if (list.length === 0) {
+                container.innerHTML = '';
+                if (empty) empty.style.display = 'block';
+                return;
+            }
+            if (empty) empty.style.display = 'none';
+
+            // 分组（按 GROUP_ORDER 阶段顺序，未知 stage 归 OTHER）
+            var sections = GROUP_ORDER.map(function (key) { return { group: AGENT_GROUPS[key], items: [] }; });
+            sections.push({ group: OTHER_GROUP, items: [] });
+            list.forEach(function (a) {
+                var g = groupOf(a);
+                var sec = null;
+                for (var i = 0; i < sections.length; i++) {
+                    if (sections[i].group.key === g.key) { sec = sections[i]; break; }
+                }
+                if (!sec) sec = sections[sections.length - 1];
+                sec.items.push(a);
+            });
+
+            var html = '';
+            sections.forEach(function (sec) {
+                if (sec.items.length === 0) return;
+                var g = sec.group;
+                html += '<div class="agent-group-section">';
+                html += '<div class="agent-group-title" style="border-left-color:' + g.color + ';">' + g.label + ' · ' + g.name +
+                    ' <span class="agent-group-count">' + sec.items.length + (sec.items.length === 1 ? ' agent' : ' agents') + '</span></div>';
+                html += '<div class="agent-fleet-grid">';
+                sec.items.forEach(function (a) { html += renderAgentCard(a, g); });
+                html += '</div></div>';
+            });
+            container.innerHTML = html;
+        }
+
+        function bindEvents() {
+            var search = getEl('agSearch');
+            if (search) search.addEventListener('input', function () {
+                currentSearch = search.value;
+                renderFleet();
+            });
+            var reset = getEl('agResetBtn');
+            if (reset) reset.addEventListener('click', function () {
+                currentSearch = '';
+                if (search) search.value = '';
+                renderFleet();
+            });
+            var refreshBtn = getEl('agRefreshBtn');
+            if (refreshBtn) refreshBtn.addEventListener('click', function () {
+                var self = this;
+                self.classList.add('spinning');
+                self.disabled = true;
+                loadAgents();
+                setTimeout(function () { self.classList.remove('spinning'); self.disabled = false; }, 600);
+            });
+            var retry = getEl('agRetryBtn');
+            if (retry) retry.addEventListener('click', loadAgents);
+        }
+
+        // 切回本页时自动刷新
+        _pageRefreshers['page-agents'] = function () { loadAgents(); };
+
+        bindEvents();
+        loadAgents();
+    }
+
     // ── Init ────────────────────────────────────────────────────
     function init() {
         initSidebar();
@@ -3662,6 +5180,10 @@
         initSmartInspection();
         initMetricsAnalysis();
         initLogAnalysis();
+        initProblems();
+        initMonitorTargets();
+        initDomainConfig();
+        initAgentRegistry();
         initFilterChips();
         initTableSorting();
         initButtonGroup();
