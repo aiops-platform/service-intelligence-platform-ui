@@ -133,6 +133,15 @@
                 <div class="sidebar-item active" data-page="agent-registry">
                     <span class="sidebar-label">Agent Registry</span>
                 </div>
+                <div class="sidebar-item" data-page="workflow-studio">
+                    <span class="sidebar-label">Workflow Studio</span>
+                </div>
+                <div class="sidebar-item" data-page="bug-solve">
+                    <span class="sidebar-label">Bug Solve</span>
+                </div>
+                <div class="sidebar-item" data-page="mcp-servers">
+                    <span class="sidebar-label">MCP Server Config</span>
+                </div>
             </div>
         </div>
     </aside>
@@ -1408,6 +1417,278 @@
             </div>
         </div>
     </div><!-- /#page-agents -->
+
+    <!-- ====== Workflow Studio Page ====== -->
+    <div id="page-workflow-studio" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Agents <span class="breadcrumb-sep">&rsaquo;</span> Agent Fleet <span class="breadcrumb-sep">&rsaquo;</span> <strong>Workflow Studio</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Workflow Studio <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">AI agent workflow orchestration · paste YAML &rarr; preview graph &rarr; save / edit / delete</span></h1>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button class="si-refresh-btn" id="wsRefreshBtn" title="Refresh saved workflows">
+                    <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <div class="ws-body">
+            <!-- Left: editor + saved list -->
+            <div class="ws-panel">
+                <div class="apm-field">
+                    <label for="wsName">Workflow Name <span class="apm-req">*</span></label>
+                    <input type="text" id="wsName" placeholder="bug-fix-pipeline" maxlength="64">
+                </div>
+                <div class="apm-field">
+                    <label for="wsYaml">Workflow YAML <span class="apm-req">*</span></label>
+                    <textarea id="wsYaml" rows="18" placeholder="name: my-workflow&#10;nodes:&#10;  triage: { agent: triage }&#10;  rca: { agent: root-cause, params: { bug: &quot;$.nodes.triage.output.summary&quot; } }&#10;edges:&#10;  - { from: triage, to: rca }&#10;" spellcheck="false"></textarea>
+                </div>
+                <div class="ws-actions">
+                    <button class="btn btn-outline" id="wsPreviewBtn">Preview</button>
+                    <button class="btn btn-outline" id="wsNewBtn">New</button>
+                    <button class="btn btn-yellow" id="wsSaveBtn">Save Workflow</button>
+                </div>
+                <div class="ws-error" id="wsError" style="display:none;"></div>
+
+                <div class="ws-list-title">Saved Workflows</div>
+                <div class="ws-list" id="wsList">
+                    <div class="ws-list-empty">No saved workflows yet.</div>
+                </div>
+            </div>
+
+            <!-- Right: graph canvas -->
+            <div class="ws-canvas">
+                <div class="ws-canvas-hint" id="wsHint">Paste a workflow YAML, then click <strong>Preview</strong> to render the node graph. Approval nodes are highlighted in purple. Scroll to zoom · drag to pan.</div>
+                <div class="ws-zoom" id="wsZoom">
+                    <svg class="ws-graph" id="wsGraph" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <marker id="wsArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b8fa3"></path>
+                            </marker>
+                        </defs>
+                    </svg>
+                </div>
+                <div class="ws-zoom-controls" id="wsZoomControls" style="display:none;">
+                    <button class="ws-zoom-btn" id="wsZoomOut" title="缩小">−</button>
+                    <button class="ws-zoom-btn" id="wsZoomIn" title="放大">+</button>
+                    <button class="ws-zoom-btn" id="wsZoomFit" title="适配画布">Fit</button>
+                </div>
+            </div>
+        </div>
+    </div><!-- /#page-workflow-studio -->
+
+    <!-- ====== Bug Solve Page ====== -->
+    <div id="page-bug-solve" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Agents <span class="breadcrumb-sep">&rsaquo;</span> Agent Fleet <span class="breadcrumb-sep">&rsaquo;</span> <strong>Bug Solve</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Bug Solve <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">pick a workflow &rarr; paste ticket JSON &rarr; run the agent fleet &rarr; approve / inspect</span></h1>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button class="si-refresh-btn" id="bsRefreshBtn" title="Refresh saved workflows">
+                    <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <div class="bs-body">
+            <!-- Left: workflow + ticket + run controls -->
+            <div class="bs-panel">
+                <div class="apm-field">
+                    <label for="bsWorkflow">Workflow</label>
+                    <select id="bsWorkflow">
+                        <option value="">-- 选择已保存流程 --</option>
+                    </select>
+                </div>
+                <div class="apm-field">
+                    <label for="bsTicket">Ticket JSON</label>
+                    <textarea id="bsTicket" rows="9" spellcheck="false" placeholder="{&#10;  &quot;bug_report&quot;: {&#10;    &quot;title&quot;: &quot;checkout 下单偶发 500&quot;,&#10;    &quot;trace_id&quot;: &quot;abc123&quot;&#10;  }&#10;}"></textarea>
+                </div>
+                <div class="bs-actions">
+                    <button class="btn btn-yellow" id="bsStartBtn">开始解决问题</button>
+                    <button class="btn btn-outline" id="bsStopBtn" style="display:none;">停止</button>
+                </div>
+                <div class="bs-error" id="bsError" style="display:none;"></div>
+
+                <div class="bs-stats" id="bsStats" style="display:none;">
+                    <div class="bs-stat"><span class="bs-stat-label">Run ID</span><span class="bs-stat-value" id="bsRunId">—</span></div>
+                    <div class="bs-stat"><span class="bs-stat-label">状态</span><span class="bs-stat-value" id="bsStatus">—</span></div>
+                    <div class="bs-stat"><span class="bs-stat-label">总 Tokens</span><span class="bs-stat-value" id="bsTokens">0</span></div>
+                    <div class="bs-stat"><span class="bs-stat-label">总 Cost</span><span class="bs-stat-value" id="bsCost">0.0</span></div>
+                </div>
+
+                <div class="bs-approvals-title">待审批</div>
+                <div class="bs-approvals" id="bsApprovals">
+                    <div class="bs-list-empty">暂无待审批项。</div>
+                </div>
+            </div>
+
+            <!-- Right: graph canvas + node detail -->
+            <div class="bs-main">
+                <div class="bs-canvas">
+                    <div class="bs-canvas-hint" id="bsHint">选择流程后预览图；点击「开始解决问题」运行。节点按状态着色：绿=done 蓝=running 灰=pending 红=failed 橙=cancelled 琥珀=待审批。Scroll to zoom · drag to pan.</div>
+                    <div class="bs-zoom" id="bsZoom">
+                        <svg class="bs-graph" id="bsGraph" xmlns="http://www.w3.org/2000/svg">
+                            <defs>
+                                <marker id="bsArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b8fa3"></path>
+                                </marker>
+                            </defs>
+                        </svg>
+                    </div>
+                    <div class="bs-zoom-controls" id="bsZoomControls" style="display:none;">
+                        <button class="bs-zoom-btn" id="bsZoomOut" title="缩小">−</button>
+                        <button class="bs-zoom-btn" id="bsZoomIn" title="放大">+</button>
+                        <button class="bs-zoom-btn" id="bsZoomFit" title="适配画布">Fit</button>
+                    </div>
+                </div>
+                <div class="bs-detail" id="bsDetail"></div>
+            </div>
+        </div>
+    </div><!-- /#page-bug-solve -->
+
+    <!-- ====== MCP Server 配置 Page ====== -->
+    <div id="page-mcp-servers" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Agents <span class="breadcrumb-sep">&rsaquo;</span> Agent Fleet <span class="breadcrumb-sep">&rsaquo;</span> <strong>MCP Server Config</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">MCP Server Config <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">configure a generic MCP server (stdio / HTTP) &rarr; MCP tools coexist with built-in function tools</span></h1>
+            <div style="display:flex;align-items:center;gap:12px;">
+                <button class="si-refresh-btn" id="mcpProbeAllBtn" title="Live re-probe tools for every saved server">
+                    <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    Probe All
+                </button>
+                <button class="si-refresh-btn" id="mcpRefreshBtn" title="Refresh saved MCP servers">
+                    <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                    Refresh
+                </button>
+            </div>
+        </div>
+
+        <!-- ===== MCP Servers List（Monitor Targets 风格） ===== -->
+        <div class="reflow-filter-bar">
+            <input type="text" placeholder="Search server name or transport..." id="mcpSearch" style="flex:1;min-width:200px;">
+            <button class="btn btn-primary" id="mcpNewBtn" style="margin-left:auto;">New</button>
+        </div>
+        <div class="table-container" id="mcpTableContainer">
+            <div class="si-loading-overlay" id="mcpLoadingOverlay">
+                <div class="si-loading-spinner"></div>
+                <div>Loading MCP servers...</div>
+            </div>
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Server Name</th>
+                        <th>Transport</th>
+                        <th>Tools</th>
+                        <th>Enabled</th>
+                        <th>Created</th>
+                        <th>Tool Names</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="mcpTableBody"></tbody>
+            </table>
+            <div class="pagination">
+                <span>Total <span id="mcpRowCount">0</span> servers</span>
+                <span style="color:var(--text-tertiary);">Edit / Test / Delete</span>
+            </div>
+        </div>
+    </div><!-- /#page-mcp-servers -->
+
+    <!-- ===== MCP Server Modal (New / Edit / Test) ===== -->
+    <div class="ap-modal-overlay" id="mcpModalOverlay">
+        <div class="ap-modal">
+            <div class="ap-modal-header">
+                <h3 id="mcpFormTitle">MCP Server Form <span class="text-secondary" style="font-size:12px;font-weight:400;margin-left:8px;" id="mcpFormHint">New Server</span></h3>
+                <button class="ap-modal-close" id="mcpModalClose">&times;</button>
+            </div>
+            <div class="ap-modal-body">
+                <div class="mcp-error" id="mcpError" style="display:none;"></div>
+
+                <div class="mcp-form">
+                    <div class="apm-field">
+                        <label for="mcpName">Server Name <span class="apm-req">*</span> <span class="apm-hint">仅字母/数字/_/-（同时是 LLM 侧工具名前缀 mcp__{name}__…）</span></label>
+                        <input type="text" id="mcpName" placeholder="mock-mcp / git-server" maxlength="64" spellcheck="false">
+                    </div>
+                    <div class="apm-field">
+                        <label for="mcpTransport">Transport <span class="apm-req">*</span></label>
+                        <select id="mcpTransport">
+                            <option value="stdio">stdio（本地子进程，强制 stateful 常连）</option>
+                            <option value="http">http（streamable HTTP / SSE）</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- stdio config -->
+                <div class="mcp-config" id="mcpFieldsStdio">
+                    <div class="mcp-config-title">stdio transport</div>
+                    <div class="apm-field">
+                        <label for="mcpStdioCommand">Command <span class="apm-req">*</span></label>
+                        <input type="text" id="mcpStdioCommand" placeholder="/abs/path/to/venv/bin/python" spellcheck="false">
+                    </div>
+                    <div class="apm-field">
+                        <label for="mcpStdioArgs">Args <span class="apm-hint">每行一个，可选</span></label>
+                        <textarea id="mcpStdioArgs" rows="3" placeholder="/abs/path/to/scripts/mock_mcp_server.py" spellcheck="false"></textarea>
+                    </div>
+                    <div class="apm-field">
+                        <label for="mcpStdioCwd">CWD <span class="apm-hint">可选</span></label>
+                        <input type="text" id="mcpStdioCwd" placeholder="子进程工作目录，留空用父进程 cwd" spellcheck="false">
+                    </div>
+                </div>
+
+                <!-- http config -->
+                <div class="mcp-config" id="mcpFieldsHttp" style="display:none;">
+                    <div class="mcp-config-title">http transport</div>
+                    <div class="apm-field">
+                        <label for="mcpHttpUrl">URL <span class="apm-req">*</span> <span class="apm-hint">以 /sse 或 /messages/ 结尾自动走 SSE，否则 streamable HTTP</span></label>
+                        <input type="text" id="mcpHttpUrl" placeholder="http://127.0.0.1:8000/mcp" spellcheck="false">
+                    </div>
+                    <div class="apm-field">
+                        <label for="mcpHttpHeaders">Headers <span class="apm-hint">JSON，可选</span></label>
+                        <textarea id="mcpHttpHeaders" rows="3" placeholder='{"Authorization": "Bearer &lt;token&gt;"}' spellcheck="false"></textarea>
+                    </div>
+                    <div class="apm-field">
+                        <label class="mcp-check" for="mcpHttpStateful">
+                            <input type="checkbox" id="mcpHttpStateful"> Stateful 常连（http 建议 true 以省每轮 list_tools 开销）
+                        </label>
+                    </div>
+                </div>
+
+                <!-- common options -->
+                <div class="mcp-config">
+                    <div class="mcp-config-title">Options</div>
+                    <div class="mcp-inline">
+                        <label class="mcp-check" for="mcpEnabled">
+                            <input type="checkbox" id="mcpEnabled" checked> Enabled（停用 = 运行时不再注入任何 agent）
+                        </label>
+                    </div>
+                    <div class="apm-field">
+                        <label for="mcpEnableTools">Enable Tools <span class="apm-hint">可选，仅暴露白名单，逗号/空格分隔</span></label>
+                        <input type="text" id="mcpEnableTools" placeholder="get_weather, query.repo" spellcheck="false">
+                    </div>
+                    <div class="apm-field">
+                        <label for="mcpDisableTools">Disable Tools <span class="apm-hint">可选，黑名单，逗号/空格分隔</span></label>
+                        <input type="text" id="mcpDisableTools" placeholder="send_alert" spellcheck="false">
+                    </div>
+                </div>
+
+                <div class="apm-form-actions">
+                    <button class="btn btn-secondary" id="mcpSaveBtn" disabled>Save Server</button>
+                    <button class="btn btn-secondary" id="mcpTestBtn">测试连接</button>
+                    <button class="btn btn-outline" id="mcpResetBtn">Reset</button>
+                </div>
+                <div class="mcp-save-hint" id="mcpSaveHint">请先点「测试连接」，测试成功后才能保存。</div>
+                <details class="apm-result" id="mcpResult" open>
+                    <summary>测试连接 · Tools 探测 <span class="mcp-hint" id="mcpResultMeta"></span></summary>
+                    <div class="apm-result-body" id="mcpResultBody"><span class="text-secondary">— idle —</span></div>
+                </details>
+            </div>
+        </div>
+    </div>
 
     <!-- ===== Domain Config Modal (New/Edit) ===== -->
     <div class="ap-modal-overlay" id="dcModalOverlay">

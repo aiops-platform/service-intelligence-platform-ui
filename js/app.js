@@ -106,6 +106,12 @@
                         showPage('page-domain-config');
                     } else if (page === 'agent-registry') {
                         showPage('page-agents');
+                    } else if (page === 'workflow-studio') {
+                        showPage('page-workflow-studio');
+                    } else if (page === 'bug-solve') {
+                        showPage('page-bug-solve');
+                    } else if (page === 'mcp-servers') {
+                        showPage('page-mcp-servers');
                     }
                 });
             });
@@ -594,6 +600,9 @@
                     if (activeAgItem) {
                         var agPage = activeAgItem.getAttribute('data-page');
                         if (agPage === 'agent-registry') showPage('page-agents');
+                        else if (agPage === 'workflow-studio') showPage('page-workflow-studio');
+                        else if (agPage === 'bug-solve') showPage('page-bug-solve');
+                        else if (agPage === 'mcp-servers') showPage('page-mcp-servers');
                     }
                 } else {
                     hideAllSidebars();
@@ -5168,6 +5177,1433 @@
         loadAgents();
     }
 
+    // ── Workflow Studio（流程配置：YAML 编辑 / 预览节点图 / 保存 / 编辑 / 删除）──
+    // ── 共享图 canvas（SVG Kahn 分层布局 + CSS transform 缩放/平移）──
+    // Workflow Studio 与 Bug Solve 共用。opts：元素 ID（hint/zoom/svg/controls/zoomIn/Out/Fit）、
+    // markerId、nodeCls/edgeCls（基础类名）、nodeStyle(n, status) -> {cls, label}、onNodeClick(nid)。
+    function createGraphCanvas(opts) {
+        var zoom = 1, panX = 0, panY = 0;
+        var ZOOM_MIN = 0.2, ZOOM_MAX = 6;
+        var dragging = false, dragStartX = 0, dragStartY = 0, dragPanX = 0, dragPanY = 0;
+        var NODE_W = 150, NODE_H = 46, LEVEL_GAP = 110, COL_GAP = 40, PAD = 30;
+
+        function getEl(id) { return document.getElementById(id); }
+
+        function clampZoom(v) { return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v)); }
+
+        function applyTransform() {
+            var zEl = getEl(opts.zoomId);
+            if (zEl) zEl.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+        }
+
+        // 以画布中心为锚点缩放（按钮用）
+        function zoomBy(factor) {
+            var zEl = getEl(opts.zoomId);
+            var cx = zEl ? zEl.clientWidth / 2 : 0;
+            var cy = zEl ? zEl.clientHeight / 2 : 0;
+            var oldZoom = zoom;
+            var newZoom = clampZoom(oldZoom * factor);
+            panX = cx - (cx - panX) * (newZoom / oldZoom);
+            panY = cy - (cy - panY) * (newZoom / oldZoom);
+            zoom = newZoom;
+            applyTransform();
+        }
+
+        // 适配画布：整图缩放到可视区域内（不大幅放大，最大 1 倍基线）
+        function fitGraph() {
+            var zEl = getEl(opts.zoomId);
+            var svg = getEl(opts.svgId);
+            if (!zEl || !svg || !svg.getAttribute('viewBox')) return;
+            var vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+            var gw = vb[2], gh = vb[3];
+            if (!gw || !gh) return;
+            var cw = zEl.clientWidth || 600;
+            var ch = zEl.clientHeight || 420;
+            zoom = clampZoom(Math.min(1, Math.min(cw / gw, ch / gh)));
+            panX = (cw - gw * zoom) / 2;
+            panY = (ch - gh * zoom) / 2;
+            applyTransform();
+        }
+
+        // SVG 拓扑分层布局：Kahn 入度剥层 → 层为行(y)，层内节点横排(x)
+        function renderGraph(graph, statusMap) {
+            var svg = getEl(opts.svgId);
+            var hint = getEl(opts.hintId);
+            if (!svg) return;
+            var nodes = (graph && graph.nodes) ? graph.nodes : [];
+            var edges = (graph && graph.edges) ? graph.edges : [];
+            if (hint) hint.style.display = 'none';
+            if (nodes.length === 0) {
+                svg.innerHTML = '';
+                var emptyCtrl = getEl(opts.controlsId);
+                if (emptyCtrl) emptyCtrl.style.display = 'none';
+                return;
+            }
+
+            // 入度统计 + 邻接表 → BFS 分层
+            var byId = {}, indeg = {}, children = {};
+            nodes.forEach(function (n) {
+                byId[n.id] = n;
+                indeg[n.id] = 0;
+                children[n.id] = [];
+            });
+            edges.forEach(function (e) {
+                if (!byId[e.to]) return;
+                indeg[e.to] = (indeg[e.to] || 0) + 1;
+                children[e.from] = children[e.from] || [];
+                children[e.from].push(e.to);
+            });
+
+            var levels = [];
+            var queue = nodes.filter(function (n) { return indeg[n.id] === 0; }).map(function (n) { return n.id; });
+            var remaining = nodes.length;
+            while (queue.length > 0 && remaining > 0) {
+                var layer = queue.slice();
+                levels.push(layer);
+                remaining -= layer.length;
+                var next = [];
+                layer.forEach(function (id) {
+                    (children[id] || []).forEach(function (to) {
+                        indeg[to] -= 1;
+                        if (indeg[to] === 0) next.push(to);
+                    });
+                });
+                queue = next;
+            }
+            // 防环兜底：仍有剩余节点直接追加到最后层
+            var seen = {};
+            levels.forEach(function (l) { l.forEach(function (id) { seen[id] = true; }); });
+            var leftover = nodes.filter(function (n) { return !seen[n.id]; }).map(function (n) { return n.id; });
+            if (leftover.length > 0) levels.push(leftover);
+
+            var maxCols = 1;
+            levels.forEach(function (layer) { if (layer.length > maxCols) maxCols = layer.length; });
+            var width = maxCols * NODE_W + (maxCols - 1) * COL_GAP + PAD * 2;
+            var height = levels.length * LEVEL_GAP + NODE_H + PAD;
+            svg.setAttribute('viewBox', '0 0 ' + width + ' ' + height);
+            // SVG 按 1:1 像素渲染，缩放/平移交给 .ws-zoom/.bs-zoom 的 CSS transform 控制
+            svg.style.width = width + 'px';
+            svg.style.height = height + 'px';
+
+            var pos = {};
+            levels.forEach(function (layer, li) {
+                var y = PAD + li * LEVEL_GAP;
+                var layerW = layer.length * NODE_W + (layer.length - 1) * COL_GAP;
+                var x0 = PAD + Math.max(0, (width - PAD * 2 - layerW) / 2);
+                layer.forEach(function (id, ci) {
+                    pos[id] = { x: x0 + ci * (NODE_W + COL_GAP), y: y };
+                });
+            });
+
+            // SVG 内容（含箭头 marker defs；innerHTML 会整段替换，故 defs 一并写入）
+            var html = '<defs>' +
+                '<marker id="' + opts.markerId + '" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
+                '<path d="M 0 0 L 10 5 L 0 10 z" fill="#8b8fa3"></path></marker></defs>';
+            edges.forEach(function (e) {
+                var p1 = pos[e.from], p2 = pos[e.to];
+                if (!p1 || !p2) return;
+                var x1 = p1.x + NODE_W / 2, y1 = p1.y + NODE_H;
+                var x2 = p2.x + NODE_W / 2, y2 = p2.y;
+                html += '<line class="' + opts.edgeCls + '" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" marker-end="url(#' + opts.markerId + ')"/>';
+            });
+            nodes.forEach(function (n) {
+                var p = pos[n.id];
+                if (!p) return;
+                var st = statusMap ? (statusMap[n.id] || null) : null;
+                var styled = opts.nodeStyle ? opts.nodeStyle(n, st) : { cls: '', label: n.id + (n.agent ? ' (' + n.agent + ')' : '') };
+                var cls = opts.nodeCls + (styled.cls ? ' ' + styled.cls : '');
+                html += '<g class="' + cls + '" data-node="' + escapeHtml(n.id) + '" transform="translate(' + p.x + ',' + p.y + ')">' +
+                    '<rect class="' + opts.nodeCls + '-rect" x="0" y="0" width="' + NODE_W + '" height="' + NODE_H + '" rx="8"/>' +
+                    '<text class="' + opts.nodeCls + '-text" x="' + (NODE_W / 2) + '" y="' + (NODE_H / 2) + '" text-anchor="middle" dominant-baseline="central">' + escapeHtml(styled.label) + '</text>' +
+                '</g>';
+            });
+            svg.innerHTML = html;
+            var ctrl = getEl(opts.controlsId);
+            if (ctrl) ctrl.style.display = 'flex';
+            fitGraph();
+        }
+
+        function reset() {
+            var svg = getEl(opts.svgId);
+            var hint = getEl(opts.hintId);
+            if (svg) svg.innerHTML = '';
+            if (hint) hint.style.display = 'block';
+            var ctrl = getEl(opts.controlsId);
+            if (ctrl) ctrl.style.display = 'none';
+            zoom = 1; panX = 0; panY = 0;
+            applyTransform();
+        }
+
+        function bindZoomEvents() {
+            var zEl = getEl(opts.zoomId);
+            if (!zEl) return;
+            // 滚轮缩放（以光标为锚点）
+            zEl.addEventListener('wheel', function (e) {
+                e.preventDefault();
+                var rect = zEl.getBoundingClientRect();
+                var mx = e.clientX - rect.left;
+                var my = e.clientY - rect.top;
+                var oldZoom = zoom;
+                var newZoom = clampZoom(oldZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+                panX = mx - (mx - panX) * (newZoom / oldZoom);
+                panY = my - (my - panY) * (newZoom / oldZoom);
+                zoom = newZoom;
+                applyTransform();
+            }, { passive: false });
+
+            // 拖拽平移
+            zEl.addEventListener('mousedown', function (e) {
+                if (e.target.closest && e.target.closest('.' + opts.controlsCls)) return;
+                dragging = true;
+                dragStartX = e.clientX; dragStartY = e.clientY;
+                dragPanX = panX; dragPanY = panY;
+                zEl.style.cursor = 'grabbing';
+            });
+            zEl.addEventListener('mousemove', function (e) {
+                if (!dragging) return;
+                panX = dragPanX + (e.clientX - dragStartX);
+                panY = dragPanY + (e.clientY - dragStartY);
+                applyTransform();
+            });
+            zEl.addEventListener('mouseup', function () { dragging = false; zEl.style.cursor = ''; });
+            zEl.addEventListener('mouseleave', function () { dragging = false; zEl.style.cursor = ''; });
+
+            // 点节点（事件委托）
+            if (opts.onNodeClick) {
+                zEl.addEventListener('click', function (e) {
+                    var g = e.target.closest ? e.target.closest('[data-node]') : null;
+                    if (g && g.getAttribute('data-node')) opts.onNodeClick(g.getAttribute('data-node'));
+                });
+            }
+
+            // 缩放按钮：+/−（以中心为锚点）、Fit（适配画布）
+            var zin = getEl(opts.zoomInId);
+            if (zin) zin.addEventListener('click', function () { zoomBy(1.3); });
+            var zout = getEl(opts.zoomOutId);
+            if (zout) zout.addEventListener('click', function () { zoomBy(1 / 1.3); });
+            var zfit = getEl(opts.zoomFitId);
+            if (zfit) zfit.addEventListener('click', fitGraph);
+        }
+
+        bindZoomEvents();
+        return { render: renderGraph, reset: reset };
+    }
+
+    function initWorkflowStudio() {
+        // 后端地址（可配置）：默认 http://localhost:8000。可用 localStorage 覆盖：workflowBaseUrl。
+        var WS_API_BASE = localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+
+        var workflows = [];
+        var editingId = null;
+
+        function getEl(id) { return document.getElementById(id); }
+        function setText(id, val) {
+            var el = getEl(id);
+            if (el) el.textContent = String(val);
+        }
+        function showError(msg) {
+            var err = getEl('wsError');
+            if (!err) return;
+            err.textContent = msg;
+            err.style.display = 'block';
+        }
+        function clearError() {
+            var err = getEl('wsError');
+            if (err) err.style.display = 'none';
+        }
+
+        // 共享图 canvas：SVG Kahn 分层布局 + 缩放/平移（Workflow Studio 与 Bug Solve 复用）
+        var canvas = createGraphCanvas({
+            hintId: 'wsHint', zoomId: 'wsZoom', svgId: 'wsGraph',
+            controlsId: 'wsZoomControls', controlsCls: 'ws-zoom-controls',
+            zoomInId: 'wsZoomIn', zoomOutId: 'wsZoomOut', zoomFitId: 'wsZoomFit',
+            markerId: 'wsArrow', nodeCls: 'ws-node', edgeCls: 'ws-edge',
+            nodeStyle: function (n) {
+                return { cls: (n.kind === 'approval' ? 'ws-node-approval' : ''), label: n.id + (n.agent ? ' (' + n.agent + ')' : '') };
+            }
+        });
+
+        function loadWorkflows() {
+            fetch(WS_API_BASE + '/workflows').then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function (data) {
+                workflows = Array.isArray(data) ? data : [];
+                renderList();
+            }).catch(function (err) {
+                showError('Failed to load workflows: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function renderList() {
+            var listEl = getEl('wsList');
+            if (!listEl) return;
+            if (workflows.length === 0) {
+                listEl.innerHTML = '<div class="ws-list-empty">No saved workflows yet.</div>';
+                return;
+            }
+            var html = '';
+            workflows.forEach(function (w) {
+                var created = (w.created_at || '').replace('T', ' ').slice(0, 19);
+                html += '<div class="ws-list-item" data-wid="' + escapeHtml(w.id) + '">' +
+                    '<span class="ws-list-name" title="' + escapeHtml(w.name) + '">' + escapeHtml(w.name) + '</span>' +
+                    '<span class="ws-list-meta">' + escapeHtml(created) + '</span>' +
+                    '<span class="ws-list-actions">' +
+                        '<button class="btn btn-outline ws-btn" data-action="edit">Edit</button>' +
+                        '<button class="btn btn-outline ws-btn ws-btn-danger" data-action="delete">Delete</button>' +
+                    '</span>' +
+                '</div>';
+            });
+            listEl.innerHTML = html;
+        }
+
+        function preview() {
+            var yamlEl = getEl('wsYaml');
+            if (!yamlEl || !yamlEl.value.trim()) { showError('请先粘贴 workflow YAML'); return; }
+            clearError();
+            fetch(WS_API_BASE + '/workflows/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ yaml: yamlEl.value })
+            }).then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok) {
+                        showError('解析失败: ' + (data.detail || res.status));
+                        throw new Error('preview failed');
+                    }
+                    canvas.render(data.graph);
+                });
+            }).catch(function (err) {
+                if (err && err.message === 'preview failed') return;
+                showError('预览失败: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function save() {
+            var nameEl = getEl('wsName');
+            var yamlEl = getEl('wsYaml');
+            var name = (nameEl && nameEl.value || '').trim();
+            var yamlText = yamlEl ? yamlEl.value : '';
+            if (!name) { showError('请填写 workflow 名称'); if (nameEl) nameEl.focus(); return; }
+            if (!yamlText.trim()) { showError('请粘贴 workflow YAML'); if (yamlEl) yamlEl.focus(); return; }
+            clearError();
+            var url = WS_API_BASE + '/workflows' + (editingId ? '/' + editingId : '');
+            var method = editingId ? 'PUT' : 'POST';
+            fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, yaml: yamlText })
+            }).then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok) {
+                        showError('保存失败: ' + (data.detail || res.status));
+                        throw new Error('save failed');
+                    }
+                    editingId = data.id;
+                    setText('wsSaveBtn', 'Save Workflow');
+                    loadWorkflows();
+                    canvas.render(data.graph);
+                });
+            }).catch(function (err) {
+                if (err && err.message === 'save failed') return;
+                showError('保存失败: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function edit(wid) {
+            clearError();
+            fetch(WS_API_BASE + '/workflows/' + wid).then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function (data) {
+                editingId = data.id;
+                getEl('wsName').value = data.name || '';
+                getEl('wsYaml').value = data.yaml || '';
+                setText('wsSaveBtn', 'Update Workflow');
+                canvas.render(data.graph);
+            }).catch(function (err) {
+                showError('加载失败: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function remove(wid) {
+            var label = wid;
+            workflows.forEach(function (w) { if (w.id === wid) label = w.name; });
+            if (!window.confirm('确认删除 workflow「' + label + '」？')) return;
+            clearError();
+            fetch(WS_API_BASE + '/workflows/' + wid, { method: 'DELETE' }).then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function () {
+                if (editingId === wid) resetForm();
+                loadWorkflows();
+            }).catch(function (err) {
+                showError('删除失败: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function resetForm() {
+            editingId = null;
+            var nameEl = getEl('wsName');
+            var yamlEl = getEl('wsYaml');
+            if (nameEl) nameEl.value = '';
+            if (yamlEl) yamlEl.value = '';
+            setText('wsSaveBtn', 'Save Workflow');
+            clearError();
+            canvas.reset();
+        }
+
+        function bindEvents() {
+            var previewBtn = getEl('wsPreviewBtn');
+            if (previewBtn) previewBtn.addEventListener('click', preview);
+            var newBtn = getEl('wsNewBtn');
+            if (newBtn) newBtn.addEventListener('click', resetForm);
+            var saveBtn = getEl('wsSaveBtn');
+            if (saveBtn) saveBtn.addEventListener('click', save);
+            var refreshBtn = getEl('wsRefreshBtn');
+            if (refreshBtn) refreshBtn.addEventListener('click', function () {
+                var self = this;
+                self.classList.add('spinning');
+                self.disabled = true;
+                loadWorkflows();
+                setTimeout(function () { self.classList.remove('spinning'); self.disabled = false; }, 600);
+            });
+            var listEl = getEl('wsList');
+            if (listEl) listEl.addEventListener('click', function (e) {
+                var btn = e.target;
+                if (!btn || btn.tagName !== 'BUTTON') return;
+                var item = btn.closest('.ws-list-item');
+                if (!item) return;
+                var wid = item.getAttribute('data-wid');
+                if (btn.getAttribute('data-action') === 'edit') edit(wid);
+                else if (btn.getAttribute('data-action') === 'delete') remove(wid);
+            });
+            // 缩放/平移事件由 createGraphCanvas 统一绑定（滚轮、拖拽、+/−/Fit）
+        }
+
+        // 切回本页时自动刷新已保存列表
+        _pageRefreshers['page-workflow-studio'] = function () { loadWorkflows(); };
+
+        bindEvents();
+        loadWorkflows();
+    }
+
+    // ── Bug Solve（选流程 → 贴 Ticket → 跑 run → 轮询 → 审批 → 节点详情）──
+    function initBugSolve() {
+        var BS_API_BASE = localStorage.getItem('bugSolveBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+
+        var workflows = [];
+        var workflowId = null;
+        var runId = null;
+        var runStatus = null;
+        var running = false;
+        var timer = null;
+        var pendingApprovals = [];
+        var selectedNode = null;
+        var currentNodeData = null;
+        var currentGraph = null;
+        var detailTab = 'output';
+
+        function getEl(id) { return document.getElementById(id); }
+        function setText(id, val) {
+            var el = getEl(id);
+            if (el) el.textContent = String(val);
+        }
+        function showError(msg) {
+            var err = getEl('bsError');
+            if (!err) return;
+            err.textContent = msg;
+            err.style.display = 'block';
+        }
+        function clearError() {
+            var err = getEl('bsError');
+            if (err) err.style.display = 'none';
+        }
+
+        // 节点状态 → 着色类名
+        function statusClass(st) {
+            var map = {
+                'done': 'bs-node-status-done',
+                'running': 'bs-node-status-running',
+                'pending': 'bs-node-status-pending',
+                'failed': 'bs-node-status-failed',
+                'cancelled': 'bs-node-status-cancelled',
+                'rejected': 'bs-node-status-rejected',
+                'waiting_approval': 'bs-node-status-waiting',
+                'skipped': 'bs-node-status-skipped'
+            };
+            return map[st] || 'bs-node-status-pending';
+        }
+
+        var canvas = createGraphCanvas({
+            hintId: 'bsHint', zoomId: 'bsZoom', svgId: 'bsGraph',
+            controlsId: 'bsZoomControls', controlsCls: 'bs-zoom-controls',
+            zoomInId: 'bsZoomIn', zoomOutId: 'bsZoomOut', zoomFitId: 'bsZoomFit',
+            markerId: 'bsArrow', nodeCls: 'bs-node', edgeCls: 'bs-edge',
+            nodeStyle: function (n, st) {
+                var cls = statusClass(st);
+                if (n.kind === 'approval') cls += ' bs-node-approval';
+                return { cls: cls, label: n.id + (n.agent ? ' (' + n.agent + ')' : '') };
+            },
+            onNodeClick: function (nid) { selectNode(nid); }
+        });
+
+        function loadWorkflows() {
+            fetch(BS_API_BASE + '/workflows').then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function (data) {
+                workflows = Array.isArray(data) ? data : [];
+                if (workflowId) {
+                    var exists = workflows.some(function (w) { return w.id === workflowId; });
+                    if (!exists) workflowId = null;
+                }
+                renderWorkflowOptions();
+            }).catch(function (err) {
+                showError('加载流程失败: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function renderWorkflowOptions() {
+            var sel = getEl('bsWorkflow');
+            if (!sel) return;
+            var html = '<option value="">-- 选择已保存流程 --</option>';
+            workflows.forEach(function (w) {
+                var selAttr = (w.id === workflowId) ? ' selected' : '';
+                html += '<option value="' + escapeHtml(w.id) + '"' + selAttr + '>' + escapeHtml(w.name) + '</option>';
+            });
+            sel.innerHTML = html;
+        }
+
+        function onWorkflowChange() {
+            var sel = getEl('bsWorkflow');
+            workflowId = sel ? sel.value : null;
+            resetRun();
+            if (!workflowId) { canvas.reset(); return; }
+            fetch(BS_API_BASE + '/workflows/' + workflowId).then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function (data) {
+                if (data.graph) canvas.render(data.graph, {});
+            }).catch(function (err) {
+                showError('加载流程详情失败: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function parseTicket() {
+            var ta = getEl('bsTicket');
+            var text = ta ? (ta.value || '').trim() : '';
+            if (!text) return {};
+            try {
+                var obj = JSON.parse(text);
+                if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('需为 JSON 对象');
+                return obj;
+            } catch (e) {
+                showError('Ticket JSON 解析失败: ' + e.message);
+                return null;
+            }
+        }
+
+        function start() {
+            clearError();
+            if (!workflowId) { showError('请先选择已保存流程'); return; }
+            var ticket = parseTicket();
+            if (ticket === null) return;
+            if (running) return;
+            running = true;
+            var startBtn = getEl('bsStartBtn');
+            if (startBtn) startBtn.disabled = true;
+            var stopBtn = getEl('bsStopBtn');
+            if (stopBtn) stopBtn.style.display = '';
+            setText('bsStatus', 'started');
+            var stats = getEl('bsStats');
+            if (stats) stats.style.display = 'flex';
+            fetch(BS_API_BASE + '/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ workflow_id: workflowId, ticket: ticket })
+            }).then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+                    runId = data.run_id;
+                    setText('bsRunId', runId);
+                    poll();
+                });
+            }).catch(function (err) {
+                showError('启动失败: ' + (err && err.message ? err.message : 'network error'));
+                running = false;
+                if (startBtn) startBtn.disabled = false;
+                if (stopBtn) stopBtn.style.display = 'none';
+            });
+        }
+
+        function poll() {
+            if (!running || !runId) return;
+            if (timer) clearInterval(timer);
+            timer = setInterval(function () {
+                fetch(BS_API_BASE + '/runs/' + runId).then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                }).then(function (data) {
+                    applyRun(data);
+                }).catch(function (err) {
+                    var errEl = getEl('bsError');
+                    if (errEl) {
+                        errEl.textContent = '轮询失败: ' + (err && err.message ? err.message : 'network error');
+                        errEl.style.display = 'block';
+                    }
+                });
+            }, 2000);
+        }
+
+        function applyRun(data) {
+            if (!runId || data.run_id !== runId) return;
+            runStatus = data.status;
+            setText('bsStatus', data.status);
+            setText('bsTokens', data.total_tokens || 0);
+            setText('bsCost', typeof data.total_cost === 'number' ? data.total_cost.toFixed(4) : '0.0');
+            pendingApprovals = data.pending_approvals || [];
+            currentNodeData = data.nodes || {};
+            if (data.graph) currentGraph = data.graph;
+
+            var statusMap = {};
+            Object.keys(currentNodeData).forEach(function (nid) {
+                statusMap[nid] = currentNodeData[nid].status;
+            });
+            canvas.render(data.graph || currentGraph, statusMap);
+            renderApprovals();
+            if (selectedNode && currentNodeData[selectedNode]) {
+                renderDetail(selectedNode);
+            } else if (selectedNode) {
+                selectedNode = null;
+                renderDetail(null);
+            }
+
+            var terminal = { success: 1, failed: 1, cancelled: 1 };
+            if (terminal[data.status]) {
+                running = false;
+                if (timer) { clearInterval(timer); timer = null; }
+                var startBtn = getEl('bsStartBtn');
+                if (startBtn) startBtn.disabled = false;
+                var stopBtn = getEl('bsStopBtn');
+                if (stopBtn) stopBtn.style.display = 'none';
+            }
+        }
+
+        function stop() {
+            clearError();
+            if (!runId) return;
+            if (timer) { clearInterval(timer); timer = null; }
+            fetch(BS_API_BASE + '/runs/' + runId + '/stop', { method: 'POST' }).then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function () {
+                running = false;
+                var startBtn = getEl('bsStartBtn');
+                if (startBtn) startBtn.disabled = false;
+                var stopBtn = getEl('bsStopBtn');
+                if (stopBtn) stopBtn.style.display = 'none';
+                setText('bsStatus', 'cancelled');
+                // 停止后拉一次最终状态，刷新节点着色（cancelled 落图）
+                return fetch(BS_API_BASE + '/runs/' + runId).then(function (r) {
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                }).then(function (data) {
+                    applyRun(data);
+                });
+            }).catch(function (err) {
+                showError('停止失败: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function approve(nodeId) {
+            if (!runId || !nodeId) return;
+            fetch(BS_API_BASE + '/runs/' + runId + '/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ node_id: nodeId })
+            }).then(function (res) {
+                if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('HTTP ' + res.status)); });
+                return res.json();
+            }).then(function () {
+                pendingApprovals = pendingApprovals.filter(function (p) { return p.node_id !== nodeId; });
+                renderApprovals();
+            }).catch(function (err) {
+                showError('审批失败: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function reject(nodeId) {
+            if (!runId || !nodeId) return;
+            fetch(BS_API_BASE + '/runs/' + runId + '/reject', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ node_id: nodeId })
+            }).then(function (res) {
+                if (!res.ok) return res.json().then(function (d) { throw new Error(d.detail || ('HTTP ' + res.status)); });
+                return res.json();
+            }).then(function () {
+                pendingApprovals = pendingApprovals.filter(function (p) { return p.node_id !== nodeId; });
+                renderApprovals();
+            }).catch(function (err) {
+                showError('驳回失败: ' + (err && err.message ? err.message : 'network error'));
+            });
+        }
+
+        function renderApprovals() {
+            var wrap = getEl('bsApprovals');
+            if (!wrap) return;
+            if (!pendingApprovals || pendingApprovals.length === 0) {
+                wrap.innerHTML = '<div class="bs-list-empty">暂无待审批项。</div>';
+                return;
+            }
+            var html = '';
+            pendingApprovals.forEach(function (p) {
+                var trigger = p.trigger ? escapeHtml(p.trigger) : null;
+                var triggerHtml = trigger
+                    ? '<span class="bs-trigger">' + trigger + '</span>'
+                    : '<span class="bs-trigger bs-trigger-plain">人工审批</span>';
+                var upstreamHtml = '';
+                if (p.upstream) {
+                    Object.keys(p.upstream).forEach(function (u) {
+                        var out = p.upstream[u];
+                        upstreamHtml += '<div class="bs-upstream"><div class="bs-upstream-label">' + escapeHtml(u) + '</div><pre>' +
+                            escapeHtml(JSON.stringify(out, null, 2)) + '</pre></div>';
+                    });
+                }
+                html += '<div class="bs-approval-card" data-node="' + escapeHtml(p.node_id) + '">' +
+                    '<div class="bs-approval-head"><span class="bs-approval-node">' + escapeHtml(p.node_id) + '</span>' + triggerHtml + '</div>' +
+                    (upstreamHtml ? '<div class="bs-upstreams">' + upstreamHtml + '</div>' : '') +
+                    '<div class="bs-approval-actions">' +
+                        '<button class="btn btn-sm bs-approve-btn" data-action="approve" data-node="' + escapeHtml(p.node_id) + '">通过</button>' +
+                        '<button class="btn btn-sm bs-reject-btn" data-action="reject" data-node="' + escapeHtml(p.node_id) + '">驳回</button>' +
+                    '</div>' +
+                '</div>';
+            });
+            wrap.innerHTML = html;
+        }
+
+        function selectNode(nid) {
+            selectedNode = nid;
+            renderDetail(nid);
+        }
+
+        function renderDetail(nid) {
+            var detail = getEl('bsDetail');
+            if (!detail) return;
+            if (!nid || !currentNodeData || !currentNodeData[nid]) {
+                detail.innerHTML = '<div class="bs-detail-empty">点击图中节点查看详情。</div>';
+                return;
+            }
+            var n = currentNodeData[nid];
+            var st = n.status || 'pending';
+            var badge = '<span class="bs-badge bs-badge-' + st + '">' + escapeHtml(st) + '</span>';
+            var tokens = n.tokens || 0;
+            var cost = typeof n.cost === 'number' ? n.cost.toFixed(4) : '0.0';
+            var params = n.params || {};
+            var output = n.output;
+            var outputHtml = (output !== undefined && output !== null) ? JSON.stringify(output, null, 2) : '(无输出)';
+            var promptHtml = JSON.stringify(params, null, 2);
+
+            var tabActive = detailTab || 'output';
+            var outputActive = tabActive === 'output' ? 'active' : '';
+            var promptActive = tabActive === 'prompt' ? 'active' : '';
+
+            detail.innerHTML =
+                '<div class="bs-detail-head">' +
+                    '<span class="bs-detail-node">' + escapeHtml(nid) + '</span>' + badge +
+                    '<span class="bs-detail-meta">tokens ' + tokens + ' · cost ' + cost + '</span>' +
+                '</div>' +
+                '<div class="bs-tabs">' +
+                    '<button class="bs-tab ' + outputActive + '" data-tab="output">输出 Output</button>' +
+                    '<button class="bs-tab ' + promptActive + '" data-tab="prompt">输入 Prompt</button>' +
+                '</div>' +
+                '<div class="bs-content">' +
+                    (tabActive === 'output'
+                        ? '<pre>' + escapeHtml(outputHtml) + '</pre>'
+                        : '<pre>' + escapeHtml(promptHtml) + '</pre>') +
+                '</div>';
+        }
+
+        function resetRun() {
+            if (timer) { clearInterval(timer); timer = null; }
+            running = false;
+            runId = null;
+            runStatus = null;
+            pendingApprovals = [];
+            selectedNode = null;
+            currentNodeData = null;
+            currentGraph = null;
+            detailTab = 'output';
+            var startBtn = getEl('bsStartBtn');
+            if (startBtn) startBtn.disabled = false;
+            var stopBtn = getEl('bsStopBtn');
+            if (stopBtn) stopBtn.style.display = 'none';
+            var stats = getEl('bsStats');
+            if (stats) stats.style.display = 'none';
+            setText('bsRunId', '—');
+            setText('bsStatus', '—');
+            setText('bsTokens', '0');
+            setText('bsCost', '0.0');
+            renderApprovals();
+            renderDetail(null);
+        }
+
+        function bindEvents() {
+            var sel = getEl('bsWorkflow');
+            if (sel) sel.addEventListener('change', onWorkflowChange);
+            var startBtn = getEl('bsStartBtn');
+            if (startBtn) startBtn.addEventListener('click', start);
+            var stopBtn = getEl('bsStopBtn');
+            if (stopBtn) stopBtn.addEventListener('click', stop);
+            var refreshBtn = getEl('bsRefreshBtn');
+            if (refreshBtn) refreshBtn.addEventListener('click', function () {
+                var self = this;
+                self.classList.add('spinning');
+                self.disabled = true;
+                loadWorkflows();
+                setTimeout(function () { self.classList.remove('spinning'); self.disabled = false; }, 600);
+            });
+            var approvals = getEl('bsApprovals');
+            if (approvals) approvals.addEventListener('click', function (e) {
+                var btn = e.target;
+                if (!btn || btn.tagName !== 'BUTTON') return;
+                var nodeId = btn.getAttribute('data-node');
+                var action = btn.getAttribute('data-action');
+                if (action === 'approve') approve(nodeId);
+                else if (action === 'reject') reject(nodeId);
+            });
+            var detail = getEl('bsDetail');
+            if (detail) detail.addEventListener('click', function (e) {
+                var tab = e.target;
+                if (!tab || tab.tagName !== 'BUTTON' || !tab.classList.contains('bs-tab')) return;
+                detailTab = tab.getAttribute('data-tab');
+                renderDetail(selectedNode);
+            });
+        }
+
+        // 切回本页时自动刷新已保存流程列表
+        _pageRefreshers['page-bug-solve'] = function () { loadWorkflows(); };
+
+        bindEvents();
+        loadWorkflows();
+    }
+
+    // ── MCP Server 配置（配置通用 MCP server → 绑 agent → 测试连接 / 工具列表）──
+    function initMcpServers() {
+        // 后端地址（可配置）：默认 http://localhost:8000。可用 localStorage 覆盖：mcpBaseUrl（否则沿用 workflowBaseUrl）。
+        var MCP_API_BASE = localStorage.getItem('mcpBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+
+        var servers = [];
+        var editingId = null;     // 当前编辑的 server id；null = New
+        var currentTools = null;  // 本次模态框会话最近一次「测试连接」成功探测的工具；保存时随 body 提交 → 落 tools 快照列
+        var currentSearch = '';
+        var saving = false;       // Save 提交进行中，防止重复点击
+        var tested = false;       // 当前表单配置是否已通过一次成功的「测试连接」——Save 唯一解锁条件
+        var testing = false;      // 「测试连接」请求进行中
+        var dirtyWhileTesting = false;  // 测试期间表单被改动 → 该次结果作废，需重测
+
+        function getEl(id) { return document.getElementById(id); }
+        function setText(id, val) {
+            var el = getEl(id);
+            if (el) el.textContent = String(val);
+        }
+        function showError(msg) {
+            var err = getEl('mcpError');
+            if (!err) return;
+            err.textContent = msg;
+            err.style.display = 'block';
+        }
+        function clearError() {
+            var err = getEl('mcpError');
+            if (err) err.style.display = 'none';
+        }
+        function transport() { return (getEl('mcpTransport') || {}).value || 'stdio'; }
+        function stateful() { return transport() === 'stdio' ? true : !!getEl('mcpHttpStateful').checked; }
+
+        // 逗号/空格/换行（args 按行）切分为数组，去空去重
+        function splitList(raw, byNewline) {
+            if (!raw) return [];
+            var sep = byNewline ? /\n/ : /[\s,，\n]+/;
+            var out = [], seen = {};
+            String(raw).split(sep).forEach(function (t) {
+                t = (t || '').trim();
+                if (t && !seen[t]) { seen[t] = true; out.push(t); }
+            });
+            return out;
+        }
+
+        // 按 transport 从表单读 config JSON
+        function readConfig() {
+            if (transport() === 'stdio') {
+                var cfg = { command: (getEl('mcpStdioCommand').value || '').trim() };
+                var args = splitList(getEl('mcpStdioArgs').value, true);
+                if (args.length) cfg.args = args;
+                var cwd = (getEl('mcpStdioCwd').value || '').trim();
+                if (cwd) cfg.cwd = cwd;
+                return cfg;
+            }
+            var hcfg = { url: (getEl('mcpHttpUrl').value || '').trim() };
+            var headersRaw = (getEl('mcpHttpHeaders').value || '').trim();
+            if (headersRaw) {
+                try { hcfg.headers = JSON.parse(headersRaw); }
+                catch (e) { throw new Error('HTTP Headers 不是合法 JSON：' + e.message); }
+            }
+            return hcfg;
+        }
+
+        function toolLists() {
+            return {
+                enable: splitList(getEl('mcpEnableTools').value, false),
+                disable: splitList(getEl('mcpDisableTools').value, false)
+            };
+        }
+
+        // 表单 → 完整 row（POST/PUT）。刻意不带 agents：本页不再以 server 为主表做 agent 绑定
+        // （后续将以 agent 为主表），后端 _to_row 缺省 agents=[]。
+        function buildBody() {
+            var cfg;
+            try { cfg = readConfig(); } catch (e) { showError(e.message); return null; }
+            var name = (getEl('mcpName').value || '').trim();
+            if (!name) { showError('请填写 server 名称'); getEl('mcpName').focus(); return null; }
+            if (transport() === 'stdio' && !cfg.command) { showError('stdio 配置需提供 command'); getEl('mcpStdioCommand').focus(); return null; }
+            if (transport() === 'http' && !cfg.url) { showError('http 配置需提供 url'); getEl('mcpHttpUrl').focus(); return null; }
+            var tl = toolLists();
+            return {
+                name: name,
+                transport: transport(),
+                config: cfg,
+                is_stateful: stateful(),
+                enable_tools: tl.enable.length ? tl.enable : null,
+                disable_tools: tl.disable.length ? tl.disable : null,
+                tools: currentTools,  // 测试成功 → 随保存落快照；null → create 自动拉 / update 保留已存
+                enabled: !!getEl('mcpEnabled').checked
+            };
+        }
+
+        // 「测试连接」请求体（不落库）
+        function buildTestBody() {
+            var cfg;
+            try { cfg = readConfig(); } catch (e) { showError(e.message); return null; }
+            if (transport() === 'stdio' && !cfg.command) { showError('stdio 配置需提供 command'); return null; }
+            if (transport() === 'http' && !cfg.url) { showError('http 配置需提供 url'); return null; }
+            var tl = toolLists();
+            var name = (getEl('mcpName').value || '').trim();
+            var body = {
+                transport: transport(),
+                config: cfg,
+                is_stateful: stateful(),
+                enable_tools: tl.enable.length ? tl.enable : null,
+                disable_tools: tl.disable.length ? tl.disable : null
+            };
+            // 带上已填的 server 名 → 探测出的工具 LLM 名(mcp__{name}__…)与实际保存后一致
+            if (name) body.name = name;
+            return body;
+        }
+
+        // 切换 transport 字段可见性（stdio/http 两组 config 卡片）
+        function setTransportUi() {
+            var t = transport();
+            var stdio = getEl('mcpFieldsStdio');
+            var http = getEl('mcpFieldsHttp');
+            if (stdio) stdio.style.display = t === 'stdio' ? '' : 'none';
+            if (http) http.style.display = t === 'http' ? '' : 'none';
+        }
+
+        // ── Modal open / close ──
+        function openModal() {
+            getEl('mcpModalOverlay').classList.add('open');
+        }
+        function closeModal() {
+            getEl('mcpModalOverlay').classList.remove('open');
+        }
+        function setFormHint() {
+            var hint = getEl('mcpFormHint');
+            if (!hint) return;
+            if (editingId) {
+                var nm = (getEl('mcpName').value || '').trim();
+                hint.textContent = nm ? 'Editing ' + nm : 'Editing ' + editingId;
+            } else {
+                hint.textContent = 'New Server';
+            }
+        }
+
+        // ── 测试/工具结果渲染（POST /test 与 GET /{mid}/tools 同形状 {ok,transport,tools,error?}）──
+        function toolItemHtml(t) {
+            var ro = t.read_only ? '只读 · 自动 ALLOW' : '非只读 · 需 allow 规则';
+            var roCls = t.read_only ? 'mcp-ro-allow' : 'mcp-ro-deny';
+            return '<div class="mcp-tool-item">' +
+                '<div class="mcp-tool-head"><span class="mcp-tool-name">' + escapeHtml(t.name) + '</span>' +
+                '<span class="mcp-ro-badge ' + roCls + '">' + ro + '</span></div>' +
+                '<div class="mcp-tool-llm">' + escapeHtml(t.llm_name || '') + '</div>' +
+                (t.description ? '<div class="mcp-tool-desc">' + escapeHtml(t.description) + '</div>' : '') +
+                '</div>';
+        }
+
+        function writeResultEmpty() {
+            var bodyEl = getEl('mcpResultBody');
+            var meta = getEl('mcpResultMeta');
+            if (bodyEl) bodyEl.innerHTML = '<span class="text-secondary">填写配置后点「测试连接」探测工具。只读工具自动 ALLOW；非只读工具需在 agent 侧配置 allow 规则。</span>';
+            if (meta) meta.textContent = '';
+        }
+
+        // capture=true（默认）：成功时把工具记入 currentTools，供随后的「保存」落 tools 快照列
+        function renderTools(data, capture) {
+            var bodyEl = getEl('mcpResultBody');
+            var meta = getEl('mcpResultMeta');
+            if (!bodyEl) return;
+            if (!data || data.ok !== true) {
+                currentTools = null;
+                if (meta) meta.textContent = '';
+                bodyEl.innerHTML = '<div class="mcp-result-error">连接失败：' + escapeHtml((data && data.error) ? data.error : '未知错误') + '</div>';
+                return;
+            }
+            var tools = data.tools || [];
+            if (capture !== false) currentTools = tools;
+            if (meta) meta.textContent = 'transport=' + String(data.transport || '') + ' · ' + tools.length + ' tools';
+            if (tools.length === 0) {
+                bodyEl.innerHTML = '<span class="text-secondary">连接成功，但该 server 未暴露任何工具。</span>';
+                return;
+            }
+            bodyEl.innerHTML = '<div class="mcp-tools">' + tools.map(toolItemHtml).join('') + '</div>';
+        }
+
+        // 展示一条 server 已存 tools 快照（从 DB 读，非 live；Edit 打开时离线可见）
+        function renderCachedTools(s) {
+            var bodyEl = getEl('mcpResultBody');
+            var meta = getEl('mcpResultMeta');
+            if (!bodyEl) return;
+            currentTools = null;  // 快照不当作本次会话的 live 探测结果
+            var tools = Array.isArray(s.tools) ? s.tools : [];
+            if (meta) meta.textContent = '工具快照（已存缓存）· ' + tools.length + ' tools · 需要最新请点「测试连接」';
+            if (tools.length === 0) {
+                bodyEl.innerHTML = '<span class="text-secondary">该 server 暂无已存工具快照（点「测试连接」实时拉取并落库）。</span>';
+                return;
+            }
+            bodyEl.innerHTML = '<div class="mcp-tools">' + tools.map(toolItemHtml).join('') + '</div>';
+        }
+
+        // ── 列表（table）──
+        function loadOverlay(show) {
+            var ov = getEl('mcpLoadingOverlay');
+            if (ov) ov.classList.toggle('visible', !!show);
+        }
+
+        function loadServers() {
+            clearError();
+            loadOverlay(true);
+            fetch(MCP_API_BASE + '/mcp-servers').then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function (data) {
+                servers = Array.isArray(data) ? data : [];
+                renderList();
+            }).catch(function (err) {
+                window._showToast('加载 MCP server 列表失败: ' + (err && err.message ? err.message : 'network error'), 'error');
+            }).finally(function () { loadOverlay(false); });
+        }
+
+        function findServer(mid) {
+            for (var i = 0; i < servers.length; i++) { if (servers[i].id === mid) return servers[i]; }
+            return null;
+        }
+
+        function transportLabel(s) {
+            if (s.transport === 'stdio') return 'stdio';
+            return s.is_stateful ? 'http (stateful)' : 'http';
+        }
+
+        // ISO 时间戳 → 'YYYY-MM-DD HH:MM'（本地展示用；缺省返回 ''）
+        function fmtTs(iso) {
+            if (!iso) return '';
+            var s = String(iso).replace('T', ' ');
+            return s.indexOf('.') !== -1 ? s.slice(0, 19) : s;
+        }
+
+        function renderList() {
+            var tbody = getEl('mcpTableBody');
+            if (!tbody) return;
+            var filtered = servers.filter(function (s) {
+                if (!currentSearch) return true;
+                var name = (s.name || '').toLowerCase();
+                var tr = transportLabel(s).toLowerCase();
+                return name.indexOf(currentSearch) !== -1 || tr.indexOf(currentSearch) !== -1;
+            });
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="mcp-table-empty">' +
+                    (servers.length ? 'No MCP servers match your search.' : 'No saved MCP servers yet. Click "New" in the top-right to create one.') +
+                    '</td></tr>';
+                setText('mcpRowCount', '0');
+                return;
+            }
+            tbody.innerHTML = filtered.map(function (s) {
+                var created = fmtTs(s.created_at);
+                var toolsHtml;
+                if (Array.isArray(s.tools)) {
+                    toolsHtml = s.tools.length
+                        ? '<span class="apm-badge apm-badge-on">' + s.tools.length + ' tools</span>'
+                        : '<span class="text-secondary">0 tools</span>';
+                } else {
+                    // tools=null → 从未成功探测（或最近一次失败）：置灰 + 显示最近更新时间（updated_at）
+                    var lastUpd = fmtTs(s.updated_at);
+                    toolsHtml = '<span class="mcp-unprobed">not probed / failed</span>' +
+                        (lastUpd ? '<div class="mcp-list-hint">' + escapeHtml(lastUpd) + '</div>' : '');
+                }
+                var enabledHtml = s.enabled
+                    ? '<span class="apm-badge apm-badge-on">enabled</span>'
+                    : '<span class="apm-badge apm-badge-off">disabled</span>';
+                // Tool Names 列：展示存储快照里所有工具名（逗号分隔，超宽 …截断，hover 看全）
+                var toolNames = (Array.isArray(s.tools) ? s.tools : [])
+                    .map(function (t) { return t && t.name ? t.name : ''; })
+                    .filter(Boolean);
+                var joinedNames = toolNames.join(', ');
+                var namesCell = toolNames.length
+                    ? '<td class="mcp-tools-names" title="' + escapeHtml(joinedNames) + '">' + escapeHtml(joinedNames) + '</td>'
+                    : '<td class="mcp-tools-names"><span class="text-secondary">\u2014</span></td>';
+                return '<tr data-id="' + escapeHtml(s.id) + '">' +
+                    '<td class="mcp-server-name">' + escapeHtml(s.name) + '</td>' +
+                    '<td>' + escapeHtml(transportLabel(s)) + '</td>' +
+                    '<td>' + toolsHtml + '</td>' +
+                    '<td>' + enabledHtml + '</td>' +
+                    '<td>' + escapeHtml(created) + '</td>' +
+                    namesCell +
+                    '<td class="apm-actions">' +
+                        '<button class="btn btn-outline apm-row-btn" data-act="edit">Edit</button>' +
+                        '<button class="btn btn-outline apm-row-btn" data-act="test">Test</button>' +
+                        '<button class="btn apm-row-btn apm-row-del" data-act="del">Delete</button>' +
+                    '</td>' +
+                    '</tr>';
+            }).join('');
+            setText('mcpRowCount', String(filtered.length));
+        }
+
+        // ── 表单填充 / 清空 ──
+        function fillForm(s) {
+            editingId = s.id;
+            getEl('mcpName').value = s.name || '';
+            getEl('mcpTransport').value = s.transport || 'stdio';
+            setTransportUi();
+            var cfg = s.config || {};
+            if (s.transport === 'stdio') {
+                getEl('mcpStdioCommand').value = cfg.command || '';
+                getEl('mcpStdioArgs').value = Array.isArray(cfg.args) ? cfg.args.join('\n') : (cfg.args ? String(cfg.args) : '');
+                getEl('mcpStdioCwd').value = cfg.cwd || '';
+            } else {
+                getEl('mcpHttpUrl').value = cfg.url || '';
+                getEl('mcpHttpHeaders').value = cfg.headers ? JSON.stringify(cfg.headers, null, 2) : '';
+                getEl('mcpHttpStateful').checked = !!s.is_stateful;
+            }
+            getEl('mcpEnabled').checked = s.enabled !== false;
+            getEl('mcpEnableTools').value = Array.isArray(s.enable_tools) ? s.enable_tools.join(', ') : '';
+            getEl('mcpDisableTools').value = Array.isArray(s.disable_tools) ? s.disable_tools.join(', ') : '';
+            currentTools = null;
+            renderCachedTools(s);  // 打开即先展示已存快照（非 live）
+            setFormHint();
+            clearError();
+            // Edit：先展示缓存快照；无论是否改动，未重新测试成功前 Save 均不可用
+            tested = false;
+            setSaveHint('lock', '已展示缓存快照。请点「测试连接」验证当前配置，测试成功后才能保存。');
+            syncSaveBtn();
+        }
+
+        function resetForm() {
+            editingId = null;
+            getEl('mcpName').value = '';
+            getEl('mcpTransport').value = 'stdio';
+            setTransportUi();
+            getEl('mcpStdioCommand').value = '';
+            getEl('mcpStdioArgs').value = '';
+            getEl('mcpStdioCwd').value = '';
+            getEl('mcpHttpUrl').value = '';
+            getEl('mcpHttpHeaders').value = '';
+            getEl('mcpHttpStateful').checked = false;
+            getEl('mcpEnabled').checked = true;
+            getEl('mcpEnableTools').value = '';
+            getEl('mcpDisableTools').value = '';
+            currentTools = null;
+            writeResultEmpty();
+            setFormHint();
+            clearError();
+            // New：未测试前 Save 不可用
+            tested = false;
+            setSaveHint('lock', '请填写配置并点「测试连接」，测试成功后才能保存。');
+            syncSaveBtn();
+        }
+
+        // ── Save 门控（必须「测试连接」成功才能保存）──
+
+        // 需触发「重测」的字段：任一被改动 → tested=false、Save 锁回、结果区清空。
+        // mcpTransport 走 <select> 的 change，也会经冒泡到这里统一处理。
+        var MCP_FIELD_IDS = ['mcpName', 'mcpTransport', 'mcpStdioCommand', 'mcpStdioArgs', 'mcpStdioCwd',
+            'mcpHttpUrl', 'mcpHttpHeaders', 'mcpHttpStateful', 'mcpEnabled', 'mcpEnableTools', 'mcpDisableTools'];
+
+        // Save 按钮唯一解锁条件：!saving && !testing && tested
+        function syncSaveBtn() {
+            var btn = getEl('mcpSaveBtn');
+            if (!btn) return;
+            btn.disabled = !!(saving || testing || !tested);
+        }
+
+        // 按钮下方提示条。kind: lock(默认灰) / ok(绿) / fail(红) / running(琥珀)
+        function setSaveHint(kind, msg) {
+            var hint = getEl('mcpSaveHint');
+            if (!hint) return;
+            hint.textContent = msg || '';
+            hint.className = 'mcp-save-hint' + (kind ? ' mcp-save-hint-' + kind : '');
+        }
+
+        // 任一配置字段被改动 → 上次测试结果不再可信：锁回 Save、清空结果区、提示重测
+        function invalidateTest() {
+            tested = false;
+            currentTools = null;
+            writeResultEmpty();
+            if (testing) {
+                dirtyWhileTesting = true;
+                setSaveHint('running', '配置在测试期间已变更，本次结果将作废，请等测试结束后重新点「测试连接」。');
+            } else {
+                setSaveHint('lock', '配置有改动，请重新点「测试连接」，测试成功后才能保存。');
+            }
+            syncSaveBtn();
+        }
+
+        // ── Actions ──
+        function testConnection() {
+            if (testing) return;
+            var body = buildTestBody();
+            if (!body) return;
+            clearError();
+            testing = true;
+            dirtyWhileTesting = false;
+            var testBtn = getEl('mcpTestBtn');
+            if (testBtn) { testBtn.disabled = true; testBtn.textContent = 'testing…'; }
+            setSaveHint('running', '正在测试连接…');
+            syncSaveBtn();
+            fetch(MCP_API_BASE + '/mcp-servers/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok) return { ok: false, error: data.detail || ('HTTP ' + res.status) };
+                    return data;
+                });
+            }).then(function (data) {
+                if (dirtyWhileTesting) {
+                    // 测试期间字段被改动：该次结果作废，锁回 Save 提示重测
+                    tested = false;
+                    setSaveHint('lock', '配置在测试期间已变更，本次结果作废，请重新点「测试连接」。');
+                    return;
+                }
+                if (data && data.ok === true) {
+                    tested = true;
+                    renderTools(data);   // capture=true → currentTools=tools，随保存落快照
+                    setSaveHint('ok', '测试连接成功（' + String(data.transport || '') + ' · ' + (data.tools || []).length + ' tools），可以保存了。');
+                } else {
+                    tested = false;
+                    renderTools({ ok: false, error: (data && data.error) || '未知错误' });
+                    setSaveHint('fail', '测试连接失败，无法保存。请修正配置后重新测试。');
+                }
+            }).catch(function (err) {
+                if (!err) return;
+                tested = false;
+                renderTools({ ok: false, error: err && err.message ? err.message : 'network error' });
+                setSaveHint('fail', '测试连接失败（网络或服务错误），无法保存。');
+            }).finally(function () {
+                testing = false;
+                dirtyWhileTesting = false;
+                if (testBtn) { testBtn.disabled = false; testBtn.textContent = '测试连接'; }
+                syncSaveBtn();
+            });
+        }
+
+        function save() {
+            // 门控：只有当前表单配置通过一次成功的「测试连接」（tested=true）才能保存。
+            // 任一字段被改动都会 invalidateTest() 把 tested 置回 false，Save 随之禁用 → 必须重测。
+            // currentTools 已在测试成功时捕获（renderTools capture=true）→ tools 随保存落快照；
+            // 若 create 时后端自动探测、update 保留旧快照的旧语义由后端 tools=null 兜底。
+            if (saving || !tested) return;
+            var btn = getEl('mcpSaveBtn');
+            var body = buildBody();
+            if (!body) return;
+            clearError();
+            saving = true;
+            if (btn) btn.textContent = 'Saving…';
+            syncSaveBtn();
+            var url = MCP_API_BASE + '/mcp-servers' + (editingId ? '/' + encodeURIComponent(editingId) : '');
+            fetch(url, {
+                method: editingId ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok) throw { raw: data.detail || res.status };
+                    return data;
+                });
+            }).then(function (data) {
+                var savedId = (data && data.id) || editingId || '';
+                window._showToast(editingId ? 'Updated ' + savedId : 'Created ' + savedId, 'success');
+                closeModal();
+                loadServers();
+            }).catch(function (err) {
+                if (!err) return;
+                var raw = (err.raw !== undefined) ? err.raw : (err.message || 'network error');
+                showError('保存失败：' + raw);
+            }).finally(function () {
+                saving = false;
+                if (btn) btn.textContent = 'Save Server';
+                syncSaveBtn();
+            });
+        }
+
+        // 已存行实时探测（GET /{mid}/tools 成功后回写 tools 列并刷新列表徽标）
+        function liveProbe(mid) {
+            var meta = getEl('mcpResultMeta');
+            if (meta) meta.textContent = '拉取中…';
+            fetch(MCP_API_BASE + '/mcp-servers/' + encodeURIComponent(mid) + '/tools').then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok) {
+                        renderTools({ ok: false, error: (data.detail || ('HTTP ' + res.status)) }, false);
+                        throw new Error('probe failed');
+                    }
+                    renderTools(data, false);  // capture=false：live 结果已由后端回写，不当作「待保存」状态
+                    loadServers();  // 刷新列表里 tools 数徽标
+                });
+            }).catch(function (err) {
+                if (err && err.message === 'probe failed') return;
+                renderTools({ ok: false, error: err && err.message ? err.message : 'network error' }, false);
+            });
+        }
+
+        function remove(mid) {
+            var label = mid;
+            servers.forEach(function (s) { if (s.id === mid) label = s.name; });
+            if (!window.confirm('确认删除 MCP server「' + label + '」？')) return;
+            clearError();
+            fetch(MCP_API_BASE + '/mcp-servers/' + encodeURIComponent(mid), { method: 'DELETE' }).then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function () {
+                if (editingId === mid) closeModal();
+                window._showToast('Deleted ' + label, 'success');
+                loadServers();
+            }).catch(function (err) {
+                window._showToast('删除失败: ' + (err && err.message ? err.message : 'network error'), 'error');
+            });
+        }
+
+        // 「全部刷新」：对每个已保存 server 实时 GET /{mid}/tools（成功由后端回写快照；失败保留旧快照），
+        // 全部结束后刷新列表 + toast 汇总（X ok / Y failed）。
+        function probeAll() {
+            if (!servers.length) { window._showToast('No saved servers to probe', 'error'); return; }
+            var btn = getEl('mcpProbeAllBtn');
+            if (btn) { btn.disabled = true; btn.classList.add('spinning'); }
+            var okCount = 0, failCount = 0;
+            Promise.all(servers.map(function (s) {
+                return fetch(MCP_API_BASE + '/mcp-servers/' + encodeURIComponent(s.id) + '/tools')
+                    .then(function (res) {
+                        return res.json().then(function (data) {
+                            if (!res.ok) { failCount++; return; }
+                            if (data && data.ok === true) okCount++;
+                            else failCount++;
+                        });
+                    }).catch(function () { failCount++; });
+            })).then(function () {
+                loadServers();
+                window._showToast('Probe All done: ' + okCount + ' ok / ' + failCount + ' failed',
+                    okCount && !failCount ? 'success' : 'error');
+            }).finally(function () {
+                if (btn) { btn.disabled = false; btn.classList.remove('spinning'); }
+            });
+        }
+
+        function openNew() {
+            resetForm();
+            openModal();
+        }
+
+        function openEdit(mid, probe) {
+            var s = findServer(mid);
+            if (!s) { loadServers(); return; }
+            clearError();
+            fillForm(s);
+            openModal();
+            if (probe) liveProbe(mid);
+        }
+
+        // ── Wire events ──
+        function bindEvents() {
+            var transSel = getEl('mcpTransport');
+            if (transSel) transSel.addEventListener('change', function () {
+                setTransportUi();
+                // 字段变更统一由下方模态框委托处理（invalidateTest：清结果 + 锁回 Save + 提示重测）
+            });
+            var saveBtn = getEl('mcpSaveBtn');
+            if (saveBtn) saveBtn.addEventListener('click', save);
+            var testBtn = getEl('mcpTestBtn');
+            if (testBtn) testBtn.addEventListener('click', testConnection);
+            var resetBtn = getEl('mcpResetBtn');
+            if (resetBtn) resetBtn.addEventListener('click', function () { resetForm(); });
+            var newBtn = getEl('mcpNewBtn');
+            if (newBtn) newBtn.addEventListener('click', openNew);
+            var probeAllBtn = getEl('mcpProbeAllBtn');
+            if (probeAllBtn) probeAllBtn.addEventListener('click', probeAll);
+            var refreshBtn = getEl('mcpRefreshBtn');
+            if (refreshBtn) refreshBtn.addEventListener('click', function () {
+                var self = this;
+                self.classList.add('spinning');
+                self.disabled = true;
+                loadServers();
+                setTimeout(function () { self.classList.remove('spinning'); self.disabled = false; }, 600);
+            });
+            var tbody = getEl('mcpTableBody');
+            if (tbody) tbody.addEventListener('click', function (e) {
+                var btn = e.target.closest('button[data-act]');
+                if (!btn) return;
+                var tr = btn.closest('tr[data-id]');
+                if (!tr) return;
+                var mid = tr.getAttribute('data-id');
+                var act = btn.getAttribute('data-act');
+                if (act === 'edit') openEdit(mid, false);
+                else if (act === 'test') openEdit(mid, true);
+                else if (act === 'del') remove(mid);
+            });
+            var searchEl = getEl('mcpSearch');
+            if (searchEl) searchEl.addEventListener('input', function () {
+                var self = this;
+                clearTimeout(self._timer);
+                self._timer = setTimeout(function () {
+                    currentSearch = self.value.trim().toLowerCase();
+                    renderList();
+                }, 200);
+            });
+            var closeBtn = getEl('mcpModalClose');
+            if (closeBtn) closeBtn.addEventListener('click', closeModal);
+            var overlay = getEl('mcpModalOverlay');
+            if (overlay) overlay.addEventListener('click', function (e) {
+                if (e.target === this) closeModal();
+            });
+            // 任一配置字段被改动（input/change）→ 上次测试作废：Save 锁回，需重测
+            if (overlay) ['input', 'change'].forEach(function (evt) {
+                overlay.addEventListener(evt, function (e) {
+                    var t = e.target;
+                    if (!t || !t.id) return;
+                    if (MCP_FIELD_IDS.indexOf(t.id) === -1) return;
+                    invalidateTest();
+                });
+            });
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && getEl('mcpModalOverlay').classList.contains('open')) closeModal();
+            });
+        }
+
+        // 切回本页时自动刷新已保存列表
+        _pageRefreshers['page-mcp-servers'] = function () { loadServers(); };
+
+        setTransportUi();
+        bindEvents();
+        loadServers();
+    }
+
     // ── Init ────────────────────────────────────────────────────
     function init() {
         initSidebar();
@@ -5184,6 +6620,9 @@
         initMonitorTargets();
         initDomainConfig();
         initAgentRegistry();
+        initWorkflowStudio();
+        initBugSolve();
+        initMcpServers();
         initFilterChips();
         initTableSorting();
         initButtonGroup();
