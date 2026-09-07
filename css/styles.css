@@ -5876,3 +5876,128 @@ svg { fill: currentColor; }
     opacity: 1;
 }
 #mcpSaveBtn:disabled:hover { opacity: 1; }
+
+/* ===== Agent Config 页面 (agc-*) ===== */
+.agc-error {
+    background: var(--accent-red);
+    color: #fff;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    word-break: break-all;
+    margin-bottom: 12px;
+}
+
+/* 表单顶部两栏（Name/Origin/Role/Stage） */
+.agc-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 16px;
+    margin-bottom: 4px;
+}
+.agc-grid-2 .apm-field { width: 100%; }
+
+/* AgentSpec 覆盖 / MCP 绑定 分组卡片 */
+.agc-block {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-body);
+    margin: 14px 0;
+}
+.agc-block-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+    margin-bottom: 2px;
+}
+.agc-block .apm-field { width: 100%; }
+.agc-block #agentCfgSchema { font-family: var(--font-mono); }
+
+/* MCP 绑定 radio 行 */
+.agc-radio-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 3px 0;
+    flex-wrap: wrap;
+}
+
+/* 「指定 server」复选卡 */
+.agc-server-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 8px;
+    margin-top: 6px;
+}
+.agc-server-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: border-color .12s ease, background .12s ease;
+}
+.agc-server-card:hover { border-color: var(--accent-purple); }
+.agc-server-card:has(input:checked) {
+    border-color: var(--accent-purple);
+    background: var(--accent-purple-light);
+}
+.agc-server-card.agc-server-off { opacity: 0.6; }
+.agc-server-name { font-weight: 600; }
+.agc-server-meta {
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+}
+.agc-server-none { font-size: 12px; padding: 4px 0; }
+
+/* Origin 徽章（列表 + 弹窗） */
+.agc-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+}
+.agc-badge-builtin { background: var(--accent-purple-light); color: var(--accent-purple); }
+.agc-badge-custom { background: var(--accent-green-bg); color: var(--accent-green); }
+
+/* 列表列 */
+.agc-name-cell { font-family: var(--font-mono); font-weight: 600; }
+.agc-mcp-none { cursor: help; }  /* 无绑定（无 MCP server）cell：—，hover 出提示 */
+.agc-mcp-names {
+    display: inline-block;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+.agc-table-empty {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 28px 12px;
+}
+
+/* 内置 agent 的 Delete 置灰（不可删除） */
+#agentCfgTableBody .apm-row-del:disabled,
+#agentCfgTableBody .apm-row-del[disabled] {
+    background: #f3f4f6;
+    color: var(--text-tertiary);
+    border-color: var(--border-color);
+    cursor: not-allowed;
+    opacity: 1;
+}

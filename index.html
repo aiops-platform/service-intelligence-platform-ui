@@ -142,6 +142,9 @@
                 <div class="sidebar-item" data-page="mcp-servers">
                     <span class="sidebar-label">MCP Server Config</span>
                 </div>
+                <div class="sidebar-item" data-page="agent-config">
+                    <span class="sidebar-label">Agent Config</span>
+                </div>
             </div>
         </div>
     </aside>
@@ -1515,6 +1518,7 @@
                 <div class="bs-stats" id="bsStats" style="display:none;">
                     <div class="bs-stat"><span class="bs-stat-label">Run ID</span><span class="bs-stat-value" id="bsRunId">—</span></div>
                     <div class="bs-stat"><span class="bs-stat-label">状态</span><span class="bs-stat-value" id="bsStatus">—</span></div>
+                    <div class="bs-stat"><span class="bs-stat-label">当前节点</span><span class="bs-stat-value" id="bsStep">—</span></div>
                     <div class="bs-stat"><span class="bs-stat-label">总 Tokens</span><span class="bs-stat-value" id="bsTokens">0</span></div>
                     <div class="bs-stat"><span class="bs-stat-label">总 Cost</span><span class="bs-stat-value" id="bsCost">0.0</span></div>
                 </div>
@@ -1598,6 +1602,50 @@
             </div>
         </div>
     </div><!-- /#page-mcp-servers -->
+
+    <!-- ====== Agent 配置 Page ====== -->
+    <div id="page-agent-config" class="page-panel" style="display:none;">
+        <div class="breadcrumb">
+            Agents <span class="breadcrumb-sep">&rsaquo;</span> Agent Fleet <span class="breadcrumb-sep">&rsaquo;</span> <strong>Agent Config</strong>
+        </div>
+        <div class="flex justify-between items-center page-header">
+            <h1 class="page-title">Agent Config <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">DB-driven AgentSpec override &rarr; each agent binds the MCP servers whose tools it may call</span></h1>
+            <button class="si-refresh-btn" id="agentCfgRefreshBtn" title="Refresh saved agent configs">
+                <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                Refresh
+            </button>
+        </div>
+
+        <!-- ===== Agent Configs List（Monitor Targets 风格） ===== -->
+        <div class="reflow-filter-bar">
+            <input type="text" placeholder="Search name / role / stage..." id="agentCfgSearch" style="flex:1;min-width:200px;">
+            <button class="btn btn-primary" id="agentCfgNewBtn" style="margin-left:auto;">New Agent</button>
+        </div>
+        <div class="table-container" id="agentCfgTableContainer">
+            <div class="si-loading-overlay" id="agentCfgLoadingOverlay">
+                <div class="si-loading-spinner"></div>
+                <div>Loading agents...</div>
+            </div>
+            <table class="reflow-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Origin</th>
+                        <th>Role</th>
+                        <th>Stage</th>
+                        <th>MCP Servers</th>
+                        <th>Enabled</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="agentCfgTableBody"></tbody>
+            </table>
+            <div class="pagination">
+                <span>Total <span id="agentCfgRowCount">0</span> agents</span>
+                <span style="color:var(--text-tertiary);">Edit / Delete</span>
+            </div>
+        </div>
+    </div><!-- /#page-agent-config -->
 
     <!-- ===== MCP Server Modal (New / Edit / Test) ===== -->
     <div class="ap-modal-overlay" id="mcpModalOverlay">
@@ -1686,6 +1734,87 @@
                     <summary>测试连接 · Tools 探测 <span class="mcp-hint" id="mcpResultMeta"></span></summary>
                     <div class="apm-result-body" id="mcpResultBody"><span class="text-secondary">— idle —</span></div>
                 </details>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Agent Config Modal (New / Edit) ===== -->
+    <div class="ap-modal-overlay" id="agentCfgModalOverlay">
+        <div class="ap-modal">
+            <div class="ap-modal-header">
+                <h3 id="agentCfgFormTitle">Agent Config Form <span class="text-secondary" style="font-size:12px;font-weight:400;margin-left:8px;" id="agentCfgFormHint">New Agent</span></h3>
+                <button class="ap-modal-close" id="agentCfgModalClose">&times;</button>
+            </div>
+            <div class="ap-modal-body">
+                <div class="agc-error" id="agentCfgError" style="display:none;"></div>
+
+                <div class="agc-grid-2">
+                    <div class="apm-field">
+                        <label for="agentCfgName">Name <span class="apm-req">*</span> <span class="apm-hint">仅字母/数字/_/-（workflow 节点引用键，新建后不可改）</span></label>
+                        <input type="text" id="agentCfgName" placeholder="custom-diagnoser" maxlength="64" spellcheck="false">
+                    </div>
+                    <div class="apm-field">
+                        <label>Origin</label>
+                        <div id="agentCfgOriginBadge" class="agc-origin-cell"><span class="agc-badge agc-badge-custom">custom</span></div>
+                    </div>
+                    <div class="apm-field">
+                        <label for="agentCfgRole">Role <span class="apm-req">*</span> <span class="apm-hint">custom 必填</span></label>
+                        <select id="agentCfgRole">
+                            <option value="diagnose">diagnose（诊断/检测侧）</option>
+                            <option value="fix">fix（修复侧）</option>
+                        </select>
+                    </div>
+                    <div class="apm-field">
+                        <label for="agentCfgStage">Stage</label>
+                        <select id="agentCfgStage">
+                            <option value="detect">detect</option>
+                            <option value="diagnose">diagnose</option>
+                            <option value="fix">fix</option>
+                            <option value="verify">verify</option>
+                            <option value="deliver">deliver</option>
+                            <option value="learn">learn</option>
+                            <option value="other">other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="apm-field">
+                    <label class="mcp-check" for="agentCfgEnabled">
+                        <input type="checkbox" id="agentCfgEnabled" checked> Enabled（停用 = 该 agent 运行时节点击短路，不调 LLM）
+                    </label>
+                </div>
+
+                <div class="agc-block">
+                    <div class="agc-block-title">AgentSpec 覆盖 <span class="apm-hint">Description / Prompt / Schema 留空 = 回退内置默认</span></div>
+                    <div class="apm-field">
+                        <label for="agentCfgDescription">Description <span class="apm-hint">留空 = 内置默认</span></label>
+                        <textarea id="agentCfgDescription" rows="2" placeholder="agent 职责一句话描述" spellcheck="false"></textarea>
+                    </div>
+                    <div class="apm-field">
+                        <label for="agentCfgPrompt">System Prompt <span class="apm-req" id="agentCfgPromptReq">*</span> <span class="apm-hint">custom 必填；内置留空 = 内置默认（提示：落库覆盖后，代码里对该 prompt 的后续修改不再生效）</span></label>
+                        <textarea id="agentCfgPrompt" rows="6" placeholder="你是深度诊断体，输出 JSON。…" spellcheck="false"></textarea>
+                    </div>
+                    <div class="apm-field">
+                        <label for="agentCfgSchema">Output Schema <span class="apm-hint">可选 JSON 对象；仅元数据/详情展示层生效</span></label>
+                        <textarea id="agentCfgSchema" rows="4" placeholder='{"type":"object","properties":{}}' spellcheck="false"></textarea>
+                    </div>
+                </div>
+
+                <div class="agc-block">
+                    <div class="agc-block-title">MCP Servers 绑定</div>
+                    <div class="agc-radio-row">
+                        <label class="mcp-check"><input type="radio" name="agentCfgBindMode" id="agentCfgBindNone" value="none" checked> 不绑定 MCP server（默认，无 &rarr; 该 agent 没有 MCP 工具，需下方指定才有）</label>
+                    </div>
+                    <div class="agc-radio-row">
+                        <label class="mcp-check"><input type="radio" name="agentCfgBindMode" id="agentCfgBindSpecific" value="specific"> 指定 server（勾选整 server &rarr; 该 agent 只见所选 server 的 enabled 工具）</label>
+                    </div>
+                    <div class="agc-server-cards" id="agentCfgServerCards" style="display:none;"></div>
+                </div>
+
+                <div class="apm-form-actions">
+                    <button class="btn btn-primary" id="agentCfgSaveBtn">Save Agent</button>
+                    <button class="btn btn-outline" id="agentCfgCancelBtn">Cancel</button>
+                </div>
             </div>
         </div>
     </div>

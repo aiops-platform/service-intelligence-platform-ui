@@ -112,6 +112,8 @@
                         showPage('page-bug-solve');
                     } else if (page === 'mcp-servers') {
                         showPage('page-mcp-servers');
+                    } else if (page === 'agent-config') {
+                        showPage('page-agent-config');
                     }
                 });
             });
@@ -603,6 +605,7 @@
                         else if (agPage === 'workflow-studio') showPage('page-workflow-studio');
                         else if (agPage === 'bug-solve') showPage('page-bug-solve');
                         else if (agPage === 'mcp-servers') showPage('page-mcp-servers');
+                        else if (agPage === 'agent-config') showPage('page-agent-config');
                     }
                 } else {
                     hideAllSidebars();
@@ -3610,6 +3613,8 @@
         var currentSeverity = 'all';
         var currentState = 'all';
         var allProblems = [];
+        var pcPollTimer = null;    // 5s 自动刷新定时器
+        var pcRefreshing = false;  // 请求在途标志：避免轮询堆叠
 
         function getEl(id) { return document.getElementById(id); }
 
@@ -3676,6 +3681,7 @@
         function loadServiceFilter() {
             var sel = getEl('pcServiceFilter');
             if (!sel) return;
+            sel.innerHTML = '<option value="">All Services</option>'; // 每次重建，避免静默刷新时 option 累积重复
             var seen = {};
             allProblems.forEach(function (p) {
                 if (p.service && !seen[p.service]) {
@@ -3957,22 +3963,31 @@
             });
         }
 
-        function refresh() {
+        function refresh(opts) {
+            // silent=true 用于 5s 自动轮询：不闪 loading、不打断当前分页、失败不弹错（保留旧数据）
+            var silent = !!(opts && opts.silent);
+            if (pcRefreshing) return; // 已有请求在途（手动刷新/切页/轮询），跳过本次，避免并发堆叠
+            pcRefreshing = true;
             var overlay = getEl('pcLoadingOverlay');
-            if (overlay) overlay.classList.add('visible');
-            allProblems = [];
+            if (!silent) {
+                if (overlay) overlay.classList.add('visible');
+                allProblems = [];
+            }
             apmApi('/v1/problems?limit=500')
                 .then(function (data) {
+                    pcRefreshing = false;
                     allProblems = (data && data.items) ? data.items : [];
-                    if (overlay) overlay.classList.remove('visible');
-                    var sel = getEl('pcServiceFilter');
-                    if (sel) sel.innerHTML = '<option value="">All Services</option>';
-                    currentPage = 0;
+                    if (!silent) {
+                        if (overlay) overlay.classList.remove('visible');
+                        currentPage = 0;
+                    }
                     loadServiceFilter();
                     renderKpi();
                     renderTable();
                 })
                 .catch(function (err) {
+                    pcRefreshing = false;
+                    if (silent) return; // 轮询失败静默忽略，保留旧数据
                     if (overlay) overlay.classList.remove('visible');
                     window._showToast('Load problems failed: ' + err.message, 'error');
                     renderKpi();
@@ -4035,8 +4050,13 @@
         // 切回本页时自动刷新
         _pageRefreshers['page-problems'] = function () { refresh(); };
 
-        // 初始化加载
+        // ── 初始加载 + 5s 自动刷新（仅当页面可见时静默轮询，切换走后自动暂停）──
         refresh();
+        if (pcPollTimer) clearInterval(pcPollTimer);
+        pcPollTimer = setInterval(function () {
+            var page = document.getElementById('page-problems');
+            if (page && page.style.display !== 'none') refresh({ silent: true });
+        }, 5000);
     }
 
     // ── Helper: format time ago ──────────────────────────────
@@ -5603,6 +5623,7 @@
         var currentNodeData = null;
         var currentGraph = null;
         var detailTab = 'output';
+        var autoFollow = true;  // 自动跟随当前执行节点进右侧详情；用户点选后停止
 
         function getEl(id) { return document.getElementById(id); }
         function setText(id, val) {
@@ -5618,6 +5639,30 @@
         function clearError() {
             var err = getEl('bsError');
             if (err) err.style.display = 'none';
+        }
+
+        // 左侧「当前节点」：running 节点（并行取第一个）→ "id (agent)"；否则按 run 状态给提示
+        function updateStep(runNid, graph, status) {
+            var el = getEl('bsStep');
+            if (!el) return;
+            if (runNid) {
+                var agent = '';
+                if (graph && graph.nodes) {
+                    for (var i = 0; i < graph.nodes.length; i++) {
+                        if (graph.nodes[i].id === runNid && graph.nodes[i].agent) {
+                            agent = ' (' + graph.nodes[i].agent + ')';
+                            break;
+                        }
+                    }
+                }
+                el.textContent = runNid + agent;
+            } else if (status === 'waiting_approval') {
+                el.textContent = '待审批';
+            } else if (status === 'success' || status === 'failed' || status === 'cancelled') {
+                el.textContent = '—';
+            } else {
+                el.textContent = '排队中…';
+            }
         }
 
         // 节点状态 → 着色类名
@@ -5711,11 +5756,13 @@
             if (ticket === null) return;
             if (running) return;
             running = true;
+            autoFollow = true;  // 新 run 重新自动跟随当前执行节点
             var startBtn = getEl('bsStartBtn');
             if (startBtn) startBtn.disabled = true;
             var stopBtn = getEl('bsStopBtn');
             if (stopBtn) stopBtn.style.display = '';
             setText('bsStatus', 'started');
+            setText('bsStep', '排队中…');
             var stats = getEl('bsStats');
             if (stats) stats.style.display = 'flex';
             fetch(BS_API_BASE + '/run', {
@@ -5770,8 +5817,13 @@
             Object.keys(currentNodeData).forEach(function (nid) {
                 statusMap[nid] = currentNodeData[nid].status;
             });
+            // 当前执行节点（并行 running 取第一个）→ 左侧「当前节点」提示
+            var runNid = Object.keys(statusMap).filter(function (nid) { return statusMap[nid] === 'running'; })[0] || null;
+            updateStep(runNid, data.graph || currentGraph, data.status);
             canvas.render(data.graph || currentGraph, statusMap);
             renderApprovals();
+            // 自动跟随：运行中把右侧详情切到正在跑的节点（output 尚 null → renderDetail 显示执行中）
+            if (autoFollow && runNid) selectedNode = runNid;
             if (selectedNode && currentNodeData[selectedNode]) {
                 renderDetail(selectedNode);
             } else if (selectedNode) {
@@ -5884,6 +5936,7 @@
         }
 
         function selectNode(nid) {
+            autoFollow = false;  // 用户手动点选 → 停止自动跟随当前执行节点
             selectedNode = nid;
             renderDetail(nid);
         }
@@ -5902,7 +5955,9 @@
             var cost = typeof n.cost === 'number' ? n.cost.toFixed(4) : '0.0';
             var params = n.params || {};
             var output = n.output;
-            var outputHtml = (output !== undefined && output !== null) ? JSON.stringify(output, null, 2) : '(无输出)';
+            var outputHtml = st === 'running'
+                ? '(执行中…)'  // running 节点 output 尚未产出，实时自动跟随时给「正在执行」反馈
+                : (output !== undefined && output !== null) ? JSON.stringify(output, null, 2) : '(无输出)';
             var promptHtml = JSON.stringify(params, null, 2);
 
             var tabActive = detailTab || 'output';
@@ -5928,6 +5983,7 @@
         function resetRun() {
             if (timer) { clearInterval(timer); timer = null; }
             running = false;
+            autoFollow = true;
             runId = null;
             runStatus = null;
             pendingApprovals = [];
@@ -5943,6 +5999,7 @@
             if (stats) stats.style.display = 'none';
             setText('bsRunId', '—');
             setText('bsStatus', '—');
+            setText('bsStep', '—');
             setText('bsTokens', '0');
             setText('bsCost', '0.0');
             renderApprovals();
@@ -6604,6 +6661,429 @@
         loadServers();
     }
 
+    // ── Agent 配置（DB 驱动 AgentSpec 覆盖 + agent→MCP server 绑定）──
+    function initAgentConfig() {
+        // 后端地址（可配置）：默认 http://localhost:8000。可用 localStorage 覆盖：agentConfigBaseUrl（否则沿用 workflowBaseUrl）。
+        var AGC_API_BASE = localStorage.getItem('agentConfigBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+
+        var agents = [];        // GET /agent-configs 行
+        var editingName = null; // 当前编辑的 agent 名；null = New（custom）
+        var origin = 'custom';  // 当前表单 origin（builtin | custom）
+        var currentSearch = '';
+        var saving = false;     // Save 提交进行中，防重复点击
+        var mcpServerCache = null;         // GET /mcp-servers 缓存
+        var serverOptionsPromise = null;   // 并发去重用
+
+        function getEl(id) { return document.getElementById(id); }
+        function setText(id, val) { var el = getEl(id); if (el) el.textContent = String(val); }
+        function showError(msg) { var err = getEl('agentCfgError'); if (!err) return; err.textContent = msg; err.style.display = 'block'; }
+        function clearError() { var err = getEl('agentCfgError'); if (err) err.style.display = 'none'; }
+        function loadOverlay(show) { var ov = getEl('agentCfgLoadingOverlay'); if (ov) ov.classList.toggle('visible', !!show); }
+        function setFieldVal(id, val) { var el = getEl(id); if (el) el.value = (val === null || val === undefined) ? '' : String(val); }
+
+        function findAgent(name) {
+            for (var i = 0; i < agents.length; i++) { if (agents[i].name === name) return agents[i]; }
+            return null;
+        }
+
+        // MCP Servers 列文案：bound_servers 空 = 无绑定（两态：没配置就没有 server）；否则绑定 server 名
+        function bindText(s) {
+            var bserv = (s && Array.isArray(s.bound_servers)) ? s.bound_servers : [];
+            if (!bserv.length) return { kind: 'none', text: '' };
+            return { kind: 'sub', text: bserv.map(function (b) { return b.name; }).filter(Boolean).join(', ') };
+        }
+
+        function renderTable() {
+            var tbody = getEl('agentCfgTableBody');
+            if (!tbody) return;
+            var filtered = agents.filter(function (a) {
+                if (!currentSearch) return true;
+                var hay = [a.name || '', a.role || '', a.stage || ''].join(' ').toLowerCase();
+                return hay.indexOf(currentSearch) !== -1;
+            });
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="agc-table-empty">' +
+                    (agents.length ? 'No agents match your search.' : 'No agent configs yet. Click "New Agent" in the top-right to create a custom agent.') +
+                    '</td></tr>';
+                setText('agentCfgRowCount', '0');
+                return;
+            }
+            tbody.innerHTML = filtered.map(function (a) {
+                var isBuiltin = a.origin === 'builtin';
+                var originBadge = '<span class="agc-badge ' + (isBuiltin ? 'agc-badge-builtin' : 'agc-badge-custom') + '">' + (isBuiltin ? 'builtin' : 'custom') + '</span>';
+                var enabledHtml = a.enabled
+                    ? '<span class="apm-badge apm-badge-on">enabled</span>'
+                    : '<span class="apm-badge apm-badge-off">disabled</span>';
+                var bt = bindText(a);
+                var mcpCell;
+                if (bt.kind === 'none') mcpCell = '<span class="text-secondary agc-mcp-none" title="无 MCP server：该 agent 没有 MCP 工具（Edit 勾选 server 后生效）">\u2014</span>';
+                else mcpCell = '<span class="agc-mcp-names" title="' + escapeHtml(bt.text) + '">' + escapeHtml(bt.text) + '</span>';
+                var delBtn = isBuiltin
+                    ? '<button class="btn apm-row-btn apm-row-del" data-act="del" disabled title="内置 agent 只能编辑/清空覆盖，不可删除">Delete</button>'
+                    : '<button class="btn apm-row-btn apm-row-del" data-act="del">Delete</button>';
+                return '<tr data-name="' + escapeHtml(a.name) + '">' +
+                    '<td class="agc-name-cell">' + escapeHtml(a.name) + '</td>' +
+                    '<td>' + originBadge + '</td>' +
+                    '<td>' + escapeHtml(a.role || '') + '</td>' +
+                    '<td>' + escapeHtml(a.stage || '') + '</td>' +
+                    '<td>' + mcpCell + '</td>' +
+                    '<td>' + enabledHtml + '</td>' +
+                    '<td class="apm-actions">' +
+                        '<button class="btn btn-outline apm-row-btn" data-act="edit">Edit</button>' + delBtn +
+                    '</td>' +
+                    '</tr>';
+            }).join('');
+            setText('agentCfgRowCount', String(filtered.length));
+        }
+
+        // ── MCP server 绑定卡（懒加载 GET /mcp-servers）──
+        function ensureServerOptions() {
+            if (mcpServerCache !== null) return Promise.resolve(mcpServerCache);
+            if (!serverOptionsPromise) {
+                serverOptionsPromise = fetch(AGC_API_BASE + '/mcp-servers').then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                }).then(function (data) {
+                    mcpServerCache = Array.isArray(data) ? data : [];
+                    return mcpServerCache;
+                }).catch(function (err) {
+                    window._showToast('加载 MCP server 列表失败: ' + (err && err.message ? err.message : 'network error'), 'error');
+                    mcpServerCache = [];
+                    return mcpServerCache;
+                }).finally(function () {
+                    serverOptionsPromise = null;
+                });
+            }
+            return serverOptionsPromise;
+        }
+
+        function renderServerCards(selectedIds) {
+            var wrap = getEl('agentCfgServerCards');
+            if (!wrap) return;
+            var opts = mcpServerCache || [];
+            if (!opts.length) {
+                wrap.innerHTML = '<div class="agc-server-none text-secondary">暂无已保存的 MCP server —— 先在「MCP Server Config」页添加。</div>';
+                return;
+            }
+            var selected = {};
+            (Array.isArray(selectedIds) ? selectedIds : []).forEach(function (mid) { selected[mid] = true; });
+            wrap.innerHTML = opts.map(function (sv) {
+                var off = sv.enabled === false;
+                var toolsTxt = Array.isArray(sv.tools) ? String(sv.tools.length) + ' tools' : '';
+                return '<label class="agc-server-card' + (off ? ' agc-server-off' : '') + '"' + (off ? ' title="server 已停用（该 agent 拿不到其工具）"' : '') + '>' +
+                    '<input type="checkbox" value="' + escapeHtml(sv.id) + '"' + (selected[sv.id] ? ' checked' : '') + '>' +
+                    '<span class="agc-server-name">' + escapeHtml(sv.name) + '</span>' +
+                    '<span class="agc-server-meta">' + escapeHtml(sv.transport || '') +
+                        (toolsTxt ? ' \u00b7 ' + toolsTxt : '') + '</span>' +
+                    '</label>';
+            }).join('');
+        }
+
+        // force=true：打开弹窗后以权威选中集合重绘（先清容器）；否则仅在容器为空时补绘（保留用户勾选）
+        function syncBindUi(selectedIds, force) {
+            var specific = getEl('agentCfgBindSpecific');
+            var wrap = getEl('agentCfgServerCards');
+            if (!specific || !wrap) return;
+            if (!specific.checked) { wrap.style.display = 'none'; return; }
+            wrap.style.display = '';
+            if (force || wrap.innerHTML === '') {
+                ensureServerOptions().then(function () { renderServerCards(selectedIds || []); });
+            }
+        }
+
+        function setBindMode(mode, selectedIds, force) {
+            var none = getEl('agentCfgBindNone');
+            var specific = getEl('agentCfgBindSpecific');
+            if (!none || !specific) return;
+            none.checked = mode !== 'specific';
+            specific.checked = mode === 'specific';
+            syncBindUi(selectedIds, !!force);
+        }
+        function bindMode() {
+            var specific = getEl('agentCfgBindSpecific');
+            return specific && specific.checked ? 'specific' : 'none';
+        }
+        function checkedServerIds() {
+            var wrap = getEl('agentCfgServerCards');
+            var ids = [];
+            if (!wrap) return ids;
+            var boxes = wrap.querySelectorAll('input[type="checkbox"]:checked');
+            for (var i = 0; i < boxes.length; i++) ids.push(boxes[i].value);
+            return ids;
+        }
+
+        // ── 表单填充 / 清空 ──
+        function setOrigin(org) {
+            origin = org === 'builtin' ? 'builtin' : 'custom';
+            var badge = getEl('agentCfgOriginBadge');
+            if (badge) badge.innerHTML = '<span class="agc-badge ' + (origin === 'builtin' ? 'agc-badge-builtin' : 'agc-badge-custom') + '">' + origin + '</span>';
+            var req = getEl('agentCfgPromptReq');
+            if (req) req.style.display = origin === 'custom' ? '' : 'none';  // custom 必填非空 prompt
+        }
+
+        function setDefaults() {
+            var desc = getEl('agentCfgDescription');
+            var prompt = getEl('agentCfgPrompt');
+            var schema = getEl('agentCfgSchema');
+            if (desc) desc.setAttribute('placeholder', 'agent 职责一句话描述；留空 = 内置默认');
+            if (prompt) prompt.setAttribute('placeholder', '内置留空 = 内置默认；custom 必填');
+            if (schema) schema.setAttribute('placeholder', '{"type":"object","properties":{}}');
+        }
+
+        function resetForm() {
+            editingName = null;
+            var nameInput = getEl('agentCfgName');
+            if (nameInput) { nameInput.value = ''; nameInput.disabled = false; nameInput.readOnly = false; }
+            setOrigin('custom');
+            var role = getEl('agentCfgRole');
+            if (role) role.value = 'diagnose';
+            var stage = getEl('agentCfgStage');
+            if (stage) stage.value = 'detect';
+            var en = getEl('agentCfgEnabled');
+            if (en) en.checked = true;
+            setFieldVal('agentCfgDescription', '');
+            setFieldVal('agentCfgPrompt', '');
+            setFieldVal('agentCfgSchema', '');
+            setDefaults();
+            var wrap = getEl('agentCfgServerCards');
+            if (wrap) wrap.innerHTML = '';
+            setBindMode('none', [], false);
+            clearError();
+        }
+
+        function hintDefaults(d) {
+            // 未覆盖的内置字段：把合并有效值放进 placeholder（不写 value，避免误保存成覆盖）
+            var stored = d.stored || {};
+            var desc = getEl('agentCfgDescription');
+            if (desc) desc.setAttribute('placeholder', stored.description ? '' : (d.description || ''));
+            var prompt = getEl('agentCfgPrompt');
+            if (prompt) prompt.setAttribute('placeholder', stored.system_prompt ? '' : (d.system_prompt || ''));
+            var schema = getEl('agentCfgSchema');
+            if (schema) schema.setAttribute('placeholder', stored.schema ? '' : (d.schema && Object.keys(d.schema).length ? JSON.stringify(d.schema, null, 2) : ''));
+        }
+
+        // GET /agent-configs/{name} 的 stored 覆盖值回填文本；合并有效值仅作 placeholder 提示
+        function fillFromDetail(d) {
+            editingName = d.name;
+            var nameInput = getEl('agentCfgName');
+            if (nameInput) { nameInput.value = d.name; nameInput.disabled = true; nameInput.readOnly = true; }
+            setOrigin(d.origin);
+            var role = getEl('agentCfgRole');
+            if (role && d.role) role.value = d.role;
+            var stage = getEl('agentCfgStage');
+            if (stage && d.stage) stage.value = d.stage;
+            var en = getEl('agentCfgEnabled');
+            if (en) en.checked = d.enabled !== false;
+            var stored = d.stored || {};
+            setFieldVal('agentCfgDescription', stored.description);
+            setFieldVal('agentCfgPrompt', stored.system_prompt);
+            setFieldVal('agentCfgSchema', stored.schema === null || stored.schema === undefined ? '' : JSON.stringify(stored.schema, null, 2));
+            var wrap = getEl('agentCfgServerCards');
+            if (wrap) wrap.innerHTML = '';
+            var ids = d.mcp_server_ids;
+            if (Array.isArray(ids)) setBindMode('specific', ids, true);
+            else setBindMode('none', [], true);  // NULL/[]（无绑定）→ 不绑定 MCP server
+        }
+
+        // ── Modal open / close ──
+        function openModal() { var ov = getEl('agentCfgModalOverlay'); if (ov) ov.classList.add('open'); }
+        function closeModal() { var ov = getEl('agentCfgModalOverlay'); if (ov) ov.classList.remove('open'); }
+        function setFormHint() {
+            var hint = getEl('agentCfgFormHint');
+            if (!hint) return;
+            hint.textContent = editingName ? 'Editing ' + editingName : 'New Agent (custom)';
+        }
+
+        function openNew() {
+            resetForm();
+            setFormHint();
+            ensureServerOptions();  // 预拉 server 选项（切换「指定」时即时可用）
+            openModal();
+        }
+
+        function openEdit(name) {
+            clearError();
+            fetch(AGC_API_BASE + '/agent-configs/' + encodeURIComponent(name)).then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok) throw { raw: data.detail || ('HTTP ' + res.status) };
+                    return data;
+                });
+            }).then(function (d) {
+                fillFromDetail(d);
+                hintDefaults(d);
+                setFormHint();
+                openModal();
+            }).catch(function (err) {
+                if (!err) return;
+                var raw = (err.raw !== undefined) ? err.raw : (err.message || 'network error');
+                window._showToast('加载 agent 配置失败: ' + raw, 'error');
+            });
+        }
+
+        // 表单 → body（POST 新建 custom / PUT 完整对象覆盖）。"" 文本 → null（清覆盖回退内置）
+        function buildBody() {
+            var name = (getEl('agentCfgName').value || '').trim();
+            var role = getEl('agentCfgRole').value;
+            var stage = getEl('agentCfgStage').value;
+            var enabled = getEl('agentCfgEnabled').checked;
+            var description = (getEl('agentCfgDescription').value || '').trim();
+            var system_prompt = (getEl('agentCfgPrompt').value || '').trim();
+            var schemaRaw = (getEl('agentCfgSchema').value || '').trim();
+            if (!editingName) {
+                if (!name) { showError('请填写 agent 名称'); getEl('agentCfgName').focus(); return null; }
+                if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showError('name 仅支持字母/数字/下划线/中划线（同时是 workflow node.agent 引用）'); getEl('agentCfgName').focus(); return null; }
+                if (!system_prompt) { showError('自定义 agent 必须提供非空 system_prompt'); getEl('agentCfgPrompt').focus(); return null; }
+            } else if (origin === 'custom' && !system_prompt) {
+                showError('自定义 agent 必须提供非空 system_prompt'); getEl('agentCfgPrompt').focus(); return null;
+            }
+            if (role !== 'diagnose' && role !== 'fix') { showError('role 仅支持 diagnose 或 fix'); return null; }
+            var output_schema = null;
+            if (schemaRaw) {
+                try { output_schema = JSON.parse(schemaRaw); }
+                catch (e) { showError('Output Schema 不是合法 JSON：' + e.message); getEl('agentCfgSchema').focus(); return null; }
+                if (typeof output_schema !== 'object' || output_schema === null || Array.isArray(output_schema)) {
+                    showError('Output Schema 需为 JSON 对象（{...}）'); getEl('agentCfgSchema').focus(); return null;
+                }
+            }
+            var mcp_server_ids = null;  // 默认不绑定 → null = 无 MCP server（两态）；指定 → 选中 id 数组
+            if (bindMode() === 'specific') mcp_server_ids = checkedServerIds();
+            var body = {
+                role: role,
+                stage: stage,
+                description: description || null,
+                system_prompt: system_prompt || null,
+                output_schema: output_schema,
+                mcp_server_ids: mcp_server_ids,
+                enabled: enabled
+            };
+            if (!editingName) body.name = name;
+            return body;
+        }
+
+        function save() {
+            if (saving) return;
+            var btn = getEl('agentCfgSaveBtn');
+            var body = buildBody();
+            if (!body) return;
+            clearError();
+            saving = true;
+            if (btn) btn.textContent = 'Saving\u2026';
+            var url = AGC_API_BASE + '/agent-configs' + (editingName ? '/' + encodeURIComponent(editingName) : '');
+            fetch(url, {
+                method: editingName ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            }).then(function (res) {
+                return res.json().then(function (data) {
+                    if (!res.ok) throw { raw: data.detail || res.status };
+                    return data;
+                });
+            }).then(function (data) {
+                var label = (data && data.name) || editingName || body.name || '';
+                window._showToast(editingName ? 'Updated ' + label : 'Created ' + label, 'success');
+                closeModal();
+                loadConfigs();
+            }).catch(function (err) {
+                if (!err) return;
+                var raw = (err.raw !== undefined) ? err.raw : (err.message || 'network error');
+                showError('保存失败：' + raw);
+            }).finally(function () {
+                saving = false;
+                if (btn) btn.textContent = 'Save Agent';
+            });
+        }
+
+        function remove(name) {
+            if (!window.confirm('确认删除自定义 agent「' + name + '」？此操作不可撤销。')) return;
+            clearError();
+            fetch(AGC_API_BASE + '/agent-configs/' + encodeURIComponent(name), { method: 'DELETE' }).then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function () {
+                if (editingName === name) closeModal();
+                window._showToast('Deleted ' + name, 'success');
+                loadConfigs();
+            }).catch(function (err) {
+                window._showToast('删除失败: ' + (err && err.message ? err.message : 'network error'), 'error');
+            });
+        }
+
+        function loadConfigs() {
+            clearError();
+            loadOverlay(true);
+            fetch(AGC_API_BASE + '/agent-configs').then(function (res) {
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return res.json();
+            }).then(function (data) {
+                agents = Array.isArray(data) ? data : [];
+                renderTable();
+            }).catch(function (err) {
+                window._showToast('加载 agent 配置列表失败: ' + (err && err.message ? err.message : 'network error'), 'error');
+            }).finally(function () { loadOverlay(false); });
+        }
+
+        // ── Wire events ──
+        function bindEvents() {
+            var newBtn = getEl('agentCfgNewBtn');
+            if (newBtn) newBtn.addEventListener('click', openNew);
+            var refreshBtn = getEl('agentCfgRefreshBtn');
+            if (refreshBtn) refreshBtn.addEventListener('click', function () {
+                var self = this;
+                self.classList.add('spinning');
+                self.disabled = true;
+                loadConfigs();
+                setTimeout(function () { self.classList.remove('spinning'); self.disabled = false; }, 600);
+            });
+            var tbody = getEl('agentCfgTableBody');
+            if (tbody) tbody.addEventListener('click', function (e) {
+                var btn = e.target.closest('button[data-act]');
+                if (!btn || btn.disabled) return;
+                var tr = btn.closest('tr[data-name]');
+                if (!tr) return;
+                var name = tr.getAttribute('data-name');
+                var act = btn.getAttribute('data-act');
+                if (act === 'edit') openEdit(name);
+                else if (act === 'del') remove(name);
+            });
+            var searchEl = getEl('agentCfgSearch');
+            if (searchEl) searchEl.addEventListener('input', function () {
+                var self = this;
+                clearTimeout(self._timer);
+                self._timer = setTimeout(function () {
+                    currentSearch = self.value.trim().toLowerCase();
+                    renderTable();
+                }, 200);
+            });
+            var closeBtn = getEl('agentCfgModalClose');
+            if (closeBtn) closeBtn.addEventListener('click', closeModal);
+            var overlay = getEl('agentCfgModalOverlay');
+            if (overlay) overlay.addEventListener('click', function (e) {
+                if (e.target === this) closeModal();
+            });
+            var saveBtn = getEl('agentCfgSaveBtn');
+            if (saveBtn) saveBtn.addEventListener('click', save);
+            var cancelBtn = getEl('agentCfgCancelBtn');
+            if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+            if (overlay) {
+                var radios = overlay.querySelectorAll('input[name="agentCfgBindMode"]');
+                for (var i = 0; i < radios.length; i++) {
+                    radios[i].addEventListener('change', function () {
+                        syncBindUi(checkedServerIds(), false);
+                    });
+                }
+            }
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && getEl('agentCfgModalOverlay').classList.contains('open')) closeModal();
+            });
+        }
+
+        // 切回本页时自动刷新已保存列表
+        _pageRefreshers['page-agent-config'] = function () { loadConfigs(); };
+
+        bindEvents();
+        loadConfigs();
+    }
+
     // ── Init ────────────────────────────────────────────────────
     function init() {
         initSidebar();
@@ -6623,6 +7103,7 @@
         initWorkflowStudio();
         initBugSolve();
         initMcpServers();
+        initAgentConfig();
         initFilterChips();
         initTableSorting();
         initButtonGroup();
