@@ -4055,9 +4055,22 @@
         var diagBusy = {};        // record_id -> true（请求在途，防双击）
         var pcDiagRec = null;     // 正在查看诊断的问题记录
         var pcDiagTimer = null;   // 2s 轮询 timer（关弹框必清）
-        var PC_DIAG_TERMINAL = { completed: 1, failed: 1, approved: 1, closed_manual: 1 };
+        var pcDiagLastSnap = null;// 最近一次渲染的快照（重渲染/交互置灰用）
+        var PC_DIAG_TERMINAL = { completed: 1, failed: 1, approved: 1, closed_manual: 1, dismissed: 1 };
+        // 状态胶囊一律中文标签（**绝不把原始枚举印给用户**，与 dgxTaskView 同纪律）。
+        // CSS 类仍用原始 dgx-status--<en>（着色不受影响），兜底 || st。
+        var DGX_STATUS_LABEL = {
+            analyzing: '分析中', completed: '已完成', failed: '失败',
+            approved: '已通过', closed_manual: '需人工处理', dismissed: '已忽略'
+        };
         var dgxOptSel = 0;        // 当前选中的修复方案下标（互斥多方案分页签）
         var dgxChainOpen = false; // 「分析链路」折叠区开合（默认关闭；轮询重渲染后保持）
+        var dgxFbOpen = false;    // 拒绝反馈框开合
+        var dgxFbText = '';       // 拒绝反馈文本（轮询重渲染回填，不丢输入）
+        var dgxDeciding = false;  // 决策 POST 在途（按钮 disabled）
+        var dgxRerunPending = false; // 拒绝后抑制旧 completed 快照重新渲染出审批条
+        var dgxRerunCount = 0;    // 拒绝时的 reanalyze_count（重跑起跳观测点）
+        var pcDiagHistory = { items: [], rev: 0 }; // 历史计划（真源 = APM evidence）；rev = 已拉取时的 reanalyze_count
 
         // 取记录里最新一条 diagnose_session evidence（record_id → session_id 的桥）
         function findDiagnoseSession(rec) {
@@ -4091,14 +4104,28 @@
             if (pcDiagTimer) { clearInterval(pcDiagTimer); pcDiagTimer = null; }
         }
 
+        // 重启 2s 轮询（打开弹框与拒绝成功后共用；先停再起，避免叠加多个 timer）
+        function ensureDiagPolling() {
+            stopDiagPolling();
+            pcDiagTimer = setInterval(pollDiagnosis, 2000);
+        }
+
         function openDiagnosisView(rec) {
             if (!findDiagnoseSession(rec)) {
                 window._showToast('No diagnosis bound to ' + (rec && rec.record_id ? rec.record_id : 'record'), 'error');
                 return;
             }
             pcDiagRec = rec;
-            dgxOptSel = 0;         // 换记录 → 复位交互状态
+            // 换记录 → 复位全部交互状态（审批条/反馈框/历史/分页签/链路）
+            dgxOptSel = 0;
             dgxChainOpen = false;
+            dgxFbOpen = false;
+            dgxFbText = '';
+            dgxDeciding = false;
+            dgxRerunPending = false;
+            dgxRerunCount = 0;
+            pcDiagLastSnap = null;
+            pcDiagHistory = { items: [], rev: 0 };
             var title = getEl('pcDiagnoseTitle');
             if (title) title.textContent = 'Diagnosis · ' + rec.record_id;
             var bodyEl = getEl('pcDiagnoseBody');
@@ -4106,13 +4133,14 @@
             var overlay = getEl('pcDiagnoseOverlay');
             if (overlay) overlay.classList.add('open');
             pollDiagnosis();
-            stopDiagPolling();
-            pcDiagTimer = setInterval(pollDiagnosis, 2000);
+            loadDiagnoseDecisions(rec.record_id); // 历史计划（真源 = APM evidence）
+            ensureDiagPolling();
         }
 
         function closeDiagnosisView() {
             stopDiagPolling();
             pcDiagRec = null;
+            pcDiagLastSnap = null;
             var overlay = getEl('pcDiagnoseOverlay');
             if (overlay) overlay.classList.remove('open');
         }
@@ -4122,14 +4150,43 @@
             var recordId = pcDiagRec.record_id;
             apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/diagnose')
                 .then(function (snap) {
+                    // 拒绝后抑制窗口：重跑已起跳（analyzing）或已产出新一版（reanalyze_count 增长）→ 解除。
+                    // 响应里的 session_status 是旧值（_schedule_run 不同步置 analyzing），不能靠它判断。
+                    if (dgxRerunPending && snap) {
+                        if (snap.status === 'analyzing' ||
+                            (typeof snap.reanalyze_count === 'number' && snap.reanalyze_count > dgxRerunCount)) {
+                            dgxRerunPending = false;
+                        }
+                    }
                     renderDiagnosis(snap);
-                    if (snap && PC_DIAG_TERMINAL[snap.status]) stopDiagPolling();
+                    if (snap && PC_DIAG_TERMINAL[snap.status] && !dgxRerunPending) stopDiagPolling();
+                    // 历史可能被别的操作者追加 → reanalyze_count 变了就重拉
+                    if (snap && typeof snap.reanalyze_count === 'number' &&
+                        snap.reanalyze_count !== pcDiagHistory.rev) {
+                        pcDiagHistory.rev = snap.reanalyze_count;
+                        loadDiagnoseDecisions(recordId);
+                    }
                 })
                 .catch(function (err) {
                     stopDiagPolling();
                     var bodyEl = getEl('pcDiagnoseBody');
                     if (bodyEl) bodyEl.innerHTML = '<div class="pc-diag-error">' + escapeHtml('Load failed: ' + err.message) + '</div>';
                 });
+        }
+
+        // ── 历史计划（真源 = APM evidence 的 diagnose_decision）：spike 的 remediation 单值，
+        //    每次重跑即清空，故历史只能落 APM；这里走独立只读端点，不污染 /diagnose 的逐字回传。
+        var DGX_DECISION_LABEL = { reject: '已拒绝', ignore: '已忽略', false_positive: '已误报' };
+        var DGX_DECISION_CLS = { reject: 'reject', ignore: 'ignore', false_positive: 'fp' };
+
+        function loadDiagnoseDecisions(recordId) {
+            return apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/diagnose/decisions')
+                .then(function (data) {
+                    if (!pcDiagRec || pcDiagRec.record_id !== recordId) return; // 已切记录 → 丢弃
+                    pcDiagHistory.items = (data && data.items) || [];
+                    if (pcDiagLastSnap) renderDiagnosis(pcDiagLastSnap);
+                })
+                .catch(function () { /* 历史拉取失败不阻断主视图 */ });
         }
 
         // 渲染小工具（dgx = diaGnosis eXperience）
@@ -4194,8 +4251,12 @@
         // 修复方案：单方案直接铺开；互斥多方案 → 分页签（默认选中模型推荐/方案1）
         function dgxOptionBody(o) {
             o = o || {};
-            var html = '<div class="dgx-opt-head">' + dgxEsc(o.title || '(未命名方案)') +
-                (o.recommended ? '<span class="dgx-rec">模型推荐</span>' : '') + '</div>';
+            var html = '';
+            // 标题可选：历史计划里标题已在 summary 展示，此处只铺 steps（不再重复标题头）
+            if (o.title || o.recommended) {
+                html += '<div class="dgx-opt-head">' + dgxEsc(o.title || '(未命名方案)') +
+                    (o.recommended ? '<span class="dgx-rec">模型推荐</span>' : '') + '</div>';
+            }
             if (o.applies_when) html += '<div class="dgx-kv"><span class="dgx-k">适用前提</span><span class="dgx-v">' + dgxEsc(o.applies_when) + '</span></div>';
             if (o.reason) html += '<div class="dgx-kv"><span class="dgx-k">推荐理由</span><span class="dgx-v">' + dgxEsc(o.reason) + '</span></div>';
             var steps = o.steps || [];
@@ -4218,10 +4279,50 @@
             return html + '</ol>';
         }
 
-        function dgxFixOptions(opts) {
+        // 结论区（根因 + 总结）——live 与历史快照共用：保证"历史里回看的"与"当时看到的"是同一套渲染。
+        function dgxConclusion(c) {
+            if (!c) return '';
+            // 1) 根因 + 置信度/commit 元信息（同屏给出「结论 + 可信度」，先看结论再决定读多深）
+            var html = '<section class="dgx-card dgx-verdict"><div class="dgx-label">根因 · ROOT CAUSE</div>' +
+                '<p class="dgx-verdict-text">' + dgxEsc(c.root_cause || '—') + '</p>' +
+                '<div class="dgx-verdict-meta">' + dgxConfChip(c.confidence) +
+                dgxShaChip('deployed', c.deployed_commit) +
+                dgxShaChip('base', c.base_commit) +
+                dgxShaChip('已修复于', c.already_fixed_by) + '</div>' +
+                (c.base_note ? '<p class="dgx-note">' + dgxEsc(c.base_note) + '</p>' : '') +
+                '</section>';
+            // 2) 总结
+            if (c.summary) {
+                html += '<section class="dgx-card"><div class="dgx-label">总结 · SUMMARY</div>' +
+                    '<p class="dgx-body-text">' + dgxEsc(c.summary) + '</p></section>';
+            }
+            return html;
+        }
+
+        // opts_ = { flat: true, highlight: N } → 历史快照专用「平铺模式」：不渲染分页签，所有方案依次铺开。
+        // 理由：互斥关系在"当时"已由用户裁决，历史里再把 2 选 1 藏进分页签就看不出被拒的是哪一版。
+        // highlight（1-based）那个方案标「本轮被拒」。live 路径不传 opts_ → 行为零变化。
+        function dgxFixOptions(opts, opts_) {
+            opts_ = opts_ || {};
             if (!opts.length) {
                 return '<section class="dgx-card"><div class="dgx-label">修复方案 · FIX OPTIONS</div>' +
                     '<div class="dgx-muted">本次诊断未给出修复方案。</div></section>';
+            }
+            if (opts_.flat) {
+                var flat = '<section class="dgx-card"><div class="dgx-label">修复方案 · FIX OPTIONS' +
+                    (opts.length > 1 ? '（互斥 ' + opts.length + ' 选 1）' : '') + '</div>';
+                for (var f = 0; f < opts.length; f++) {
+                    var fo = opts[f] || {};
+                    var rejected = opts_.highlight === (f + 1);
+                    flat += '<div class="dgx-opt-flat' + (rejected ? ' is-rejected' : '') + '">' +
+                        '<div class="dgx-opt-head">方案' + (f + 1) + ' · ' + dgxEsc(fo.title || '(未命名方案)') +
+                        (fo.recommended ? '<span class="dgx-rec">模型推荐</span>' : '') +
+                        (rejected ? '<span class="dgx-hist-reject">本轮被拒</span>' : '') + '</div>' +
+                        // 标题已在本函数头部渲染 → 只把正文交给 dgxOptionBody（不重复标题头）
+                        dgxOptionBody({ applies_when: fo.applies_when, reason: fo.reason, steps: fo.steps || [] }) +
+                        '</div>';
+                }
+                return flat + '</section>';
             }
             if (dgxOptSel >= opts.length) dgxOptSel = 0;
             var html = '<section class="dgx-card"><div class="dgx-label">修复方案 · FIX OPTIONS' +
@@ -4241,6 +4342,105 @@
                     dgxOptionBody(opts[j]) + '</div>';
             }
             return html + '</div></section>';
+        }
+
+        // 审批条：仅当「问题单可动」且「诊断已到可裁定的终态」且「未在重跑窗口」时出现。
+        // 已 resolved/closed 的记录 / analyzing / dismissed / approved 都不显示 → 不会出现点了报 409 的死按钮。
+        function dgxApproval(snap) {
+            var recState = String((pcDiagRec && pcDiagRec.state) || 'pending').toLowerCase();
+            if (recState !== 'pending' && recState !== 'in_progress') return '';
+            var st = snap.status;
+            if (st !== 'completed' && st !== 'failed' && st !== 'closed_manual') return '';
+            if (dgxRerunPending) return '';
+
+            var opts = (snap.conclusion && snap.conclusion.recommended_fix) || [];
+            var sel = opts[dgxOptSel] || null;
+            var hasSteps = !!(sel && sel.steps && sel.steps.length);
+            // 拒绝要求 spike 会话可 /remediate（status=completed 且有 steps）；failed/closed_manual 只能忽略/误报
+            var canReject = (st === 'completed') && hasSteps;
+            var hint = sel
+                ? ('当前待处理：方案' + (dgxOptSel + 1) + '「' + sel.title + '」' +
+                   (opts.length > 1 ? '（可切换上方分页签）' : ''))
+                : '本次诊断未给出可执行方案，仅可忽略或标记误报。';
+
+            var html = '<section class="dgx-card dgx-approve"><div class="dgx-label">处理 · DECISION</div>' +
+                '<div class="dgx-approve-hint">' + dgxEsc(hint) + '</div>';
+
+            if (dgxFbOpen) {
+                html += '<div class="dgx-fb">' +
+                    '<textarea class="dgx-fb-input" rows="3" placeholder="请给出要修改的地方，诊断将带着这条建议重新分析…">' +
+                    dgxEsc(dgxFbText) + '</textarea>' +
+                    '<div class="dgx-fb-actions">' +
+                    '<button type="button" class="dgx-btn dgx-btn--reject dgx-act" data-act="reject-submit"' +
+                    (dgxDeciding ? ' disabled' : '') + '>提交拒绝并重新分析</button>' +
+                    '<button type="button" class="dgx-btn dgx-btn--ghost dgx-act" data-act="reject-cancel"' +
+                    (dgxDeciding ? ' disabled' : '') + '>取消</button>' +
+                    '</div></div>';
+            } else {
+                html += '<div class="dgx-approve-actions">' +
+                    (canReject
+                        ? '<button type="button" class="dgx-btn dgx-btn--reject dgx-act" data-act="reject"' +
+                          (dgxDeciding ? ' disabled' : '') + '>拒绝 · 重新分析</button>'
+                        : '') +
+                    '<button type="button" class="dgx-btn dgx-btn--ignore dgx-act" data-act="ignore"' +
+                    (dgxDeciding ? ' disabled' : '') + '>忽略</button>' +
+                    '<button type="button" class="dgx-btn dgx-btn--fp dgx-act" data-act="fp"' +
+                    (dgxDeciding ? ' disabled' : '') + '>误报</button>' +
+                    '</div>';
+            }
+            return html + '</section>';
+        }
+
+        // 提交决策：reject → 重跑（重启轮询 + 抑制旧快照）；ignore/fp → 关单（关弹框 + 刷新列表）。
+        // apmApi 已把后端 {code,reason} 的 reason 提成 err.message → 409/400 的中文原因直接展示。
+        function submitDiagnosisDecision(decision) {
+            if (!pcDiagRec || dgxDeciding) return;
+            if (decision === 'reject' && !dgxFbText.trim()) {
+                window._showToast('请先填写修改建议', 'error');
+                return;
+            }
+            var recordId = pcDiagRec.record_id;
+            dgxDeciding = true;
+            renderDiagnosis(pcDiagLastSnap); // 立刻置灰，防双击
+            apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/diagnose/decision', {
+                method: 'POST',
+                body: {
+                    decision: decision,
+                    feedback: decision === 'reject' ? dgxFbText : '',
+                    option_index: dgxOptSel + 1 // 1-based：当前选中的分页签 = 要处理的那个方案
+                }
+            })
+                .then(function (resp) {
+                    dgxDeciding = false;
+                    if (decision === 'reject') {
+                        var cnt = resp && resp.reanalyze_count != null ? resp.reanalyze_count : 0;
+                        var max = resp && resp.max_reanalyze != null ? resp.max_reanalyze : '';
+                        var capped = !!(resp && resp.remediation_status === 'closed_manual');
+                        window._showToast(
+                            capped ? ('驳回已达上限 ' + cnt + '/' + max + '，需人工处理')
+                                   : ('已驳回，正在重新分析（' + cnt + '/' + max + '）'),
+                            capped ? 'error' : 'success');
+                        dgxFbOpen = false;
+                        dgxFbText = '';
+                        // 达上限时没有重跑（closed_manual 是终态）→ 不进入抑制窗口，直接渲染新快照
+                        dgxRerunCount = cnt;
+                        dgxRerunPending = !capped;
+                        loadDiagnoseDecisions(recordId); // 历史已有这一版（带旧步骤与拒因）
+                        pollDiagnosis();                 // 立即拉一次并重启 2s 轮询
+                        ensureDiagPolling();
+                    } else {
+                        window._showToast(
+                            decision === 'false_positive' ? '已标记误报并关闭问题单' : '已忽略并关闭问题单',
+                            'success');
+                        closeDiagnosisView();
+                        refresh(); // 问题单已关，列表以后端为准
+                    }
+                })
+                .catch(function (err) {
+                    dgxDeciding = false;
+                    window._showToast('操作失败: ' + err.message, 'error');
+                    renderDiagnosis(pcDiagLastSnap); // 保持弹窗，可改建议重试
+                });
         }
 
         // 任务状态：枚举 → 中文标签 + CSS 修饰类。**绝不把原始枚举印给用户**。
@@ -4277,7 +4477,10 @@
         }
 
         // 「分析链路」——默认关闭：调研计划 / 用到的 MCP server / 工具调用时间线 / 证据链 / 原始 JSON
-        function dgxChain(snap) {
+        // openFlag：显式开合（缺省沿用全局 dgxChainOpen，让 live 轮询重渲染不塌）；
+        // hist：历史快照实例 → 加 .dgx-chain--hist（弱化，且开合不污染 live 的 dgxChainOpen）。
+        function dgxChain(snap, openFlag, hist) {
+            if (openFlag === undefined) openFlag = dgxChainOpen;
             var calls = snap.tool_calls || [];
             var tasks = snap.tasks || [];
             var evs = (snap.conclusion && snap.conclusion.evidence) || [];
@@ -4288,7 +4491,7 @@
             if (servers.length) meta.push('MCP server ' + servers.length);
             if (evs.length) meta.push('证据 ' + evs.length);
 
-            var html = '<details class="dgx-chain"' + (dgxChainOpen ? ' open' : '') + '>' +
+            var html = '<details class="dgx-chain' + (hist ? ' dgx-chain--hist' : '') + '"' + (openFlag ? ' open' : '') + '>' +
                 '<summary class="dgx-chain-sum"><span class="dgx-caret"></span>分析链路 · INVESTIGATION' +
                 '<span class="dgx-chain-meta">' + dgxEsc(meta.join(' · ')) + '</span></summary>' +
                 '<div class="dgx-chain-body">';
@@ -4357,6 +4560,77 @@
             return html + '</div></details>';
         }
 
+        // 历史条目里的「整轮」渲染 = 状态头 + 结论（根因/总结）+ **全部**方案（被拒那版高亮）+ 分析链路（收起）。
+        // 数据源是 APM evidence 里决策那一刻抓的 /status 快照——spike 重跑会清空 conclusion，
+        // 事后取不到第一轮，所以快照必须是决策前抓的（见 APM problems.py 的 _fetch_snapshot）。
+        function dgxHistSnapshot(snap, rejectIdx) {
+            var st = snap.status || 'unknown';
+            var c = snap.conclusion;
+            var html = '<div class="dgx-hist-snap">' +
+                '<div class="dgx-head"><div class="dgx-head-top">' +
+                '<span class="dgx-status dgx-status--' + dgxEsc(st) + '">' + dgxEsc(DGX_STATUS_LABEL[st] || st) + '</span>' +
+                (snap.trigger ? '<span class="dgx-chip">来源 ' + dgxEsc(snap.trigger) + '</span>' : '') +
+                (snap.session_id ? '<span class="dgx-chip dgx-mono" title="session_id">' + dgxEsc(snap.session_id) + '</span>' : '') +
+                (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">耗时 ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
+                '</div>' +
+                (snap.issue_title ? '<h2 class="dgx-issue">' + dgxEsc(snap.issue_title) + '</h2>' : '') +
+                '</div>';
+            if (snap.error) html += '<div class="pc-diag-error">' + dgxEsc(snap.error) + '</div>';
+            if (c) {
+                html += dgxConclusion(c);
+                html += dgxFixOptions(c.recommended_fix || [], { flat: true, highlight: rejectIdx });
+            } else {
+                html += '<div class="dgx-card"><div class="dgx-muted">该轮无结构化结论。</div></div>';
+            }
+            html += dgxChain(snap, false, true);
+            return html + '</div>';
+        }
+
+        // 历史计划（详情最下边）：每条一个 <details>——决策胶囊 + 拒因 + **那一整轮**（快照）+ 驳回次数。
+        // 快照缺失（会话已过期，抓不到）才降级回 steps——它是"被拒那一版方案"的权威来源，也是降级路径的唯一来源。
+        function dgxPlanHistory() {
+            var items = (pcDiagHistory && pcDiagHistory.items) || [];
+            if (!items.length) return '';
+            var html = '<section class="dgx-card dgx-history"><div class="dgx-label">历史计划 · PLAN HISTORY</div>';
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i] || {};
+                var dec = it.decision || '';
+                var label = DGX_DECISION_LABEL[dec] || dec;
+                var cls = DGX_DECISION_CLS[dec] || 'ignore';
+                var when = it.decided_at ? formatTime(it.decided_at) : '';
+                var head = '#' + (i + 1);
+                if (it.option_index) {
+                    head += ' 方案' + it.option_index + ' · ' + (it.option_title || '(未命名方案)');
+                }
+                html += '<details class="dgx-hist"><summary class="dgx-hist-sum">' +
+                    '<span class="dgx-hist-title">' + dgxEsc(head) + '</span>' +
+                    '<span class="dgx-hist-chip dgx-hist-chip--' + dgxEsc(cls) + '">' + dgxEsc(label) + '</span>' +
+                    (when ? '<span class="dgx-hist-time">' + dgxEsc(when) + '</span>' : '') +
+                    '</summary><div class="dgx-hist-body">';
+                if (it.feedback) {
+                    html += '<div class="dgx-kv"><span class="dgx-k">拒因</span><span class="dgx-v">' +
+                        dgxEsc(it.feedback) + '</span></div>';
+                }
+                if (it.snapshot && typeof it.snapshot === 'object') {
+                    html += dgxHistSnapshot(it.snapshot, it.option_index);
+                } else {
+                    // 降级：决策时诊断会话已过期，快照抓不到。steps 是"被拒那一版方案"的唯一留存，仍渲染。
+                    if (it.steps && it.steps.length) {
+                        html += dgxOptionBody({ steps: it.steps });
+                    }
+                    html += '<div class="dgx-muted">该轮快照不可用（诊断会话已过期）。</div>';
+                }
+                if (it.reanalyze_count != null) {
+                    html += '<div class="dgx-muted">驳回次数 ' + dgxEsc(String(it.reanalyze_count)) +
+                        (it.max_reanalyze != null ? ('/' + dgxEsc(String(it.max_reanalyze))) : '') +
+                        (it.remediation_status === 'closed_manual' ? ' · 已达驳回上限，需人工处理' : '') +
+                        '</div>';
+                }
+                html += '</div></details>';
+            }
+            return html + '</section>';
+        }
+
         function renderDiagnosis(snap) {
             var bodyEl = getEl('pcDiagnoseBody');
             if (!bodyEl) return;
@@ -4364,6 +4638,7 @@
                 bodyEl.innerHTML = '<div class="pc-diag-error">Empty diagnosis response.</div>';
                 return;
             }
+            pcDiagLastSnap = snap;
             var st = snap.status || 'unknown';
             var terminal = !!PC_DIAG_TERMINAL[st];
             var c = snap.conclusion;
@@ -4373,7 +4648,7 @@
             // 注意：用 <div> 不用 <header> —— 全局 `header{height:52px;position:fixed;…}` 是顶部菜单栏样式，
             // 会把本块高度锁死 52px 导致标题溢出压到根因卡片上。
             html += '<div class="dgx-head"><div class="dgx-head-top">' +
-                '<span class="dgx-status dgx-status--' + dgxEsc(st) + '">' + dgxEsc(st) + '</span>' +
+                '<span class="dgx-status dgx-status--' + dgxEsc(st) + '">' + dgxEsc(DGX_STATUS_LABEL[st] || st) + '</span>' +
                 (snap.trigger ? '<span class="dgx-chip">来源 ' + dgxEsc(snap.trigger) + '</span>' : '') +
                 (snap.session_id ? '<span class="dgx-chip dgx-mono" title="session_id">' + dgxEsc(snap.session_id) + '</span>' : '') +
                 (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">耗时 ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
@@ -4383,34 +4658,34 @@
                 '</div>';
 
             if (snap.error) html += '<div class="pc-diag-error">' + dgxEsc(snap.error) + '</div>';
-            if (!terminal) {
-                html += '<div class="dgx-live"><span class="dgx-spinner"></span>分析中… 已完成 ' +
-                    ((snap.tool_calls || []).length) + ' 次工具调用</div>';
-            }
 
-            if (c) {
-                // 1) 根因 + 3) 置信度（同屏给出「结论 + 可信度」，先看结论再决定读多深）
-                html += '<section class="dgx-card dgx-verdict"><div class="dgx-label">根因 · ROOT CAUSE</div>' +
-                    '<p class="dgx-verdict-text">' + dgxEsc(c.root_cause || '—') + '</p>' +
-                    '<div class="dgx-verdict-meta">' + dgxConfChip(c.confidence) +
-                    dgxShaChip('deployed', c.deployed_commit) +
-                    dgxShaChip('base', c.base_commit) +
-                    dgxShaChip('已修复于', c.already_fixed_by) + '</div>' +
-                    (c.base_note ? '<p class="dgx-note">' + dgxEsc(c.base_note) + '</p>' : '') +
-                    '</section>';
-                // 2) 总结
-                if (c.summary) {
-                    html += '<section class="dgx-card"><div class="dgx-label">总结 · SUMMARY</div>' +
-                        '<p class="dgx-body-text">' + dgxEsc(c.summary) + '</p></section>';
+            if (dgxRerunPending) {
+                // 拒绝后抑制旧快照：只留状态头 + 重跑提示，绝不渲染旧结论/审批条（否则拒绝按钮二次可用）
+                html += '<div class="dgx-live dgx-rerun"><span class="dgx-spinner"></span>已提交修改建议，正在重新分析…</div>';
+            } else {
+                if (!terminal) {
+                    html += '<div class="dgx-live"><span class="dgx-spinner"></span>分析中… 已完成 ' +
+                        ((snap.tool_calls || []).length) + ' 次工具调用</div>';
                 }
-                // 4) 修复方案
-                html += dgxFixOptions(c.recommended_fix || []);
-            } else if (terminal) {
-                html += '<div class="dgx-card"><div class="dgx-muted">本次诊断无结构化结论。</div></div>';
+
+                if (c) {
+                    // 1) 根因 + 2) 总结（抽成 dgxConclusion，历史快照复用同一套渲染）
+                    html += dgxConclusion(c);
+                    // 3) 修复方案
+                    html += dgxFixOptions(c.recommended_fix || []);
+                } else if (terminal) {
+                    html += '<div class="dgx-card"><div class="dgx-muted">本次诊断无结构化结论。</div></div>';
+                }
+
+                // 5) 处理（拒绝/忽略/误报）——放在结论之后、分析链路之前
+                html += dgxApproval(snap);
+
+                // 6) 分析链路（默认关闭）
+                html += dgxChain(snap);
             }
 
-            // 5) 分析链路（默认关闭）
-            html += dgxChain(snap);
+            // 7) 历史计划（详情最下边；重跑窗口内也展示，方便对着上一版建议）
+            html += dgxPlanHistory();
             html += '</div>';
             bodyEl.innerHTML = html;
         }
@@ -5300,12 +5575,25 @@
         if (pcDiagnoseOverlay) pcDiagnoseOverlay.addEventListener('click', function (e) {
             if (e.target === this) closeDiagnosisView();
         });
-        // 诊断内容交互：修复方案分页签（点选后写回 dgxOptSel，轮询重渲染仍保持）；
+        // 诊断内容交互：审批动作（.dgx-act）/ 修复方案分页签（写回 dgxOptSel，轮询重渲染仍保持）/
         // 分析链路开合（<details> 的 toggle 不冒泡 → 用 capture 捕获，仅认 .dgx-chain）。
         var pcDiagBodyEl = getEl('pcDiagnoseBody');
         if (pcDiagBodyEl) {
             pcDiagBodyEl.addEventListener('click', function (e) {
                 var t = e.target;
+                var actBtn = t && t.closest ? t.closest('.dgx-act') : null;
+                if (actBtn) {
+                    var act = actBtn.getAttribute('data-act');
+                    if (act === 'reject') { dgxFbOpen = true; renderDiagnosis(pcDiagLastSnap); }
+                    else if (act === 'reject-cancel') { dgxFbOpen = false; renderDiagnosis(pcDiagLastSnap); }
+                    else if (act === 'reject-submit') submitDiagnosisDecision('reject');
+                    else if (act === 'ignore') {
+                        confirmDialog('忽略该诊断并关闭这条问题单？', function () { submitDiagnosisDecision('ignore'); });
+                    } else if (act === 'fp') {
+                        confirmDialog('标记为误报？将记入误报率并关闭这条问题单。', function () { submitDiagnosisDecision('false_positive'); });
+                    }
+                    return;
+                }
                 var tab = t && t.closest ? t.closest('.dgx-tab') : null;
                 if (!tab) return;
                 var idx = parseInt(tab.getAttribute('data-opt'), 10);
@@ -5322,9 +5610,16 @@
                     if (j === idx) panels[j].classList.add('is-active'); else panels[j].classList.remove('is-active');
                 }
             });
+            // 拒绝反馈输入：写回 dgxFbText，轮询重渲染时不丢已输入内容
+            pcDiagBodyEl.addEventListener('input', function (e) {
+                var t = e.target;
+                if (t && t.classList && t.classList.contains('dgx-fb-input')) dgxFbText = t.value;
+            });
             pcDiagBodyEl.addEventListener('toggle', function (e) {
                 var t = e.target;
                 if (!t || !t.classList || !t.classList.contains('dgx-chain')) return;
+                // 历史条目的链路开合是"看回历史"，不能在下一个 5s 轮询里把 live 链路也一起展开
+                if (t.classList.contains('dgx-chain--hist')) return;
                 dgxChainOpen = !!t.open;
             }, true);
         }

@@ -6767,6 +6767,25 @@ svg { fill: currentColor; }
     margin-left: 8px;
     vertical-align: middle;
 }
+/* 平铺模式（历史快照专用）：所有互斥方案依次铺开，被拒那一版高亮 */
+.dgx-opt-flat { border-left: 2px solid var(--border-color); padding: 0 0 14px 12px; margin-left: 8px; }
+.dgx-opt-flat:last-child { padding-bottom: 0; }
+.dgx-opt-flat.is-rejected {
+    border-left-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.04);
+    border-radius: 0 4px 4px 0;
+}
+.dgx-hist-reject {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 8px;
+    vertical-align: middle;
+}
 .dgx-steps { list-style: none; margin: 10px 0 0 0; padding: 0; }
 .dgx-step { border-left: 2px solid var(--border-color); padding: 0 0 14px 12px; margin-left: 8px; }
 .dgx-step:last-child { padding-bottom: 0; }
@@ -6962,3 +6981,119 @@ svg { fill: currentColor; }
 .dgx-sub { margin-top: 8px; font-size: 11px; color: var(--text-tertiary); }
 .dgx-sub > summary { cursor: pointer; user-select: none; }
 .dgx-sub > summary:hover { color: var(--text-secondary); }
+
+/* 5) 处理条（审批动作：拒绝重跑 / 忽略关单 / 误报关单） */
+.dgx-approve { border-top: 3px solid var(--accent-orange); }
+.dgx-approve-hint { font-size: 12px; line-height: 1.6; color: var(--text-secondary); margin-bottom: 12px; }
+.dgx-approve-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.dgx-btn {
+    appearance: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 6px 14px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-white);
+    color: var(--text-primary);
+}
+.dgx-btn:hover:not(:disabled) { border-color: var(--text-tertiary); }
+.dgx-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.dgx-btn--reject {
+    color: var(--accent-red);
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.06);
+}
+.dgx-btn--reject:hover:not(:disabled) { border-color: var(--accent-red); }
+.dgx-btn--ignore { color: var(--text-secondary); }
+.dgx-btn--fp {
+    color: #b45309;
+    border-color: rgba(245, 158, 11, 0.4);
+    background: rgba(245, 158, 11, 0.08);
+}
+.dgx-btn--fp:hover:not(:disabled) { border-color: #b45309; }
+.dgx-btn--ghost { color: var(--text-tertiary); border-color: transparent; background: none; }
+/* 拒绝反馈框 */
+.dgx-fb { display: flex; flex-direction: column; gap: 8px; }
+.dgx-fb-input {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+.dgx-fb-input:focus { outline: none; border-color: var(--accent-red); }
+.dgx-fb-actions { display: flex; gap: 8px; }
+
+/* 重新分析中（拒绝后抑制旧快照的提示条） */
+.dgx-rerun { color: #b45309; background: rgba(245, 158, 11, 0.08); border-color: rgba(245, 158, 11, 0.25); }
+.dgx-rerun .dgx-spinner { border-color: rgba(245, 158, 11, 0.25); border-top-color: #b45309; }
+
+/* 状态胶囊：已忽略（dismissed，灰） */
+.dgx-status--dismissed { background: var(--bg-tertiary); color: var(--text-secondary); border-color: var(--border-color); }
+.dgx-status--closed_manual { background: rgba(245, 158, 11, 0.1); color: #b45309; border-color: rgba(245, 158, 11, 0.3); }
+
+/* 7) 历史计划（详情最下边，逐版 <details>） */
+.dgx-history { background: var(--bg-body); }
+.dgx-hist {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-white);
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+.dgx-hist:last-child { margin-bottom: 0; }
+.dgx-hist-sum {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    padding: 10px 12px;
+    list-style: none;
+    font-size: 12px;
+}
+.dgx-hist-sum::-webkit-details-marker { display: none; }
+.dgx-hist-sum:hover { background: var(--bg-body); }
+.dgx-hist-title { font-weight: 600; color: var(--text-primary); word-break: break-word; }
+.dgx-hist-chip {
+    flex: none;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-radius: 999px;
+    padding: 1px 8px;
+    border: 1px solid currentColor;
+}
+.dgx-hist-chip--reject { color: var(--accent-red); background: rgba(239, 68, 68, 0.08); }
+.dgx-hist-chip--ignore { color: var(--text-secondary); background: var(--bg-tertiary); }
+.dgx-hist-chip--fp { color: #b45309; background: rgba(245, 158, 11, 0.1); }
+.dgx-hist-time { margin-left: auto; flex: none; font-size: 11px; color: var(--text-tertiary); }
+.dgx-hist-body { padding: 10px 12px; border-top: 1px solid var(--border-color); }
+/* 历史条目里的整轮快照：浅底 + 左侧细竖线，一眼区分"这是回看的历史"，不是当前轮次 */
+.dgx-hist-snap {
+    background: var(--bg-body);
+    border-left: 2px solid var(--border-color);
+    border-radius: 0 6px 6px 0;
+    padding: 10px 12px;
+    margin-top: 8px;
+}
+/* 嵌套的 .dgx-head 原本是吸顶条（sticky + 负 margin 抵消容器 padding）；历史快照里不需要吸顶，还原成普通块 */
+.dgx-hist-snap > .dgx-head {
+    position: static;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border-bottom: 0;
+    box-shadow: none;
+}
+/* 历史链路弱化：与 current 轮次的链路在视觉上分层（开合状态互不影响） */
+.dgx-chain--hist { background: var(--bg-white); }
+.dgx-chain--hist .dgx-chain-sum { color: var(--text-secondary); }
