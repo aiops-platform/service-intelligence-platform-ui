@@ -2053,6 +2053,125 @@
     </div>
 </div>
 
+<!-- Problem Center Analyze Modal：pending 问题发起 agent 工作流分析，选 workflow 后 POST analyze -->
+<div class="ap-modal-overlay" id="pcAnalyzeOverlay">
+    <div class="ap-modal" style="max-width: 460px;">
+        <div class="ap-modal-header">
+            <h3>Analyze Problem</h3>
+            <button class="ap-modal-close" id="pcAnalyzeClose">&times;</button>
+        </div>
+        <div class="ap-modal-body">
+            <p class="apm-confirm-msg" id="pcAnalyzeInfo"></p>
+            <div class="apm-field">
+                <label for="pcWorkflow">Workflow <span class="apm-req">*</span></label>
+                <select id="pcWorkflow">
+                    <option value="">-- 选择已保存流程 --</option>
+                </select>
+            </div>
+            <div class="apm-confirm-actions">
+                <button class="btn btn-secondary" id="pcAnalyzeCancel">Cancel</button>
+                <button class="btn btn-primary" id="pcAnalyzeConfirm">Analyze</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Problem Center Diagnosis Modal：「分析new」绑定诊断会话后查看诊断内容（轮询后端 /diagnose） -->
+<div class="ap-modal-overlay" id="pcDiagnoseOverlay">
+    <div class="ap-modal">
+        <div class="ap-modal-header">
+            <h3 id="pcDiagnoseTitle">Diagnosis</h3>
+            <button class="ap-modal-close" id="pcDiagnoseClose" title="Close">&times;</button>
+        </div>
+        <div class="ap-modal-body pc-diag-body" id="pcDiagnoseBody"></div>
+    </div>
+</div>
+
+<!-- Problem Center Run Viewer Modal：in_progress 问题查看 agentflow run 实时分析过程（复用 Bug Solve 的 .bs-* 样式） -->
+<div class="ap-modal-overlay" id="pcRunOverlay">
+    <div class="ap-modal">
+        <div class="ap-modal-header">
+            <h3 id="pcRunTitle">Analysis Process</h3>
+            <button class="ap-modal-close" id="pcRunClose" title="Close">&times;</button>
+        </div>
+        <div class="ap-modal-body pcrun-body">
+            <!-- run 概要条（通栏，横跨左右两栏） -->
+            <div class="bs-stats pcrun-stats" id="pcRunStats">
+                <div class="bs-stat"><span class="bs-stat-label">Run ID</span><span class="bs-stat-value" id="pcRunId">—</span></div>
+                <div class="bs-stat"><span class="bs-stat-label">Status</span><span class="bs-badge" id="pcRunStatus">—</span></div>
+                <div class="bs-stat"><span class="bs-stat-label">Step</span><span class="bs-stat-value" id="pcRunStep">—</span></div>
+                <div class="bs-stat"><span class="bs-stat-label">Tokens</span><span class="bs-stat-value" id="pcRunTokens">0</span></div>
+                <div class="bs-stat"><span class="bs-stat-label">Cost</span><span class="bs-stat-value" id="pcRunCost">0.0</span></div>
+                <!-- 右端：Flow Diagram 入口（执行态圆点指示 run 状态；running/waiting 呼吸动画） -->
+                <div class="bs-stat pcrun-flowaction">
+                    <button type="button" class="pcrun-flowbtn" id="pcRunFlowBtn" data-state="" title="Open the execution flow diagram">
+                        <span class="pcrun-flowdot is-idle"></span>
+                        <span class="pcrun-flowbtn-label">Flow Diagram</span>
+                    </button>
+                </div>
+            </div>
+            <!-- 左右分栏：左=执行流程要点（步骤/审批），右=点节点看输入输出 -->
+            <div class="pcrun-split">
+                <!-- 左栏：待审批（置顶，无则整段隐藏）+ 执行流程步骤列表 -->
+                <aside class="pcrun-flow-col">
+                    <div class="pcrun-flow-head">
+                        <span class="pcrun-flow-title">Execution Flow</span>
+                        <span class="pcrun-flow-count" id="pcRunStepCount"></span>
+                    </div>
+                    <div class="pcrun-approvals" id="pcRunApprovalSection" style="display:none;">
+                        <div class="bs-approvals-title">Pending Approvals</div>
+                        <div class="bs-approvals" id="pcRunApprovals"></div>
+                    </div>
+                    <div class="pcrun-steps" id="pcRunSteps"></div>
+                </aside>
+                <!-- 右栏：点左栏流程步骤 → 展示该节点输入/输出（DAG 图在独立 Flow Diagram 二级弹框） -->
+                <section class="pcrun-detailcol">
+                    <div class="bs-detail" id="pcRunDetail"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Flow Diagram Modal：从 View analysis 概要条右上按钮打开，独立二级宽弹框，整块 DAG 画布（复用 .bs-* 样式） -->
+<div class="ap-modal-overlay" id="pcRunGraphOverlay">
+    <div class="ap-modal">
+        <div class="ap-modal-header">
+            <h3 id="pcRunGraphTitle">Flow Diagram</h3>
+            <button class="ap-modal-close" id="pcRunGraphClose" title="Close">&times;</button>
+        </div>
+        <div class="ap-modal-body pcrg-body">
+            <div class="bs-canvas pcrg-canvas">
+                <div class="bs-canvas-hint" id="pcRunHint">Loading flow diagram…</div>
+                <div class="bs-zoom" id="pcRunZoom">
+                    <svg class="bs-graph" id="pcRunGraph" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <marker id="pcRunArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b8fa3"></path>
+                            </marker>
+                        </defs>
+                    </svg>
+                </div>
+                <div class="bs-zoom-controls" id="pcRunZoomControls" style="display:none;">
+                    <button class="bs-zoom-btn" id="pcRunZoomOut" title="Zoom out">−</button>
+                    <button class="bs-zoom-btn" id="pcRunZoomIn" title="Zoom in">+</button>
+                    <button class="bs-zoom-btn" id="pcRunZoomFit" title="Fit to canvas">Fit</button>
+                </div>
+            </div>
+            <!-- 状态图例 + 操作提示 -->
+            <div class="pcrg-legend">
+                <span class="pcrg-legend-item pcrg-l-running">Running</span>
+                <span class="pcrg-legend-item pcrg-l-done">Done</span>
+                <span class="pcrg-legend-item pcrg-l-failed">Failed</span>
+                <span class="pcrg-legend-item pcrg-l-waiting">Waiting</span>
+                <span class="pcrg-legend-item pcrg-l-skipped">Skipped</span>
+                <span class="pcrg-legend-item pcrg-l-approval">Approval</span>
+                <span class="pcrg-legend-fill">Wheel to zoom · drag to pan · click a node to select</span>
+            </div>
+        </div>
+    </div>
+</div>
+
     <!-- Detail Drawer Overlay -->
     <div class="drawer-overlay" id="drawerOverlay">
         <div class="drawer">

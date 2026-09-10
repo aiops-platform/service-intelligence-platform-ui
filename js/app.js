@@ -3616,6 +3616,13 @@
         var pcPollTimer = null;    // 5s 自动刷新定时器
         var pcRefreshing = false;  // 请求在途标志：避免轮询堆叠
 
+        // Analyze 弹框状态：pending 问题 → 选 workflow → POST /analyze（agentflow 联动）
+        var pcAnalyzeRec = null;   // 正在被 Analyze 弹框处理的问题记录
+        var pcWorkflows = [];      // agentflow /workflows 缓存 [{id,name}]
+        var analyzeBusy = false;   // analyze 请求在途标志（防双击）
+        // agentflow（Bug Solve 后端）基址，与 Bug Solve 页一致：bugSolveBaseUrl > workflowBaseUrl > 默认 8000
+        var AGENTFLOW_BASE = localStorage.getItem('bugSolveBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+
         function getEl(id) { return document.getElementById(id); }
 
         // ── API 封装（统一 X-Tenant-Id / 可选 Bearer）────
@@ -3771,6 +3778,7 @@
                     var title = problemTitle(p);
                     var sev = (p.severity || 'warning').toLowerCase();
                     var st = (p.state || 'pending').toLowerCase();
+                    var diag = findDiagnoseSession(p);
                     html += '<tr>' +
                         '<td class="col-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</td>' +
                         '<td>' + escapeHtml(p.service || '-') + '</td>' +
@@ -3781,8 +3789,11 @@
                         '<td class="col-time">' + formatTime(p.detected_at || p.first_seen_at) + '</td>' +
                         '<td class="pc-actions">' +
                         '<button class="btn-alert-detail" data-id="' + escapeHtml(p.record_id) + '" data-act="detail">Detail</button>' +
+                        ((st === 'pending' || st === 'in_progress') ? '<button class="btn-alert-detail pc-diag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="diagnose"' + (diag ? ' disabled title="Diagnosis already started"' : '') + '>分析new</button>' : '') +
+                        (diag ? '<button class="btn-alert-detail pc-viewdiag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="view-diagnosis">View diagnosis</button>' : '') +
                         (st === 'pending' ? '<button class="btn-alert-detail pc-analyze-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="analyze">Analyze</button>' : '') +
                         (st === 'pending' ? '<button class="btn-alert-detail pc-ignore-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="ignore">Ignore</button>' : '') +
+                        (st === 'in_progress' ? '<button class="btn-alert-detail pc-viewrun-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="view-analysis">View analysis</button>' : '') +
                         '</td>' +
                         '</tr>';
                 } else {
@@ -3821,6 +3832,10 @@
                     if (!rec) return;
                     if (act === 'detail') openProblemDetail(rec);
                     else if (act === 'ignore') confirmIgnore(rec);
+                    else if (act === 'analyze') openAnalyze(rec);
+                    else if (act === 'view-analysis') openProblemRun(rec);
+                    else if (act === 'diagnose') startDiagnose(rec);
+                    else if (act === 'view-diagnosis') openDiagnosisView(rec);
                 });
             });
         }
@@ -3963,6 +3978,1228 @@
             });
         }
 
+        // ── Analyze：pending 问题 → 选 workflow → POST /v1/problems/{id}/analyze ──────
+        function fillAnalyzeWorkflows() {
+            var sel = getEl('pcWorkflow');
+            if (!sel) return;
+            var html = '<option value="">-- Select a saved workflow --</option>';
+            pcWorkflows.forEach(function (w) {
+                html += '<option value="' + escapeHtml(w.id) + '">' + escapeHtml(w.name || w.id) + '</option>';
+            });
+            sel.innerHTML = html;
+        }
+
+        function loadAnalyzeWorkflows() {
+            if (pcWorkflows.length) { fillAnalyzeWorkflows(); return; }
+            fetch(AGENTFLOW_BASE + '/workflows')
+                .then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                })
+                .then(function (data) {
+                    pcWorkflows = Array.isArray(data) ? data : [];
+                    fillAnalyzeWorkflows();
+                })
+                .catch(function (err) {
+                    window._showToast('Failed to load workflows: ' + (err && err.message ? err.message : 'network error'), 'error');
+                });
+        }
+
+        function openAnalyze(rec) {
+            pcAnalyzeRec = rec;
+            var info = getEl('pcAnalyzeInfo');
+            if (info) info.textContent = 'Start an agent workflow analysis for problem ' + (rec && rec.record_id ? rec.record_id : '') + '?';
+            var sel = getEl('pcWorkflow');
+            if (sel) sel.value = '';
+            var overlay = getEl('pcAnalyzeOverlay');
+            if (overlay) overlay.classList.add('open');
+            if (pcWorkflows.length) fillAnalyzeWorkflows();
+            else loadAnalyzeWorkflows();
+        }
+
+        function closeAnalyze() {
+            pcAnalyzeRec = null;
+            var overlay = getEl('pcAnalyzeOverlay');
+            if (overlay) overlay.classList.remove('open');
+        }
+
+        function confirmAnalyze() {
+            var rec = pcAnalyzeRec;
+            if (!rec || analyzeBusy) return;
+            var sel = getEl('pcWorkflow');
+            var workflowId = sel ? sel.value : '';
+            if (!workflowId) { window._showToast('Please select a workflow first', 'error'); return; }
+            analyzeBusy = true;
+            var confirmBtn = getEl('pcAnalyzeConfirm');
+            if (confirmBtn) confirmBtn.disabled = true;
+            var recordId = rec.record_id; // 先捕获，closeAnalyze() 会置空 pcAnalyzeRec
+            apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/analyze', { method: 'POST', body: { workflow_id: workflowId } })
+                .then(function () {
+                    analyzeBusy = false;
+                    if (confirmBtn) confirmBtn.disabled = false;
+                    closeAnalyze();
+                    window._showToast('Analyze started for ' + recordId, 'success');
+                    refresh(); // 非乐观，以后端为准（5s 轮询兜底）
+                })
+                .catch(function (err) {
+                    analyzeBusy = false;
+                    if (confirmBtn) confirmBtn.disabled = false;
+                    window._showToast('Analyze failed: ' + err.message, 'error'); // 保持弹框开启，可换流程重试
+                });
+        }
+
+        // ── 分析new：问题单 → POST /v1/problems/{id}/diagnose（后端按记录拼装 /diagnose/logs，
+        //    session_id 绑进 evidence；绑定后「分析new」置灰，出现「View diagnosis」）──────
+        // 内容视图：本页轮询 GET /v1/problems/{id}/diagnose（后端同源代理诊断服务 /status），
+        // 直到终态（completed/failed/approved/closed_manual）停轮。
+        var diagBusy = {};        // record_id -> true（请求在途，防双击）
+        var pcDiagRec = null;     // 正在查看诊断的问题记录
+        var pcDiagTimer = null;   // 2s 轮询 timer（关弹框必清）
+        var PC_DIAG_TERMINAL = { completed: 1, failed: 1, approved: 1, closed_manual: 1 };
+        var dgxOptSel = 0;        // 当前选中的修复方案下标（互斥多方案分页签）
+        var dgxChainOpen = false; // 「分析链路」折叠区开合（默认关闭；轮询重渲染后保持）
+
+        // 取记录里最新一条 diagnose_session evidence（record_id → session_id 的桥）
+        function findDiagnoseSession(rec) {
+            var ev = (rec && rec.evidence) || [];
+            var last = null;
+            for (var i = 0; i < ev.length; i++) {
+                var e = ev[i];
+                if (e && e.type === 'diagnose_session' && e.session_id) last = e;
+            }
+            return last;
+        }
+
+        function startDiagnose(rec) {
+            if (!rec || diagBusy[rec.record_id]) return;
+            diagBusy[rec.record_id] = true;
+            var recordId = rec.record_id;
+            apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/diagnose', { method: 'POST', body: {} })
+                .then(function (data) {
+                    delete diagBusy[recordId];
+                    var sid = data && data.session_id ? data.session_id : '';
+                    window._showToast('分析已启动' + (sid ? ' · ' + sid : ''), 'success');
+                    refresh(); // 非乐观：以后端 evidence 为准 → 按钮置灰 + 出现 View diagnosis
+                })
+                .catch(function (err) {
+                    delete diagBusy[recordId];
+                    window._showToast('分析失败: ' + err.message, 'error');
+                });
+        }
+
+        function stopDiagPolling() {
+            if (pcDiagTimer) { clearInterval(pcDiagTimer); pcDiagTimer = null; }
+        }
+
+        function openDiagnosisView(rec) {
+            if (!findDiagnoseSession(rec)) {
+                window._showToast('No diagnosis bound to ' + (rec && rec.record_id ? rec.record_id : 'record'), 'error');
+                return;
+            }
+            pcDiagRec = rec;
+            dgxOptSel = 0;         // 换记录 → 复位交互状态
+            dgxChainOpen = false;
+            var title = getEl('pcDiagnoseTitle');
+            if (title) title.textContent = 'Diagnosis · ' + rec.record_id;
+            var bodyEl = getEl('pcDiagnoseBody');
+            if (bodyEl) bodyEl.innerHTML = '<div class="pc-diag-loading">Loading diagnosis…</div>';
+            var overlay = getEl('pcDiagnoseOverlay');
+            if (overlay) overlay.classList.add('open');
+            pollDiagnosis();
+            stopDiagPolling();
+            pcDiagTimer = setInterval(pollDiagnosis, 2000);
+        }
+
+        function closeDiagnosisView() {
+            stopDiagPolling();
+            pcDiagRec = null;
+            var overlay = getEl('pcDiagnoseOverlay');
+            if (overlay) overlay.classList.remove('open');
+        }
+
+        function pollDiagnosis() {
+            if (!pcDiagRec) return;
+            var recordId = pcDiagRec.record_id;
+            apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/diagnose')
+                .then(function (snap) {
+                    renderDiagnosis(snap);
+                    if (snap && PC_DIAG_TERMINAL[snap.status]) stopDiagPolling();
+                })
+                .catch(function (err) {
+                    stopDiagPolling();
+                    var bodyEl = getEl('pcDiagnoseBody');
+                    if (bodyEl) bodyEl.innerHTML = '<div class="pc-diag-error">' + escapeHtml('Load failed: ' + err.message) + '</div>';
+                });
+        }
+
+        // 渲染小工具（dgx = diaGnosis eXperience）
+        function dgxEsc(s) { return escapeHtml(s === null || s === undefined ? '' : String(s)); }
+        function dgxShort(s) { var v = String(s || ''); return v.length > 10 ? v.slice(0, 10) : v; }
+        function dgxClock(ts) {
+            if (!ts) return '';
+            var d = new Date(ts * 1000);
+            if (isNaN(d.getTime())) return '';
+            return d.toLocaleTimeString('zh-CN', { hour12: false });
+        }
+        function dgxElapsed(a, b) {
+            if (!a || !b || b < a) return '';
+            var s = Math.round(b - a);
+            if (s < 60) return s + 's';
+            return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
+        }
+        function dgxConfChip(c) {
+            var v = (c || 'medium').toLowerCase();
+            var zh = v === 'high' ? '高' : (v === 'low' ? '低' : '中');
+            return '<span class="dgx-conf dgx-conf--' + dgxEsc(v) + '">置信度 ' + dgxEsc(zh) +
+                ' · ' + dgxEsc(v) + '</span>';
+        }
+        function dgxShaChip(label, sha) {
+            if (!sha) return '';
+            return '<span class="dgx-chip dgx-sha"><span class="dgx-sha-k">' + dgxEsc(label) + '</span>' +
+                '<span class="dgx-mono" title="' + dgxEsc(sha) + '">' + dgxEsc(dgxShort(sha)) + '</span></span>';
+        }
+        // 工具名解析：mcp__{server}__{tool} → 拆出 server（用于「用了哪些 MCP server」聚合）
+        function dgxToolParts(name) {
+            var n = String(name || '');
+            if (n.indexOf('mcp__') === 0) {
+                var rest = n.slice(5);
+                var i = rest.indexOf('__');
+                if (i > 0) return { kind: 'mcp', server: rest.slice(0, i), tool: rest.slice(i + 2) };
+            }
+            return { kind: 'fn', server: 'builtin', tool: n };
+        }
+        function dgxArgs(a) {
+            if (!a || typeof a !== 'object') return '';
+            var keys = Object.keys(a);
+            if (!keys.length) return '';
+            return keys.map(function (k) {
+                var v = a[k];
+                var s = (typeof v === 'string') ? v : JSON.stringify(v);
+                s = (s === null || s === undefined) ? '' : String(s);
+                if (s.length > 80) s = s.slice(0, 80) + '…';
+                return dgxEsc(k) + '=' + dgxEsc(s);
+            }).join(' · ');
+        }
+        function dgxMcpServers(calls) {
+            var seen = {}, order = [];
+            for (var i = 0; i < (calls || []).length; i++) {
+                var p = dgxToolParts(calls[i] && calls[i].tool);
+                if (p.kind !== 'mcp') continue;
+                if (!seen[p.server]) { seen[p.server] = 0; order.push(p.server); }
+                seen[p.server]++;
+            }
+            return order.map(function (s) { return { server: s, count: seen[s] }; });
+        }
+
+        // 修复方案：单方案直接铺开；互斥多方案 → 分页签（默认选中模型推荐/方案1）
+        function dgxOptionBody(o) {
+            o = o || {};
+            var html = '<div class="dgx-opt-head">' + dgxEsc(o.title || '(未命名方案)') +
+                (o.recommended ? '<span class="dgx-rec">模型推荐</span>' : '') + '</div>';
+            if (o.applies_when) html += '<div class="dgx-kv"><span class="dgx-k">适用前提</span><span class="dgx-v">' + dgxEsc(o.applies_when) + '</span></div>';
+            if (o.reason) html += '<div class="dgx-kv"><span class="dgx-k">推荐理由</span><span class="dgx-v">' + dgxEsc(o.reason) + '</span></div>';
+            var steps = o.steps || [];
+            if (!steps.length) return html + '<div class="dgx-muted">无步骤。</div>';
+            html += '<ol class="dgx-steps">';
+            for (var i = 0; i < steps.length; i++) {
+                var s = steps[i] || {};
+                html += '<li class="dgx-step"><div class="dgx-step-head">' +
+                    '<span class="dgx-step-no">' + (i + 1) + '</span>' +
+                    '<span class="dgx-tag">' + dgxEsc(s.action || '') + '</span>' +
+                    (s.target ? '<span class="dgx-mono dgx-step-target">' + dgxEsc(s.target) + '</span>' : '') +
+                    (s.risk ? '<span class="dgx-risk dgx-risk--' + dgxEsc(s.risk) + '">risk ' + dgxEsc(s.risk) + '</span>' : '') +
+                    '</div>' +
+                    (s.change ? '<div class="dgx-step-change">' + dgxEsc(s.change) + '</div>' : '') +
+                    (s.expected_effect ? '<div class="dgx-kv"><span class="dgx-k">预期效果</span><span class="dgx-v">' + dgxEsc(s.expected_effect) + '</span></div>' : '') +
+                    (s.rollback ? '<div class="dgx-kv"><span class="dgx-k">回滚</span><span class="dgx-v">' + dgxEsc(s.rollback) + '</span></div>' : '') +
+                    (s.suggested_diff ? '<pre class="dgx-code">' + dgxEsc(s.suggested_diff) + '</pre>' : '') +
+                    '</li>';
+            }
+            return html + '</ol>';
+        }
+
+        function dgxFixOptions(opts) {
+            if (!opts.length) {
+                return '<section class="dgx-card"><div class="dgx-label">修复方案 · FIX OPTIONS</div>' +
+                    '<div class="dgx-muted">本次诊断未给出修复方案。</div></section>';
+            }
+            if (dgxOptSel >= opts.length) dgxOptSel = 0;
+            var html = '<section class="dgx-card"><div class="dgx-label">修复方案 · FIX OPTIONS' +
+                (opts.length > 1 ? '（互斥 ' + opts.length + ' 选 1）' : '') + '</div>';
+            if (opts.length > 1) {
+                html += '<div class="dgx-tabs" role="tablist">';
+                for (var i = 0; i < opts.length; i++) {
+                    html += '<button type="button" role="tab" class="dgx-tab' + (i === dgxOptSel ? ' is-active' : '') +
+                        '" data-opt="' + i + '" aria-selected="' + (i === dgxOptSel ? 'true' : 'false') + '">方案' + (i + 1) +
+                        (opts[i] && opts[i].recommended ? '<span class="dgx-star" title="模型推荐">★</span>' : '') + '</button>';
+                }
+                html += '</div>';
+            }
+            html += '<div class="dgx-panels">';
+            for (var j = 0; j < opts.length; j++) {
+                html += '<div class="dgx-panel' + (j === dgxOptSel ? ' is-active' : '') + '" data-opt="' + j + '">' +
+                    dgxOptionBody(opts[j]) + '</div>';
+            }
+            return html + '</div></section>';
+        }
+
+        // 任务状态：枚举 → 中文标签 + CSS 修饰类。**绝不把原始枚举印给用户**。
+        // tasks 是模型自报账本（只有 complete_task 会写 done），收尾步骤常残留 todo；服务端已
+        // 在落终态时做确定性归一（completed→done+derived、failed→cancelled），此处再兜一层显示派生。
+        var DGX_TASK_LABEL = {
+            todo: '待办', in_progress: '进行中', done: '已完成', failed: '失败', cancelled: '已中止'
+        };
+        var DGX_TASK_CLS = {
+            todo: 'todo', in_progress: 'running', done: 'done', failed: 'failed', cancelled: 'cancelled'
+        };
+
+        function dgxTaskView(snap, t) {
+            var st = (t && t.status) || 'todo';
+            var derived = !!(t && t.derived);
+            var label = DGX_TASK_LABEL[st] || st;
+            var cls = DGX_TASK_CLS[st] || 'todo';
+            var stt = snap && snap.status;
+            // 兜底派生：会话已到终态却仍留 todo/in_progress（服务端未归一，或旧会话）时，不能把
+            // 原始枚举/「待办」印给用户 —— 终态意味着这段计划已有交代：
+            //   有结论（completed/approved）→ 「随结论完成」（done + derived，灰显）；
+            //   无结论（failed/closed_manual）→ 「已中止」（cancelled，灰 + 删除线），**绝不显示完成**。
+            if ((st === 'todo' || st === 'in_progress') && PC_DIAG_TERMINAL[stt]) {
+                if (stt === 'failed' || stt === 'closed_manual') {
+                    cls = 'cancelled';
+                    label = '已中止';
+                } else {
+                    cls = 'done';
+                    label = '随结论完成';
+                    derived = true;
+                }
+            }
+            return { cls: cls, label: label, derived: derived };
+        }
+
+        // 「分析链路」——默认关闭：调研计划 / 用到的 MCP server / 工具调用时间线 / 证据链 / 原始 JSON
+        function dgxChain(snap) {
+            var calls = snap.tool_calls || [];
+            var tasks = snap.tasks || [];
+            var evs = (snap.conclusion && snap.conclusion.evidence) || [];
+            var servers = dgxMcpServers(calls);
+            var meta = [];
+            if (tasks.length) meta.push('调研计划 ' + tasks.length);
+            meta.push('工具调用 ' + calls.length);
+            if (servers.length) meta.push('MCP server ' + servers.length);
+            if (evs.length) meta.push('证据 ' + evs.length);
+
+            var html = '<details class="dgx-chain"' + (dgxChainOpen ? ' open' : '') + '>' +
+                '<summary class="dgx-chain-sum"><span class="dgx-caret"></span>分析链路 · INVESTIGATION' +
+                '<span class="dgx-chain-meta">' + dgxEsc(meta.join(' · ')) + '</span></summary>' +
+                '<div class="dgx-chain-body">';
+
+            if (tasks.length) {
+                html += '<h5 class="dgx-h5">调研计划</h5><ol class="dgx-tasks">';
+                for (var i = 0; i < tasks.length; i++) {
+                    var t = tasks[i] || {};
+                    var tv = dgxTaskView(snap, t);
+                    // derived = 未显式 complete_task，随终态一并收口（灰显 + title 说明）
+                    html += '<li class="dgx-task dgx-task--' + tv.cls + (tv.derived ? ' is-derived' : '') + '">' +
+                        '<span class="dgx-task-dot"></span><span class="dgx-task-title">' + dgxEsc(t.title || '') + '</span>' +
+                        '<span class="dgx-task-st"' + (tv.derived ? ' title="未显式标记完成，随结论一并收口"' : '') + '>' +
+                        dgxEsc(tv.label) + '</span></li>';
+                }
+                html += '</ol>';
+            }
+            if (servers.length) {
+                html += '<h5 class="dgx-h5">使用的 MCP Server</h5><div class="dgx-mcps">';
+                for (var m = 0; m < servers.length; m++) {
+                    html += '<span class="dgx-mcp">' + dgxEsc(servers[m].server) +
+                        '<span class="dgx-mcp-n" title="调用次数">' + servers[m].count + '</span></span>';
+                }
+                html += '</div>';
+            }
+            if (calls.length) {
+                html += '<h5 class="dgx-h5">工具调用时间线</h5><ol class="dgx-tl">';
+                for (var k = 0; k < calls.length; k++) {
+                    var ev = calls[k] || {};
+                    var p = dgxToolParts(ev.tool);
+                    var stCls = ev.status === 'ok' ? 'ok' : (ev.status === 'error' ? 'err' : 'run');
+                    var args = dgxArgs(ev.args);
+                    html += '<li class="dgx-tl-item dgx-tl--' + stCls + '">' +
+                        '<span class="dgx-tl-no">' + (k + 1) + '</span>' +
+                        '<div class="dgx-tl-main"><div class="dgx-tl-head">' +
+                        '<span class="dgx-tag dgx-tag--' + (p.kind === 'mcp' ? 'mcp' : 'fn') + '">' + (p.kind === 'mcp' ? 'MCP' : 'tool') + '</span>' +
+                        '<span class="dgx-mono dgx-tl-name">' + dgxEsc(p.kind === 'mcp' ? p.server + ' / ' + p.tool : p.tool) + '</span>' +
+                        '<span class="dgx-tl-st">' + dgxEsc(ev.status || '') + '</span>' +
+                        '</div>' +
+                        (args ? '<div class="dgx-mono dgx-tl-args">' + args + '</div>' : '') +
+                        (ev.result_summary ? '<div class="dgx-tl-res">' + dgxEsc(ev.result_summary) + '</div>' : '') +
+                        '</div></li>';
+                }
+                html += '</ol>';
+            }
+            if (!tasks.length && !calls.length && !evs.length) {
+                html += '<div class="dgx-muted">暂无过程记录。</div>';
+            }
+            if (evs.length) {
+                html += '<h5 class="dgx-h5">证据链 (' + evs.length + ')</h5><div class="dgx-evs">';
+                for (var e = 0; e < evs.length; e++) {
+                    var it = evs[e] || {};
+                    html += '<div class="dgx-ev"><div class="dgx-ev-head">' +
+                        '<span class="dgx-tag">' + dgxEsc(it.source || 'evidence') + '</span>' +
+                        (it.commit ? '<span class="dgx-mono dgx-ev-commit" title="' + dgxEsc(it.commit) + '">@' + dgxEsc(dgxShort(it.commit)) + '</span>' : '') +
+                        '</div>' +
+                        (it.query ? '<div class="dgx-kv"><span class="dgx-k">查询</span><span class="dgx-v dgx-mono">' + dgxEsc(it.query) + '</span></div>' : '') +
+                        (it.finding ? '<div class="dgx-kv"><span class="dgx-k">结论</span><span class="dgx-v">' + dgxEsc(it.finding) + '</span></div>' : '') +
+                        (it.supporting_text ? '<details class="dgx-sub"><summary>原文</summary><pre class="dgx-code">' + dgxEsc(it.supporting_text) + '</pre></details>' : '') +
+                        '</div>';
+                }
+                html += '</div>';
+            }
+            html += '<details class="dgx-sub"><summary>原始 JSON</summary><pre class="dgx-code">' +
+                dgxEsc(JSON.stringify(snap, null, 2)) + '</pre></details>';
+            return html + '</div></details>';
+        }
+
+        function renderDiagnosis(snap) {
+            var bodyEl = getEl('pcDiagnoseBody');
+            if (!bodyEl) return;
+            if (!snap || typeof snap !== 'object') {
+                bodyEl.innerHTML = '<div class="pc-diag-error">Empty diagnosis response.</div>';
+                return;
+            }
+            var st = snap.status || 'unknown';
+            var terminal = !!PC_DIAG_TERMINAL[st];
+            var c = snap.conclusion;
+            var html = '<div class="dgx">';
+
+            // 头部：状态 + 来源/会话/耗时（滚动时吸顶）
+            // 注意：用 <div> 不用 <header> —— 全局 `header{height:52px;position:fixed;…}` 是顶部菜单栏样式，
+            // 会把本块高度锁死 52px 导致标题溢出压到根因卡片上。
+            html += '<div class="dgx-head"><div class="dgx-head-top">' +
+                '<span class="dgx-status dgx-status--' + dgxEsc(st) + '">' + dgxEsc(st) + '</span>' +
+                (snap.trigger ? '<span class="dgx-chip">来源 ' + dgxEsc(snap.trigger) + '</span>' : '') +
+                (snap.session_id ? '<span class="dgx-chip dgx-mono" title="session_id">' + dgxEsc(snap.session_id) + '</span>' : '') +
+                (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">耗时 ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
+                (snap.updated_at ? '<span class="dgx-updated">更新 ' + dgxEsc(dgxClock(snap.updated_at)) + '</span>' : '') +
+                '</div>' +
+                (snap.issue_title ? '<h2 class="dgx-issue">' + dgxEsc(snap.issue_title) + '</h2>' : '') +
+                '</div>';
+
+            if (snap.error) html += '<div class="pc-diag-error">' + dgxEsc(snap.error) + '</div>';
+            if (!terminal) {
+                html += '<div class="dgx-live"><span class="dgx-spinner"></span>分析中… 已完成 ' +
+                    ((snap.tool_calls || []).length) + ' 次工具调用</div>';
+            }
+
+            if (c) {
+                // 1) 根因 + 3) 置信度（同屏给出「结论 + 可信度」，先看结论再决定读多深）
+                html += '<section class="dgx-card dgx-verdict"><div class="dgx-label">根因 · ROOT CAUSE</div>' +
+                    '<p class="dgx-verdict-text">' + dgxEsc(c.root_cause || '—') + '</p>' +
+                    '<div class="dgx-verdict-meta">' + dgxConfChip(c.confidence) +
+                    dgxShaChip('deployed', c.deployed_commit) +
+                    dgxShaChip('base', c.base_commit) +
+                    dgxShaChip('已修复于', c.already_fixed_by) + '</div>' +
+                    (c.base_note ? '<p class="dgx-note">' + dgxEsc(c.base_note) + '</p>' : '') +
+                    '</section>';
+                // 2) 总结
+                if (c.summary) {
+                    html += '<section class="dgx-card"><div class="dgx-label">总结 · SUMMARY</div>' +
+                        '<p class="dgx-body-text">' + dgxEsc(c.summary) + '</p></section>';
+                }
+                // 4) 修复方案
+                html += dgxFixOptions(c.recommended_fix || []);
+            } else if (terminal) {
+                html += '<div class="dgx-card"><div class="dgx-muted">本次诊断无结构化结论。</div></div>';
+            }
+
+            // 5) 分析链路（默认关闭）
+            html += dgxChain(snap);
+            html += '</div>';
+            bodyEl.innerHTML = html;
+        }
+
+        // ── View analysis：in_progress 问题 → 查看其 agentflow run 实时分析过程 ──────
+        // run_id 来源：该问题行 evidence 里 mark_in_progress 追加的 agent_run 条目
+        //（record_id → run_id 的桥即 evidence，无需后端新接口；过程详情 GET {agentflow}/runs/{run_id} 轮询）。
+        var pcRunRec = null;     // 正在查看的问题记录
+        var pcRunId = null;      // 当前轮询的 run_id
+        var pcRunTimer = null;   // 2s 轮询 timer（关弹框必清）
+        var pcRunSel = null;          // 手动选中的节点
+        var pcRunData = null;         // 节点数据 {nid:{status,tokens,cost,params,output}}
+        var pcRunGraph = null;        // 最近一次成功的 DAG 结构（轮询缺 graph 时沿用，避免画布清空）
+        var pcRunAuto = true;         // 自动跟随 running 节点；用户点选节点后停止
+        var pcRunDetailNode = null;   // 当前右栏展示详情的节点（切换节点时分区开合状态复位）
+        var pcRunSecOpen = null;      // 当前节点右栏分区开合状态 {input,output,mcp,reasoning,evidence,raw}
+        var pcRunTraces = {};         // 节点级 trace 缓存 nid -> {items:[...], ts, error}（MCP/思维链/证据链数据源）
+        var pcRunTraceReq = {};       // 在途 trace 请求 nid -> true（防并发重复请求）
+
+        // 节点状态 → 着色类（与 Bug Solve statusClass 同映射，作用域限定在本页）
+        function pcRunStatusClass(st) {
+            var map = {
+                'done': 'bs-node-status-done',
+                'running': 'bs-node-status-running',
+                'pending': 'bs-node-status-pending',
+                'failed': 'bs-node-status-failed',
+                'cancelled': 'bs-node-status-cancelled',
+                'rejected': 'bs-node-status-rejected',
+                'waiting_approval': 'bs-node-status-waiting',
+                'skipped': 'bs-node-status-skipped'
+            };
+            return map[st] || 'bs-node-status-pending';
+        }
+
+        // 第三个 canvas 实例：复用 createGraphCanvas（app.js:5680，id 全参数化），DOM 常驻、只实例化一次。
+        // 主弹框不内嵌画布：pcRunGraph* 画布放在 Flow Diagram 二级弹框（#pcRunGraphOverlay）里，图弹框打开时才渲染。
+        var pcRunCanvas = createGraphCanvas({
+            hintId: 'pcRunHint', zoomId: 'pcRunZoom', svgId: 'pcRunGraph',
+            controlsId: 'pcRunZoomControls', controlsCls: 'bs-zoom-controls',
+            zoomInId: 'pcRunZoomIn', zoomOutId: 'pcRunZoomOut', zoomFitId: 'pcRunZoomFit',
+            markerId: 'pcRunArrow', nodeCls: 'bs-node', edgeCls: 'bs-edge',
+            nodeStyle: function (n, st) {
+                var cls = pcRunStatusClass(st);
+                if (n.kind === 'approval') cls += ' bs-node-approval';
+                return { cls: cls, label: n.id + (n.agent ? ' (' + n.agent + ')' : '') };
+            },
+            onNodeClick: function (nid) { pcSelectNode(nid); }
+        });
+
+        function setPcRunText(id, val) { var el = getEl(id); if (el) el.textContent = String(val); }
+
+        // 取问题记录里最新一条 agent_run 证据（record_id → run_id 的桥）
+        function findAgentRun(rec) {
+            var ev = (rec && rec.evidence) || [];
+            var runs = [];
+            for (var i = 0; i < ev.length; i++) {
+                var e = ev[i];
+                if (e && e.type === 'agent_run' && e.run_id) runs.push(e);
+            }
+            return runs.length ? runs[runs.length - 1] : null;
+        }
+
+        function openProblemRun(rec) {
+            stopRunPolling();
+            var ar = findAgentRun(rec);
+            if (!ar) {
+                window._showToast('No agent analysis run found for ' + (rec && rec.record_id ? rec.record_id : 'record'), 'error');
+                return;
+            }
+            pcRunRec = rec;
+            pcRunId = ar.run_id;
+            pcRunData = null;
+            pcRunGraph = null;
+            pcRunSel = null;
+            pcRunAuto = true;
+            pcRunDetailNode = null;
+            pcRunSecOpen = null;
+            pcRunTraces = {};
+            pcRunTraceReq = {};
+            closeRunGraph(); // 若上次残留 Flow Diagram 二级弹框，先收起
+            var title = getEl('pcRunTitle');
+            if (title) title.textContent = 'Analysis Process - ' + (rec && rec.record_id ? rec.record_id : '');
+            setPcRunText('pcRunId', ar.run_id);
+            setPcRunText('pcRunStep', '—');
+            setPcRunText('pcRunTokens', '0');
+            setPcRunText('pcRunCost', '0.0');
+            pcSetFlowBtnState(''); // 复位概要条 Flow 按钮圆点
+            var statusEl = getEl('pcRunStatus');
+            if (statusEl) { statusEl.textContent = '—'; statusEl.className = 'bs-badge'; }
+            var sec = getEl('pcRunApprovalSection');
+            if (sec) sec.style.display = 'none';
+            renderRunDetail(null);
+            var overlay = getEl('pcRunOverlay');
+            if (overlay) overlay.classList.add('open'); // 先 .open 再拉数据，fit 才能取到尺寸
+            pcRunCanvas.reset();
+            renderRunSteps(); // 清空并显示 "Waiting for run data…" 占位
+            fetchRunNow();
+            startRunPolling();
+        }
+
+        function startRunPolling() {
+            if (pcRunTimer) clearInterval(pcRunTimer);
+            pcRunTimer = setInterval(fetchRunNow, 2000);
+        }
+
+        function stopRunPolling() {
+            if (pcRunTimer) { clearInterval(pcRunTimer); pcRunTimer = null; }
+        }
+
+        function fetchRunNow() {
+            var rid = pcRunId;
+            if (!rid) return;
+            fetch(AGENTFLOW_BASE + '/runs/' + encodeURIComponent(rid))
+                .then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                })
+                .then(function (data) { applyRunView(data); })
+                .catch(function (err) {
+                    // 首拉失败明确提示；后续轮询失败静默（状态条还占着旧值时只静默，避免 toast 刷屏）
+                    var statusEl = getEl('pcRunStatus');
+                    var isFresh = !statusEl || statusEl.textContent === '—';
+                    if (isFresh) {
+                        window._showToast('Failed to load run: ' + (err && err.message ? err.message : 'network error'), 'error');
+                    }
+                });
+        }
+
+        function applyRunView(data) {
+            if (!pcRunId || !data || data.run_id !== pcRunId) return;
+            var status = data.status || '';
+            // run 顶层状态 → badge 类（success 归 done 绿）
+            var badgeMap = {
+                'success': 'bs-badge-done', 'done': 'bs-badge-done',
+                'running': 'bs-badge-running', 'failed': 'bs-badge-failed',
+                'cancelled': 'bs-badge-cancelled', 'rejected': 'bs-badge-rejected',
+                'waiting_approval': 'bs-badge-waiting_approval',
+                'pending': 'bs-badge-pending', 'skipped': 'bs-badge-skipped'
+            };
+            var statusEl = getEl('pcRunStatus');
+            if (statusEl) {
+                statusEl.textContent = status || '—';
+                statusEl.className = 'bs-badge ' + (badgeMap[status] || 'bs-badge-pending');
+            }
+            pcSetFlowBtnState(status); // 概要条 Flow 按钮执行态圆点随 run 状态翻色
+            setPcRunText('pcRunTokens', data.total_tokens || 0);
+            setPcRunText('pcRunCost', typeof data.total_cost === 'number' ? data.total_cost.toFixed(4) : '0.0');
+
+            pcRunData = data.nodes || {};
+            if (data.graph) pcRunGraph = data.graph; // 沿用最近一次 graph；轮询缺 graph 时不清空画布
+            var graph = data.graph || pcRunGraph;
+            var statusMap = pcRunStatusMap();
+            // 当前执行节点（并行 running 取第一个）→ step 行
+            var runNid = Object.keys(statusMap).filter(function (nid) { return statusMap[nid] === 'running'; })[0] || null;
+            if (runNid) {
+                var agent = '';
+                if (graph && graph.nodes) {
+                    for (var i = 0; i < graph.nodes.length; i++) {
+                        if (graph.nodes[i].id === runNid && graph.nodes[i].agent) { agent = ' (' + graph.nodes[i].agent + ')'; break; }
+                    }
+                }
+                setPcRunText('pcRunStep', runNid + agent);
+            } else if (status === 'waiting_approval') {
+                setPcRunText('pcRunStep', 'Waiting approval');
+            } else {
+                setPcRunText('pcRunStep', '—');
+            }
+            if (pcRunAuto && runNid) pcRunSel = runNid;
+            if (pcRunSel && pcRunData[pcRunSel]) {
+                renderRunDetail(pcRunSel);
+            } else if (pcRunSel) {
+                pcRunSel = null;
+                renderRunDetail(null);
+            }
+            renderRunApprovals(data.pending_approvals || []);
+            // 画布只在 Flow Diagram 二级弹框打开时渲染（隐藏时跳过，避免 display:none 下 fit 取 0 尺寸）
+            if (pcRunGraphIsOpen()) {
+                pcRunCanvas.render(graph, statusMap); // renderGraph 整段重建 innerHTML，其后按 pcRunSel 叠加选中环
+                pcMarkGraphSel();
+            }
+            renderRunSteps();
+            var terminal = { success: 1, failed: 1, cancelled: 1 };
+            if (terminal[status]) stopRunPolling();
+        }
+
+        // ── 右栏节点详情（通用、可复用）：Input/Output 渲染成 key-value 表，另拉节点 trace
+        //    展示 MCP/Tool 调用、思维链(Reasoning)、证据链(执行时间线)。换节点时 Input/Output 默认展开，
+        //    MCP/Reasoning/Evidence/Raw 默认折叠（标题带数量）。无 trace 的节点（approval/mock）自动降级。
+
+        // 图节点元信息（agent / kind）→ 头部标签
+        function pcRunNodeMeta(nid) {
+            var g = pcRunGraph;
+            if (g && g.nodes) {
+                for (var i = 0; i < g.nodes.length; i++) {
+                    if (g.nodes[i].id === nid) return g.nodes[i];
+                }
+            }
+            return {};
+        }
+
+        // trace 缓存 → 分组视图（node 汇总 / llm 思维链 / tool 调用 / denied / 全序 timeline）
+        function pcRunTraceParts(nid) {
+            var cached = pcRunTraces[nid];
+            var items = (cached && cached.items) || null;
+            var out = {
+                items: items,
+                loaded: !!cached,
+                error: (cached && cached.error) || null,
+                node: null, llm: [], tools: [], denied: [], timeline: []
+            };
+            if (!items) return out;
+            for (var i = 0; i < items.length; i++) {
+                var t = items[i], k = t.kind;
+                if (k === 'node') out.node = t;
+                else {
+                    if (k === 'llm_call') out.llm.push(t);
+                    else if (k === 'tool_call') out.tools.push(t);
+                    else if (k === 'denied') out.denied.push(t);
+                    out.timeline.push(t);
+                }
+            }
+            return out;
+        }
+
+        // 拉该节点 trace（有节流缓存）：终态拉一次即缓存；running 时约每 2.5s 刷新以见新增 MCP/思维链
+        function pcRunTraceEnsure(nid, st) {
+            if (!nid || !pcRunId) return;
+            if (pcRunTraceReq[nid]) return;
+            var running = (st === 'running' || st === 'pending' || st === 'waiting_approval');
+            var c = pcRunTraces[nid];
+            var now = Date.now();
+            if (c && c.items && !running) return;               // 终态已缓存 → 不再重复请求
+            if (c && running && now - c.ts < 2500) return;      // 运行中 → 节流
+            pcRunTraceReq[nid] = true;
+            fetch(AGENTFLOW_BASE + '/runs/' + encodeURIComponent(pcRunId) + '/traces?node_id=' + encodeURIComponent(nid) + '&limit=500')
+                .then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                })
+                .then(function (list) {
+                    pcRunTraceReq[nid] = false;
+                    pcRunTraces[nid] = { items: list || [], ts: Date.now(), error: null };
+                    if (pcRunSel === nid && pcRunData && pcRunData[nid]) renderRunDetail(nid);
+                })
+                .catch(function (err) {
+                    pcRunTraceReq[nid] = false;
+                    pcRunTraces[nid] = { items: null, ts: Date.now(), error: (err && err.message) || 'error' };
+                    if (pcRunSel === nid) renderRunDetail(nid);
+                });
+        }
+
+        // 折叠分区壳：标题 + 可选数量徽标 + 内容；开合由 pcRunSecOpen 持久（轮询重渲染保持一致）
+        function pcRunSec(title, key, countHtml, bodyHtml) {
+            var open = pcRunSecOpen ? !!pcRunSecOpen[key] : false;
+            return '<section class="nd-sec' + (open ? ' open' : '') + '" data-sec="' + key + '">' +
+                '<button type="button" class="nd-sec-trigger" aria-expanded="' + open + '">' +
+                    '<span class="nd-sec-chev"></span>' +
+                    '<span class="nd-sec-title">' + escapeHtml(title) + '</span>' +
+                    (countHtml ? '<span class="nd-sec-count">' + countHtml + '</span>' : '') +
+                '</button>' +
+                '<div class="nd-sec-body">' + bodyHtml + '</div>' +
+            '</section>';
+        }
+
+        // 长文本块：超长/多行 → 预格式 + 可裁剪（Show more/less）；短文本 → 行内
+        function pcRunBlk(text, max) {
+            var esc = escapeHtml(String(text));
+            var long = String(text).length > max;
+            return '<div class="nd-blk' + (long ? ' has-more' : '') + '">' +
+                '<pre class="nd-pre' + (long ? ' clipped' : '') + '">' + esc + '</pre>' +
+                (long ? '<button type="button" class="nd-blk-btn">Show more <span class="nd-blk-caret">&#9660;</span></button>' : '') +
+            '</div>';
+        }
+
+        function pcRunScalar(x) {
+            var t = typeof x;
+            return x === null || x === undefined || t === 'string' || t === 'number' || t === 'boolean';
+        }
+
+        // 通用 key-value 树：任意 JSON 值 → 人读的表格/列表（新节点类型零成本复用）
+        function pcRunValHtml(v) {
+            var t = typeof v;
+            if (v === null || v === undefined) return '<span class="nd-null">&#8709;</span>';
+            if (t === 'string') {
+                var s = String(v).trim();
+                if ((s.charAt(0) === '{' || s.charAt(0) === '[') && s.length > 1) { // 字符串是 JSON → 解析后递归
+                    try {
+                        var parsed = JSON.parse(s);
+                        if (parsed !== null && typeof parsed === 'object') return pcRunValHtml(parsed);
+                    } catch (e) {}
+                }
+                if (String(v).length > 180 || /\n/.test(String(v))) return pcRunBlk(v, 240);
+                return '<span class="nd-str">' + escapeHtml(String(v)) + '</span>';
+            }
+            if (t === 'number' || t === 'boolean') return '<span class="nd-prim">' + escapeHtml(String(v)) + '</span>';
+            if (Array.isArray(v)) return pcRunArrHtml(v);
+            if (t === 'object') return pcRunObjHtml(v);
+            return escapeHtml(String(v));
+        }
+
+        function pcRunObjHtml(obj) {
+            var keys = Object.keys(obj);
+            if (!keys.length) return '<span class="nd-empty">&#123;&#125;</span>';
+            var rows = '';
+            for (var i = 0; i < keys.length; i++) {
+                var k = keys[i];
+                rows += '<div class="nd-row"><span class="nd-key">' + escapeHtml(k) + '</span>' +
+                    '<span class="nd-cell">' + pcRunValHtml(obj[k]) + '</span></div>';
+            }
+            return '<div class="nd-obj">' + rows + '</div>';
+        }
+
+        function pcRunArrHtml(arr) {
+            if (!arr.length) return '<span class="nd-empty">&#91;&#93;</span>';
+            var allScalar = true;
+            for (var i = 0; i < arr.length; i++) { if (!pcRunScalar(arr[i])) { allScalar = false; break; } }
+            if (allScalar) {
+                var lis = '';
+                for (var j = 0; j < arr.length; j++) { lis += '<li class="nd-arr-li">' + pcRunValHtml(arr[j]) + '</li>'; }
+                return '<ul class="nd-arr">' + lis + '</ul>';
+            }
+            var cards = '';
+            for (var m = 0; m < arr.length; m++) { cards += '<div class="nd-card">' + pcRunObjHtml(arr[m]) + '</div>'; }
+            return '<div class="nd-arr-obj">' + cards + '</div>';
+        }
+
+        // tool result：统一转文本块展示（裁剪 + Show more），避免大结果撑爆面板
+        function pcRunResultHtml(v) {
+            if (v === null || v === undefined) return '<span class="nd-null">&#8709;</span>';
+            if (typeof v === 'string') return pcRunBlk(v, 240);
+            return pcRunBlk(JSON.stringify(v, null, 2), 240);
+        }
+
+        // trace name 'mcp__{server}__{tool}' → {server, tool}
+        function pcRunToolName(t) {
+            var name = t.name || 'tool';
+            var p = t.payload || {};
+            var server = p.server || null;
+            var tool = name;
+            if (server) {
+                var parts = name.split('__');
+                if (parts.length >= 3) tool = parts.slice(2).join('__');
+                else if (p.tool) tool = p.tool;
+            } else if (p.tool) tool = p.tool;
+            return { server: server, tool: tool };
+        }
+
+        function pcRunToolKindLabel(t) {
+            var isM = !!(t.payload && t.payload.is_mcp);
+            return '<span class="nd-k ' + (isM ? 'nd-k-mcp' : 'nd-k-tool') + '">' + (isM ? 'MCP' : 'tool') + '</span>';
+        }
+
+        // 一次 MCP/工具调用卡片
+        function pcRunToolCard(t) {
+            var p = t.payload || {};
+            var nm = pcRunToolName(t);
+            var chips = '';
+            if (p.read_only) chips += '<span class="nd-chip nd-chip-ro">read-only</span>';
+            var rs = p.result_state || '';
+            chips += rs ? '<span class="nd-chip nd-state nd-state-' + escapeHtml(rs) + '">' + escapeHtml(rs) + '</span>' : '';
+            var head = pcRunToolKindLabel(t) +
+                '<span class="nd-call-name">' + escapeHtml(nm.server ? (nm.server + ' / ' + nm.tool) : nm.tool) + '</span>' + chips;
+            var body = '';
+            if (p.input !== undefined && p.input !== null) {
+                body += '<div class="nd-kv-row"><span class="nd-kv-k">args</span><span class="nd-kv-v">' + pcRunValHtml(p.input) + '</span></div>';
+            }
+            if (p.result !== undefined && p.result !== null) {
+                body += '<div class="nd-kv-row"><span class="nd-kv-k">result</span><span class="nd-kv-v">' + pcRunResultHtml(p.result) + '</span></div>';
+            }
+            return '<div class="nd-call"><div class="nd-call-head">' + head + '</div>' +
+                (body ? '<div class="nd-call-body">' + body + '</div>' : '') + '</div>';
+        }
+
+        // 被 DENY 的工具
+        function pcRunDeniedCard(t) {
+            var p = t.payload || {};
+            var nm = p.tool || t.name || 'tool';
+            var body = '';
+            if (p.reason) {
+                body += '<div class="nd-kv-row"><span class="nd-kv-k">reason</span><span class="nd-kv-v nd-cell-plain">' +
+                    escapeHtml(p.reason) + '</span></div>';
+            }
+            return '<div class="nd-call nd-call-denied"><div class="nd-call-head">' +
+                '<span class="nd-k nd-k-denied">denied</span>' +
+                '<span class="nd-call-name">' + escapeHtml(nm) + '</span></div>' +
+                (body ? '<div class="nd-call-body">' + body + '</div>' : '') + '</div>';
+        }
+
+        // 一次模型调用（含思维链 reasoning）
+        function pcRunReasoningItem(t) {
+            var p = t.payload || {};
+            var u = p.usage || {};
+            var meta = '';
+            if (u.input_tokens) meta += 'in ' + u.input_tokens + ' · ';
+            if (u.output_tokens) meta += 'out ' + u.output_tokens + ' tok';
+            var head = '<span class="nd-k nd-k-llm">LLM</span>' +
+                '<span class="nd-call-name">' + escapeHtml(t.name || 'model') + '</span>' +
+                (meta ? '<span class="nd-chip nd-chip-meta">' + meta + '</span>' : '');
+            var body = '';
+            var reason = p.reasoning;
+            if (reason) {
+                var txt = typeof reason === 'string' ? reason : JSON.stringify(reason, null, 2);
+                body += '<div class="nd-reason-title">Reasoning</div>' + pcRunBlk(txt, 400);
+            }
+            return '<div class="nd-call nd-call-llm"><div class="nd-call-head">' + head + '</div>' +
+                (body ? '<div class="nd-call-body">' + body + '</div>' : '') + '</div>';
+        }
+
+        // 证据链：执行时间线（llm → tool → … 按 seq 全序）
+        function pcRunTimelineHtml(parts) {
+            var html = '<div class="tl">';
+            for (var i = 0; i < parts.timeline.length; i++) {
+                var t = parts.timeline[i];
+                var k = t.kind;
+                var cls = k === 'llm_call' ? 'tl-llm' : (k === 'tool_call' ? 'tl-tool' : 'tl-denied');
+                var p = t.payload || {};
+                var head = '';
+                var body = '';
+                if (k === 'llm_call') {
+                    var u = p.usage || {};
+                    var usg = '';
+                    if (u.input_tokens) usg += (usg ? ' · ' : '') + 'in ' + u.input_tokens;
+                    if (u.output_tokens) usg += (usg ? ' · ' : '') + 'out ' + u.output_tokens;
+                    if (usg) usg += ' tok';
+                    head = '<span class="tl-badge tl-b-llm">LLM</span>' +
+                        '<span class="tl-title">' + escapeHtml(t.name || 'model') + '</span>' +
+                        (usg ? '<span class="tl-sub">' + usg + '</span>' : '');
+                    var reason = p.reasoning;
+                    if (reason) {
+                        var rt = typeof reason === 'string' ? reason : JSON.stringify(reason, null, 2);
+                        body = '<div class="tl-reason">' + pcRunBlk(rt, 360) + '</div>';
+                    }
+                } else {
+                    var nm = pcRunToolName(t);
+                    var title = nm.server ? (nm.server + ' / ' + nm.tool) : nm.tool;
+                    var subs = [];
+                    if (k === 'tool_call' && p.read_only) subs.push('read-only');
+                    if (p.result_state) subs.push(p.result_state);
+                    head = '<span class="tl-badge ' + (k === 'denied' ? 'tl-b-denied' : (p.is_mcp ? 'tl-b-mcp' : 'tl-b-tool')) + '">' +
+                        (k === 'denied' ? 'denied' : (p.is_mcp ? 'MCP' : 'tool')) + '</span>' +
+                        '<span class="tl-title">' + escapeHtml(title) + '</span>' +
+                        (subs.length ? '<span class="tl-sub">' + subs.map(escapeHtml).join(' · ') + '</span>' : '');
+                    var r = p.result;
+                    if (k === 'denied') {
+                        if (p.reason) body = '<div class="nd-cell-plain">' + escapeHtml(p.reason) + '</div>';
+                    } else if (r !== undefined && r !== null) {
+                        body = '<div class="tl-result">' + pcRunResultHtml(r) + '</div>';
+                    }
+                }
+                html += '<div class="tl-event ' + cls + '"><div class="tl-head"><span class="tl-seq">#' + (i + 1) + '</span>' +
+                    head + '</div>' + (body ? '<div class="tl-body">' + body + '</div>' : '') + '</div>';
+            }
+            html += '</div>';
+            return html;
+        }
+
+        function renderRunDetail(nid) {
+            var detail = getEl('pcRunDetail');
+            if (!detail) return;
+            if (!nid || !pcRunData || !pcRunData[nid]) {
+                pcRunDetailNode = null;
+                pcRunSecOpen = null;
+                detail.innerHTML = '<div class="bs-detail-empty">Select a step to view its input / output, MCP tool calls and reasoning.</div>';
+                return;
+            }
+            var n = pcRunData[nid];
+            var st = n.status || 'pending';
+            // 换节点 → 分区开合复位（Input/Output 开，其余折叠）
+            if (nid !== pcRunDetailNode) {
+                pcRunDetailNode = nid;
+                pcRunSecOpen = { input: true, output: true, mcp: false, reasoning: false, evidence: false, raw: false };
+            }
+            // 需要 trace（MCP/思维链/证据链）→ 按需拉取（终态一次 / running 节流）
+            pcRunTraceEnsure(nid, st);
+
+            var badge = '<span class="bs-badge bs-badge-' + escapeHtml(st) + '">' + escapeHtml(st) + '</span>';
+            var gn = pcRunNodeMeta(nid);
+            var headChips = '';
+            if (gn.agent) headChips += '<span class="nd-chip nd-chip-agent">' + escapeHtml(gn.agent) + '</span>';
+            if (gn.kind && gn.kind !== 'task') headChips += '<span class="nd-chip nd-chip-kind">' + escapeHtml(gn.kind) + '</span>';
+            var tokens = n.tokens || 0;
+            var cost = typeof n.cost === 'number' ? n.cost.toFixed(4) : '0.0';
+            var metaTxt = 'tokens ' + tokens + ' · cost ' + cost;
+
+            var params = n.params || {};
+            var output = n.output;
+            var hasParams = Object.keys(params).length > 0;
+            var hasOutput = output !== undefined && output !== null;
+
+            var inputHtml = hasParams ? pcRunValHtml(params) : '<div class="bs-detail-empty">(no params)</div>';
+            var outputHtml;
+            if (!hasOutput) outputHtml = st === 'running'
+                ? '<div class="bs-detail-empty">(running…)</div>'
+                : '<div class="bs-detail-empty">(no output)</div>';
+            else outputHtml = pcRunValHtml(output);
+
+            var parts = pcRunTraceParts(nid);
+            var body = '';
+
+            body += pcRunSec('Input', 'input', '', inputHtml);
+            body += pcRunSec('Output', 'output', '', outputHtml);
+
+            if (parts.tools.length || parts.denied.length) {
+                var toolCards = '';
+                for (var ti = 0; ti < parts.tools.length; ti++) toolCards += pcRunToolCard(parts.tools[ti]);
+                for (var di = 0; di < parts.denied.length; di++) toolCards += pcRunDeniedCard(parts.denied[di]);
+                body += pcRunSec('Tools & MCP Calls', 'mcp', String(parts.tools.length + parts.denied.length), toolCards);
+            }
+            if (parts.llm.length) {
+                var llmHtml = '';
+                for (var li = 0; li < parts.llm.length; li++) llmHtml += pcRunReasoningItem(parts.llm[li]);
+                body += pcRunSec('Reasoning', 'reasoning', String(parts.llm.length), llmHtml);
+            }
+            if (parts.timeline.length) {
+                body += pcRunSec('Evidence Trail', 'evidence', String(parts.timeline.length), pcRunTimelineHtml(parts));
+            }
+
+            // trace 状态提示（执行中等待 / 加载中 / 无明细 / 拉取失败）；有 trace 内容的节点不必提示
+            var hasTraceContent = parts.timeline.length > 0;
+            var isRunning = (st === 'running' || st === 'pending' || st === 'waiting_approval');
+            var note = '';
+            if (!hasTraceContent) {
+                if (parts.error) {
+                    note = '<div class="bs-detail-empty">Step trace unavailable: ' + escapeHtml(parts.error) + '</div>';
+                } else if (isRunning) {
+                    note = '<div class="bs-detail-empty">Awaiting step detail…</div>';
+                } else if (parts.loaded) {
+                    note = '<div class="bs-detail-empty">No per-step trace (MCP / reasoning) recorded for this node.</div>';
+                } else if (!pcRunTraceReq[nid]) {
+                    note = '<div class="bs-detail-empty">Loading step detail…</div>';
+                }
+            }
+            if (note) body += note;
+
+            // 兜底 Raw JSON（可查原文；通用渲染器处理不了的原始形态可在此查看）
+            var rawObj = { status: st, params: params, output: output, tokens: tokens, cost: cost };
+            body += pcRunSec('Raw JSON', 'raw', '', pcRunBlk(JSON.stringify(rawObj, null, 2), 300));
+
+            detail.innerHTML =
+                '<div class="nd-head">' +
+                    '<span class="bs-detail-node">' + escapeHtml(nid) + '</span>' + badge + headChips +
+                    '<span class="bs-detail-meta">' + metaTxt + '</span>' +
+                '</div>' +
+                '<div class="nd-body">' + body + '</div>';
+        }
+
+        function renderRunApprovals(approvals) {
+            var wrap = getEl('pcRunApprovals');
+            var sec = getEl('pcRunApprovalSection');
+            if (!wrap) return;
+            var list = approvals || [];
+            if (!list.length) {
+                wrap.innerHTML = '<div class="bs-list-empty">No pending approvals.</div>';
+                if (sec) sec.style.display = 'none';
+                return;
+            }
+            var html = '';
+            list.forEach(function (p) {
+                var trigger = p.trigger ? escapeHtml(p.trigger) : null;
+                var triggerHtml = trigger
+                    ? '<span class="bs-trigger">' + trigger + '</span>'
+                    : '<span class="bs-trigger bs-trigger-plain">Manual approval</span>';
+                var upstreamHtml = '';
+                if (p.upstream) {
+                    Object.keys(p.upstream).forEach(function (u) {
+                        var out = p.upstream[u];
+                        upstreamHtml += '<div class="bs-upstream"><div class="bs-upstream-label">' + escapeHtml(u) + '</div><pre>' +
+                            escapeHtml(JSON.stringify(out, null, 2)) + '</pre></div>';
+                    });
+                }
+                html += '<div class="bs-approval-card" data-node="' + escapeHtml(p.node_id) + '">' +
+                    '<div class="bs-approval-head"><span class="bs-approval-node">' + escapeHtml(p.node_id) + '</span>' + triggerHtml + '</div>' +
+                    (upstreamHtml ? '<div class="bs-upstreams">' + upstreamHtml + '</div>' : '') +
+                    '<div class="bs-approval-actions">' +
+                        '<button class="btn btn-sm bs-approve-btn" data-action="approve" data-node="' + escapeHtml(p.node_id) + '">Approve</button>' +
+                        '<button class="btn btn-sm bs-reject-btn" data-action="reject" data-node="' + escapeHtml(p.node_id) + '">Reject</button>' +
+                    '</div>' +
+                '</div>';
+            });
+            wrap.innerHTML = html;
+            if (sec) sec.style.display = 'block';
+        }
+
+        function runApproval(action, nodeId) {
+            if (!pcRunId || !nodeId) return;
+            fetch(AGENTFLOW_BASE + '/runs/' + encodeURIComponent(pcRunId) + '/' + action, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ node_id: nodeId })
+            }).then(function (res) {
+                if (!res.ok) return res.json().then(function (d) { throw new Error((d && d.detail) || ('HTTP ' + res.status)); });
+                return res.json();
+            }).then(function () {
+                fetchRunNow(); // 立即刷一次，让被审批节点状态落图
+            }).catch(function (err) {
+                window._showToast((action === 'approve' ? 'Approve' : 'Reject') + ' failed: ' + (err && err.message ? err.message : 'network error'), 'error');
+            });
+        }
+
+        // 步骤状态 → 左栏序号圆点着色类（状态集同 pcRunStatusClass，维度更粗）
+        function pcStepStateClass(st) {
+            var m = {
+                'done': 'st-done',
+                'running': 'st-running',
+                'failed': 'st-failed',
+                'cancelled': 'st-cancelled',
+                'rejected': 'st-rejected',
+                'waiting_approval': 'st-waiting',
+                'skipped': 'st-skipped'
+            };
+            return m[st] || 'st-pending';
+        }
+
+        // 节点数据 → {nid:status} 映射（画布渲染与步骤列表共用）
+        function pcRunStatusMap() {
+            var m = {};
+            if (pcRunData) {
+                Object.keys(pcRunData).forEach(function (nid) {
+                    m[nid] = pcRunData[nid].status;
+                });
+            }
+            return m;
+        }
+
+        // 图内"当前选中"环：renderGraph 每次整段重建 innerHTML，需在其后按 pcRunSel 重新加类
+        function pcMarkGraphSel() {
+            var svg = getEl('pcRunGraph');
+            if (!svg) return;
+            var groups = svg.querySelectorAll('g[data-node]');
+            for (var i = 0; i < groups.length; i++) {
+                var g = groups[i];
+                var on = !!pcRunSel && g.getAttribute('data-node') === pcRunSel;
+                if (on) g.classList.add('bs-node-selected');
+                else g.classList.remove('bs-node-selected');
+            }
+        }
+
+        // 选中节点（图点击 / 左栏步骤点击共用）：停 autoFollow、标选中环、刷详情与步骤列表
+        function pcSelectNode(nid) {
+            if (nid) pcRunAuto = false;
+            pcRunSel = nid;
+            pcMarkGraphSel();
+            renderRunDetail(nid);
+            renderRunSteps();
+        }
+
+        // 左栏步骤排序：与 Flow Diagram 画布同算法（Kahn 拓扑分层）取执行顺序，保证列表与流程图一致。
+        // 不可直接用 graph.nodes 原始顺序——那是 YAML 定义顺序，与依赖/执行顺序常不一致
+        // （如 run_4c9a4dc444 把 approve-root 排在依赖它的 git-search/root-cause 前），列表看着"乱"。
+        function pcRunTopoOrder(graph) {
+            var nodes = (graph && graph.nodes) ? graph.nodes : [];
+            var edges = (graph && graph.edges) ? graph.edges : [];
+            if (!nodes.length) return [];
+            var indeg = {}, child = {}, has = {};
+            nodes.forEach(function (n) { indeg[n.id] = 0; child[n.id] = []; has[n.id] = true; });
+            edges.forEach(function (e) {
+                if (!has[e.from] || !has[e.to] || e.from === e.to) return;
+                if (child[e.from].indexOf(e.to) === -1) { child[e.from].push(e.to); indeg[e.to] += 1; }
+            });
+            var queue = [];
+            nodes.forEach(function (n) { if (indeg[n.id] === 0) queue.push(n.id); });
+            var ordered = [];
+            while (queue.length) {
+                var layer = queue.slice();
+                queue = [];
+                layer.forEach(function (id) {
+                    ordered.push(id);
+                    child[id].forEach(function (to) {
+                        indeg[to] -= 1;
+                        if (indeg[to] === 0) queue.push(to);
+                    });
+                });
+            }
+            var done = {};
+            ordered.forEach(function (id) { done[id] = true; });
+            nodes.forEach(function (n) { if (!done[n.id]) ordered.push(n.id); }); // 防环兜底
+            return ordered;
+        }
+
+        // 左栏"执行流程"步骤列表：按拓扑执行顺序列出每个节点（含并行/审批/终态），
+        // 行 = 序号 + 节点(agent) + tokens + 状态徽章；running/选中高亮；点行 = 选中该节点
+        function renderRunSteps() {
+            var wrap = getEl('pcRunSteps');
+            if (!wrap) return;
+            var graph = pcRunGraph;
+            var nodes = (graph && graph.nodes) ? graph.nodes : [];
+            var ordered = [];
+            if (nodes.length) {
+                ordered = pcRunTopoOrder(graph); // 与画布同拓扑分层：按依赖/执行顺序，而非 YAML 定义顺序
+            } else if (pcRunData) {
+                ordered = Object.keys(pcRunData);
+            }
+            var countEl = getEl('pcRunStepCount');
+            if (countEl) countEl.textContent = ordered.length ? String(ordered.length) + ' steps' : '';
+            if (!ordered.length) {
+                wrap.innerHTML = '<div class="pcrun-steps-empty">Waiting for run data…</div>';
+                return;
+            }
+            var byId = {};
+            nodes.forEach(function (n) { byId[n.id] = n; });
+            var html = '';
+            for (var i = 0; i < ordered.length; i++) {
+                var nid = ordered[i];
+                var n = byId[nid] || {};
+                var nd = pcRunData ? (pcRunData[nid] || {}) : {};
+                var st = nd.status || 'pending';
+                var sel = (nid === pcRunSel) ? ' pcrun-sel' : '';
+                var label = nid + (n.agent ? ' (' + n.agent + ')' : '');
+                var tok = (typeof nd.tokens === 'number') ? String(nd.tokens) + ' tok' : '';
+                html += '<button type="button" class="pcrun-step ' + pcStepStateClass(st) + sel + '" data-nid="' + escapeHtml(nid) + '" title="' + escapeHtml(label) + '">' +
+                    '<span class="pcrun-step-idx">' + (i + 1) + '</span>' +
+                    '<span class="pcrun-step-main"><span class="pcrun-step-name">' + escapeHtml(label) + '</span></span>' +
+                    (tok ? '<span class="pcrun-step-tok">' + tok + '</span>' : '') +
+                    '<span class="bs-badge bs-badge-' + escapeHtml(st) + '">' + escapeHtml(st) + '</span>' +
+                '</button>';
+            }
+            wrap.innerHTML = html;
+        }
+
+        // Flow Diagram 二级弹框当前是否打开（主弹框画布已抽离，仅在此时渲染，避免隐藏 DOM fit 取 0）
+        function pcRunGraphIsOpen() {
+            var o = getEl('pcRunGraphOverlay');
+            return !!(o && o.classList.contains('open'));
+        }
+
+        // 概要条 Flow Diagram 按钮：执行态圆点随 run 状态翻色（running/waiting 呼吸，终态定格）
+        function pcSetFlowBtnState(status) {
+            var btn = getEl('pcRunFlowBtn');
+            if (!btn) return;
+            var dot = btn.querySelector('.pcrun-flowdot');
+            if (!dot) return;
+            var map = {
+                'running': 'is-running',
+                'waiting_approval': 'is-waiting',
+                'success': 'is-done',
+                'done': 'is-done',
+                'failed': 'is-failed',
+                'cancelled': 'is-cancelled',
+                'pending': 'is-pending'
+            };
+            dot.className = 'pcrun-flowdot ' + (map[status] || 'is-idle');
+            btn.setAttribute('data-state', status || '');
+            btn.title = status
+                ? ('Run status: ' + status + ' — click to open the flow diagram')
+                : 'Open the execution flow diagram';
+        }
+
+        // 打开 Flow Diagram 二级弹框：先 .open 再画（display:none 时 fit 取 0 尺寸）
+        function openRunGraph() {
+            var o = getEl('pcRunGraphOverlay');
+            if (!o) return;
+            var title = getEl('pcRunGraphTitle');
+            if (title) title.textContent = 'Flow Diagram' + (pcRunRec && pcRunRec.record_id ? ' - ' + pcRunRec.record_id : '');
+            o.classList.add('open');
+            renderRunGraphNow();
+        }
+
+        // 打开时立即按当前数据画一次；尚无数据则保持 hint（Loading flow diagram…）
+        function renderRunGraphNow() {
+            if (!pcRunGraphIsOpen()) return;
+            if (pcRunGraph) pcRunCanvas.render(pcRunGraph, pcRunStatusMap());
+            pcMarkGraphSel();
+        }
+
+        function closeRunGraph() {
+            var o = getEl('pcRunGraphOverlay');
+            if (o) o.classList.remove('open');
+        }
+
+        function closeProblemRun() {
+            stopRunPolling(); // 关弹框必清 timer，否则后台持续轮询
+            closeRunGraph(); // 若 Flow Diagram 二级弹框开着，一并收起
+            pcSetFlowBtnState(''); // 复位概要条 Flow 按钮圆点
+            pcRunRec = null;
+            pcRunId = null;
+            pcRunData = null;
+            pcRunGraph = null;
+            pcRunSel = null;
+            pcRunAuto = true;
+            pcRunDetailNode = null;
+            pcRunSecOpen = null;
+            pcRunTraces = {};
+            pcRunTraceReq = {};
+            var stepsEl = getEl('pcRunSteps');
+            if (stepsEl) stepsEl.innerHTML = '';
+            var overlay = getEl('pcRunOverlay');
+            if (overlay) overlay.classList.remove('open');
+        }
+
         function refresh(opts) {
             // silent=true 用于 5s 自动轮询：不闪 loading、不打断当前分页、失败不弹错（保留旧数据）
             var silent = !!(opts && opts.silent);
@@ -4043,8 +5280,117 @@
         if (pcDetailOverlay) pcDetailOverlay.addEventListener('click', function (e) {
             if (e.target === this) closeProblemDetail();
         });
+
+        // Analyze 弹窗生命周期（pcAnalyzeOverlay）：关闭按钮 / Cancel / Confirm / 点遮罩 / Escape
+        var pcAnalyzeClose = getEl('pcAnalyzeClose');
+        if (pcAnalyzeClose) pcAnalyzeClose.addEventListener('click', closeAnalyze);
+        var pcAnalyzeCancel = getEl('pcAnalyzeCancel');
+        if (pcAnalyzeCancel) pcAnalyzeCancel.addEventListener('click', closeAnalyze);
+        var pcAnalyzeConfirm = getEl('pcAnalyzeConfirm');
+        if (pcAnalyzeConfirm) pcAnalyzeConfirm.addEventListener('click', confirmAnalyze);
+        var pcAnalyzeOverlay = getEl('pcAnalyzeOverlay');
+        if (pcAnalyzeOverlay) pcAnalyzeOverlay.addEventListener('click', function (e) {
+            if (e.target === this) closeAnalyze();
+        });
+
+        // 诊断内容弹窗生命周期（pcDiagnoseOverlay）：关闭 / 点遮罩 / Escape
+        var pcDiagnoseClose = getEl('pcDiagnoseClose');
+        if (pcDiagnoseClose) pcDiagnoseClose.addEventListener('click', closeDiagnosisView);
+        var pcDiagnoseOverlay = getEl('pcDiagnoseOverlay');
+        if (pcDiagnoseOverlay) pcDiagnoseOverlay.addEventListener('click', function (e) {
+            if (e.target === this) closeDiagnosisView();
+        });
+        // 诊断内容交互：修复方案分页签（点选后写回 dgxOptSel，轮询重渲染仍保持）；
+        // 分析链路开合（<details> 的 toggle 不冒泡 → 用 capture 捕获，仅认 .dgx-chain）。
+        var pcDiagBodyEl = getEl('pcDiagnoseBody');
+        if (pcDiagBodyEl) {
+            pcDiagBodyEl.addEventListener('click', function (e) {
+                var t = e.target;
+                var tab = t && t.closest ? t.closest('.dgx-tab') : null;
+                if (!tab) return;
+                var idx = parseInt(tab.getAttribute('data-opt'), 10);
+                if (isNaN(idx)) return;
+                dgxOptSel = idx;
+                var tabs = pcDiagBodyEl.querySelectorAll('.dgx-tab');
+                for (var i = 0; i < tabs.length; i++) {
+                    var on = (i === idx);
+                    if (on) tabs[i].classList.add('is-active'); else tabs[i].classList.remove('is-active');
+                    tabs[i].setAttribute('aria-selected', on ? 'true' : 'false');
+                }
+                var panels = pcDiagBodyEl.querySelectorAll('.dgx-panel');
+                for (var j = 0; j < panels.length; j++) {
+                    if (j === idx) panels[j].classList.add('is-active'); else panels[j].classList.remove('is-active');
+                }
+            });
+            pcDiagBodyEl.addEventListener('toggle', function (e) {
+                var t = e.target;
+                if (!t || !t.classList || !t.classList.contains('dgx-chain')) return;
+                dgxChainOpen = !!t.open;
+            }, true);
+        }
+
+        // Run Viewer 生命周期：主弹框（pcRunOverlay：关闭/遮罩/步骤/详情 tab/审批）+ Flow Diagram 二级弹框
+        //（pcRunGraphOverlay：概要条右上按钮/关闭/遮罩）。Escape 先关图弹框，再关主弹框。
+        var pcRunClose = getEl('pcRunClose');
+        if (pcRunClose) pcRunClose.addEventListener('click', closeProblemRun);
+        var pcRunOverlay = getEl('pcRunOverlay');
+        if (pcRunOverlay) pcRunOverlay.addEventListener('click', function (e) {
+            if (e.target === this) closeProblemRun();
+        });
+        // 右栏详情：折叠分区标题点击开合（状态写回 pcRunSecOpen，轮询重渲染保持一致）；长文本 Show more/less
+        var pcRunDetailEl = getEl('pcRunDetail');
+        if (pcRunDetailEl) pcRunDetailEl.addEventListener('click', function (e) {
+            var t = e.target;
+            if (!t || !t.getAttribute) return;
+            if (t.classList && t.classList.contains('nd-sec-trigger')) {
+                var key = t.getAttribute('data-sec');
+                var sec = t.closest ? t.closest('.nd-sec') : null;
+                if (!key || !sec) return;
+                var open = !sec.classList.contains('open');
+                if (open) sec.classList.add('open'); else sec.classList.remove('open');
+                t.setAttribute('aria-expanded', open ? 'true' : 'false');
+                if (pcRunSecOpen) pcRunSecOpen[key] = open;
+                return;
+            }
+            var btn = t.closest ? t.closest('.nd-blk-btn') : null;
+            if (btn) {
+                var blk = btn.closest('.nd-blk');
+                if (blk) {
+                    var ex = blk.classList.toggle('expanded');
+                    btn.innerHTML = ex ? 'Show less <span class="nd-blk-caret">&#9650;</span>' : 'Show more <span class="nd-blk-caret">&#9660;</span>';
+                }
+            }
+        });
+        var pcRunApprovalsEl = getEl('pcRunApprovals');
+        if (pcRunApprovalsEl) pcRunApprovalsEl.addEventListener('click', function (e) {
+            var btn = e.target && e.target.getAttribute ? e.target : null;
+            var action = btn && btn.getAttribute ? btn.getAttribute('data-action') : null;
+            if (!action) return;
+            var nodeId = btn.getAttribute('data-node');
+            runApproval(action, nodeId);
+        });
+        var pcRunStepsEl = getEl('pcRunSteps');
+        if (pcRunStepsEl) pcRunStepsEl.addEventListener('click', function (e) {
+            var t = e.target;
+            var btn = t && t.closest ? t.closest('[data-nid]') : null;
+            if (btn) pcSelectNode(btn.getAttribute('data-nid'));
+        });
+        // Flow Diagram 二级弹框：概要条右上按钮打开；关闭按钮 / 点遮罩收起
+        var pcRunFlowBtn = getEl('pcRunFlowBtn');
+        if (pcRunFlowBtn) pcRunFlowBtn.addEventListener('click', openRunGraph);
+        var pcRunGraphClose = getEl('pcRunGraphClose');
+        if (pcRunGraphClose) pcRunGraphClose.addEventListener('click', closeRunGraph);
+        var pcRunGraphOverlay = getEl('pcRunGraphOverlay');
+        if (pcRunGraphOverlay) pcRunGraphOverlay.addEventListener('click', function (e) {
+            if (e.target === this) closeRunGraph();
+        });
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && getEl('pcDetailOverlay') && getEl('pcDetailOverlay').classList.contains('open')) closeProblemDetail();
+            if (e.key !== 'Escape') return;
+            if (getEl('pcRunGraphOverlay') && getEl('pcRunGraphOverlay').classList.contains('open')) closeRunGraph();
+            else if (getEl('pcRunOverlay') && getEl('pcRunOverlay').classList.contains('open')) closeProblemRun();
+            else if (getEl('pcDiagnoseOverlay') && getEl('pcDiagnoseOverlay').classList.contains('open')) closeDiagnosisView();
+            else if (getEl('pcAnalyzeOverlay') && getEl('pcAnalyzeOverlay').classList.contains('open')) closeAnalyze();
+            else if (getEl('pcDetailOverlay') && getEl('pcDetailOverlay').classList.contains('open')) closeProblemDetail();
         });
 
         // 切回本页时自动刷新
@@ -5211,9 +6557,26 @@
 
         function clampZoom(v) { return Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v)); }
 
+        // 舞台层：把 SVG 包进一个内层 div，translate/scale 只施加在舞台上，
+        // .zoom 容器保持固定不动充当视口/裁剪面 → 内容按视口居中，而不会把整块容器推偏/裁掉。
+        // svg 非 .zoom 直接子元素时（异常 DOM）回退到旧行为：变换直接作用在 .zoom 上。
+        var zoomEl = getEl(opts.zoomId);
+        var baseSvg = getEl(opts.svgId);
+        var stageEl = null;
+        if (zoomEl && baseSvg && baseSvg.parentNode === zoomEl) {
+            stageEl = document.createElement('div');
+            stageEl.className = 'bs-stage';
+            zoomEl.insertBefore(stageEl, baseSvg);
+            stageEl.appendChild(baseSvg);
+        }
+
         function applyTransform() {
-            var zEl = getEl(opts.zoomId);
-            if (zEl) zEl.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+            if (stageEl) {
+                stageEl.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+                if (zoomEl) zoomEl.style.transform = ''; // 舞台模式下清掉残留的容器 transform，避免叠加
+            } else if (zoomEl) {
+                zoomEl.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
+            }
         }
 
         // 以画布中心为锚点缩放（按钮用）
