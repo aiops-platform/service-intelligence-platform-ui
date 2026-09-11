@@ -1,0 +1,84 @@
+<!--
+  SVG 图 Canvas 外壳（Bug Solve 用；Workflow Studio 迁移后也复用同一套）。
+
+  **硬约束：`<svg>` 内必须是空的，一个 Vue 插值子节点都不能有。**
+  图内容由引擎的 `innerHTML` 整段重写（连 `<defs>` 里的箭头 marker 一起），
+  Vue 若也渲染 svg 子节点，两边会互相覆盖。
+
+  `.bs-stage` 层由模板显式渲染（改造前是引擎动态创建 —— 那会挪动 Vue 管理的节点）。
+-->
+<script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
+import { createGraphCanvas } from './useGraphCanvas'
+
+const props = defineProps({
+  /** 节点着色规则 (node, status) => { cls, label } */
+  nodeStyle: { type: Function, default: null },
+  hint: { type: String, default: '' },
+})
+const emit = defineEmits(['node-click'])
+
+const zoomEl = ref(null)
+const svgEl = ref(null)
+const stageEl = ref(null)
+const hintEl = ref(null)
+const controlsEl = ref(null)
+const zoomInEl = ref(null)
+const zoomOutEl = ref(null)
+const zoomFitEl = ref(null)
+
+let canvas = null
+let unbind = null
+
+onMounted(() => {
+  canvas = createGraphCanvas({
+    zoomEl: zoomEl.value,
+    svgEl: svgEl.value,
+    stageEl: stageEl.value,
+    hintEl: hintEl.value,
+    controlsEl: controlsEl.value,
+    zoomInEl: zoomInEl.value,
+    zoomOutEl: zoomOutEl.value,
+    zoomFitEl: zoomFitEl.value,
+    markerId: 'bsArrow',
+    nodeCls: 'bs-node',
+    edgeCls: 'bs-edge',
+    controlsCls: 'bs-zoom-controls',
+    nodeStyle: props.nodeStyle,
+    onNodeClick: (nid) => emit('node-click', nid),
+  })
+  unbind = canvas.mount()
+})
+
+onUnmounted(() => {
+  unbind?.()
+  canvas = null
+})
+
+defineExpose({
+  render: (graph, statusMap) => canvas?.render(graph, statusMap),
+  reset: () => canvas?.reset(),
+})
+</script>
+
+<template>
+  <!--
+    id 与原始标记保持一致（引擎虽改用 ref 取元素，但 styles.css 里存在 ID 选择器：
+    `#bsZoomFit` 让 Fit 按钮变宽，区别于方形的 +/−。去掉 id 会静默丢样式。）
+  -->
+  <div class="bs-canvas">
+    <div class="bs-canvas-hint" id="bsHint" ref="hintEl">{{ hint }}</div>
+    <div class="bs-zoom" id="bsZoom" ref="zoomEl">
+      <!-- 舞台层：变换只施加在这里，.bs-zoom 保持不动充当视口/裁剪面（内容才会按视口居中） -->
+      <div class="bs-stage" ref="stageEl">
+        <!-- 空 svg：内容全部由引擎的 innerHTML 写入 -->
+        <svg class="bs-graph" id="bsGraph" ref="svgEl" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+    </div>
+    <div class="bs-zoom-controls" id="bsZoomControls" ref="controlsEl" style="display: none">
+      <button class="bs-zoom-btn" id="bsZoomOut" ref="zoomOutEl" title="缩小">−</button>
+      <button class="bs-zoom-btn" id="bsZoomIn" ref="zoomInEl" title="放大">+</button>
+      <button class="bs-zoom-btn" id="bsZoomFit" ref="zoomFitEl" title="适配画布">Fit</button>
+    </div>
+  </div>
+</template>

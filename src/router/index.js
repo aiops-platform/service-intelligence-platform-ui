@@ -17,6 +17,7 @@ const LegacyPanelHost = { name: 'LegacyPanelHost', template: '<span />' }
  */
 const VIEW_COMPONENTS = {
   'log-analysis': () => import('@/views/log-analysis/LogAnalysisView.vue'),
+  'bug-solve': () => import('@/views/bug-solve/BugSolveView.vue'),
 }
 
 /** 取某 slug 的路由路径与别名 */
