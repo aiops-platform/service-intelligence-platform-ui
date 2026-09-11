@@ -14,6 +14,12 @@ import AppHeader from '@/components/shell/AppHeader.vue'
 import AppSidebar from '@/components/shell/AppSidebar.vue'
 import AppFooter from '@/components/shell/AppFooter.vue'
 import LegacyPanels from '@/components/LegacyPanels.vue'
+import AlertDetailModal from '@/components/AlertDetailModal.vue'
+import { openAlertDetail } from '@/composables/useAlertDetail'
+
+// 接缝 S4：未迁移的视图（metrics-analysis）经 openAlertDetailGeneric 调到这里。
+// 全文档只有一个模态实例 —— #alertDetailOverlay 已从 legacy 树移除（S1）。
+window.__SIP_OPEN_ALERT_DETAIL = (apiPrefix, alert) => openAlertDetail(apiPrefix, alert)
 
 const route = useRoute()
 const router = useRouter()
@@ -115,6 +121,8 @@ function onLegacyBooted() {
   </div>
 
   <AppFooter :panel="footerPanel" />
+
+  <AlertDetailModal />
 
   <div class="toast-container" id="toastContainer"></div>
 </template>
