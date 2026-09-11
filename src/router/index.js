@@ -11,6 +11,14 @@ import { ensureLegacyBooted } from '@/legacy/bridge'
  */
 const LegacyPanelHost = { name: 'LegacyPanelHost', template: '<span />' }
 
+/**
+ * 已迁移视图的真实组件。键必须同时在 nav.js 的 MIGRATED 集合里 ——
+ * `meta.legacy` 由它决定，两者不一致会出现「组件渲染了但 legacy 面板没隐藏」。
+ */
+const VIEW_COMPONENTS = {
+  'log-analysis': () => import('@/views/log-analysis/LogAnalysisView.vue'),
+}
+
 /** 取某 slug 的路由路径与别名 */
 function routeFor(item) {
   const aliases = Object.entries(SLUG_ALIASES)
@@ -20,7 +28,7 @@ function routeFor(item) {
     path: `/${item.slug}`,
     name: item.slug,
     alias: aliases,
-    component: LegacyPanelHost, // 两个视图迁移后（S6/S7）改由 MIGRATED 分发到真实组件
+    component: VIEW_COMPONENTS[item.slug] || LegacyPanelHost,
     meta: {
       label: item.label,
       panelId: PANEL_ID[item.slug],

@@ -116,7 +116,12 @@ function onLegacyBooted() {
     <main id="main-content">
       <!-- 持久容器：只切显隐，绝不卸载（否则 app.js 的监听器与定时器会丢） -->
       <LegacyPanels v-show="isLegacyRoute" @booted="onLegacyBooted" />
-      <RouterView v-if="!isLegacyRoute" />
+      <!-- keep-alive：对应改造前"所有面板常驻 DOM、切页保留筛选状态"的行为 -->
+      <RouterView v-if="!isLegacyRoute" v-slot="{ Component }">
+        <KeepAlive>
+          <component :is="Component" />
+        </KeepAlive>
+      </RouterView>
     </main>
   </div>
 

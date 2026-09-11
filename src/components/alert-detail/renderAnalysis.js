@@ -21,17 +21,11 @@
  */
 
 import { formatTimeAgo } from '@/utils/time'
+import { escapeHtml } from '@/utils/format'
 
 /** 唯一 id 计数器（改造前用 Math.random，多次渲染可能撞号且不可复现） */
 let uid = 0
 const nextId = (prefix) => `${prefix}-${++uid}`
-
-export function escapeHtml(text) {
-  if (text === null || text === undefined) return ''
-  const div = document.createElement('div')
-  div.appendChild(document.createTextNode(String(text)))
-  return div.innerHTML
-}
 
 /** 归一化 action 文案：既支持字符串数组，也支持 {description|action} 对象数组 */
 function actionText(act) {

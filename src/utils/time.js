@@ -37,7 +37,7 @@ export function formatTimeAgo(dateStr) {
  * （改造前 app.js 里这段有 3 份副本，行为一致。）
  */
 export function formatTime(dateStr) {
-  if (!dateStr) return 'N/A'
+  if (!dateStr) return '-' // 与改造前 initLogAnalysis 内的同名函数一致（空值返回 '-' 而非 'N/A'）
   try {
     const normalized = String(dateStr).replace(/[+-]\d{2}:\d{2}$/, '')
     const d = new Date(normalized + 'Z')
