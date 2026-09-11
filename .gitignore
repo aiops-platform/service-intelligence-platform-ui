@@ -1,3 +1,14 @@
 # DS_Store
 .DS_Store
 **/.DS_Store
+
+# 构建产物与依赖（v2.0.0 Vue 化引入）
+node_modules/
+dist/
+
+# IDE 本地配置（此前 .idea/ 被误提交，见 v2.0.0 changelog）
+.idea/
+
+# 本地环境变量（只提交 .env.example）
+.env
+.env.local
