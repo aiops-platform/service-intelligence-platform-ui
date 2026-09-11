@@ -5,6 +5,21 @@
 (function () {
     'use strict';
 
+    // ── Vue 共存接缝（v2.0.0）──────────────────────────────────
+    // 自 v2.0.0 起本文件与 Vue 外壳（src/）在同一文档内共存。唯一不变式：
+    // **同一棵 DOM 子树只能有一个所有者**。
+    //   - 未迁移的 15 个视图仍归本文件；
+    //   - 它们所在的宿主元素由 Vue 提供（见 src/legacy/bridge.js）。
+    // 因此本文件里所有「全文档」查询都必须收进 legacyRoot()，否则会误伤 Vue 渲染的
+    // 节点 —— 典型后果是 initTableSorting 直接 appendChild 重排 Vue 表格的行，
+    // 导致 vdom 与真实 DOM 失步（症状随机、难复现）。
+    //
+    // 独立打开旧 index.html 时 __SIP_LEGACY_ROOT 未定义 → 回退 document，
+    // 行为与改造前完全一致。
+    function legacyRoot() {
+        return window.__SIP_LEGACY_ROOT || document;
+    }
+
     // ── Shared Utilities ──────────────────────────────────────
     function escapeHtml(text) {
         if (!text) return '';
@@ -20,6 +35,11 @@
     }
 
     function navigateToPage(pageId, context) {
+        // 接缝 S3：外壳归 Vue 后，跨页下钻改走 Vue Router（URL 可分享、可刷新），
+        // 不再把 context 塞 sessionStorage 再靠切页时读回。
+        if (window.__SIP_NAVIGATE) {
+            return window.__SIP_NAVIGATE(pageId, context);
+        }
         if (context) {
             sessionStorage.setItem('navContext', JSON.stringify(context));
         }
@@ -40,7 +60,8 @@
     var _pageRefreshers = {};
 
     function showPage(pageId) {
-        document.querySelectorAll('.page-panel').forEach(function (p) {
+        // 接缝 S1：只切 legacy 子树内的面板，不碰 Vue 渲染的视图
+        legacyRoot().querySelectorAll('.page-panel').forEach(function (p) {
             p.style.display = 'none';
         });
         var target = document.getElementById(pageId);
@@ -57,9 +78,29 @@
         if (typeof refresh === 'function') refresh();
     }
 
+    // 接缝 S8：把切页能力交给 Vue 外壳的路由守卫。10 处 _pageRefreshers 注册
+    // 原样保留生效（切页时仍会触发对应视图的刷新闭包）。
+    window.__SIP_SHOW_PAGE = showPage;
+
+    // 接缝 S9（计划稿写 8 处，实施时补的第 9 处）：
+    // 5 个无侧边栏的「空壳」顶部域（Constellation / Architecture / FinOps /
+    // Security Ops / Value Pool）在改造前走 initNavigation 的 else 分支 ——
+    // 隐藏所有侧边栏 → showPage('page-service-ops') → 把该页标题改成域名、清空描述。
+    // 后两个节点在 #page-service-ops 内，归本文件所有，所以由本文件提供受控入口，
+    // 而不是让 Vue 直接改 legacy DOM。
+    // 顺带修掉一个潜伏 bug：改造前用的是 document.querySelector('.page-title')，
+    // 取的是**全文档首个**匹配 —— 外壳归 Vue 后会误取 Vue 渲染的标题。
+    window.__SIP_SET_DOMAIN_HEADER = function (title, desc) {
+        var root = legacyRoot();
+        var t = root.querySelector('#page-service-ops .page-title');
+        var d = root.querySelector('#page-service-ops .page-desc');
+        if (t) t.textContent = title || '';
+        if (d) d.textContent = desc || '';
+    };
+
     // ── Sidebar ─────────────────────────────────────────────────
     function initSidebar() {
-        var sidebars = document.querySelectorAll('.sidebar');
+        var sidebars = legacyRoot().querySelectorAll('.sidebar');
 
         sidebars.forEach(function (sidebar) {
             // Tree expand/collapse
@@ -547,7 +588,7 @@
 
     // ── Navigation ──────────────────────────────────────────────
     function initNavigation() {
-        var navItems = document.querySelectorAll('.nav-item');
+        var navItems = legacyRoot().querySelectorAll('.nav-item');
         var sidebarEngOps = document.getElementById('sidebar-eng-ops');
         var sidebarBizOps = document.getElementById('sidebar-biz-ops');
         var sidebarServiceOps = document.getElementById('sidebar-service-ops');
@@ -556,7 +597,7 @@
         var pageDesc = document.querySelector('.page-desc');
 
         function hideAllSidebars() {
-            document.querySelectorAll('.sidebar').forEach(function (s) { return s.classList.remove('visible'); });
+            legacyRoot().querySelectorAll('.sidebar').forEach(function (s) { return s.classList.remove('visible'); });
         }
 
         navItems.forEach(function (item) {
@@ -2137,7 +2178,7 @@
 
     // ── Filter Chips ────────────────────────────────────────────
     function initFilterChips() {
-        const chips = document.querySelectorAll('.filter-chip');
+        const chips = legacyRoot().querySelectorAll('.filter-chip');
         chips.forEach(function (chip) {
             chip.addEventListener('click', function () {
                 // Toggle active state (single-select for tier, multi for others)
@@ -2169,7 +2210,7 @@
 
     // ── Table Sorting ───────────────────────────────────────────
     function initTableSorting() {
-        var headers = document.querySelectorAll('th');
+        var headers = legacyRoot().querySelectorAll('th');
         headers.forEach(function (th) {
             th.addEventListener('click', function () {
                 var table = th.closest('table');
@@ -2215,7 +2256,7 @@
 
     // ── Button Group Toggle ─────────────────────────────────────
     function initButtonGroup() {
-        var btns = document.querySelectorAll('.btn-group .btn');
+        var btns = legacyRoot().querySelectorAll('.btn-group .btn');
         btns.forEach(function (btn) {
             btn.addEventListener('click', function () {
                 btns.forEach(function (b) { return b.classList.remove('active'); });
@@ -2226,7 +2267,7 @@
 
     // ── Row Click ───────────────────────────────────────────────
     function initRowClick() {
-        var rows = document.querySelectorAll('tbody tr');
+        var rows = legacyRoot().querySelectorAll('tbody tr');
         rows.forEach(function (row) {
             row.addEventListener('click', function () {
                 var appName = row.querySelector('.app-name');
@@ -2253,6 +2294,13 @@
 
     // ── Shared Alert Detail Modal (for metric/log pages) ───────
     function openAlertDetailGeneric(apiPrefix, alert) {
+        // 接缝 S4：详情模态已迁 Vue。必须放在最前面 —— 早于下面的 !overlay 守卫，
+        // 因为 #alertDetailOverlay 已从 legacy 树移除（迁移后全文档只剩 Vue 那一个实例），
+        // 守卫会在到达 Vue 之前就 return。
+        // apiPrefix 沿用旧参数化设计：'log-alert' | 'metric-alert'。
+        if (window.__SIP_OPEN_ALERT_DETAIL) {
+            return window.__SIP_OPEN_ALERT_DETAIL(apiPrefix, alert);
+        }
         var overlay = document.getElementById('alertDetailOverlay');
         var content = document.getElementById('alertDetailContent');
         var title = document.getElementById('alertDetailTitle');
@@ -8744,8 +8792,16 @@
 
     // ── Init ────────────────────────────────────────────────────
     function init() {
-        initSidebar();
-        initNavigation();
+        // 接缝 S5/S6：嵌入 Vue 外壳时（__SIP_LEGACY_ROOT 由 src/legacy/bridge.js 设置）
+        //   - S5：顶部导航与侧边栏归 Vue，本文件不再接管（否则会抢绑 Vue 的 DOM）；
+        //   - S6：log-analysis / bug-solve 两个视图已迁至 Vue，其面板不在 legacy 树内，
+        //         不跳过会在 getElementById(...).addEventListener 上抛错。
+        var embedded = !!window.__SIP_LEGACY_ROOT;
+
+        if (!embedded) {
+            initSidebar();
+            initNavigation();
+        }
         initKnowledgeSearch();
         initReflowLog();
         initAgentTasks();
@@ -8753,13 +8809,13 @@
         initApprovalCenter();
         initSmartInspection();
         initMetricsAnalysis();
-        initLogAnalysis();
+        if (!embedded) initLogAnalysis();
         initProblems();
         initMonitorTargets();
         initDomainConfig();
         initAgentRegistry();
         initWorkflowStudio();
-        initBugSolve();
+        if (!embedded) initBugSolve();
         initMcpServers();
         initAgentConfig();
         initFilterChips();
@@ -8769,7 +8825,11 @@
         initClock();
     }
 
-    if (document.readyState === 'loading') {
+    if (window.__SIP_DEFER_LEGACY_INIT) {
+        // 接缝 S7：Vue 外壳先把 legacy-panels.html 注入完，再显式调起本文件的 init。
+        // 不延迟的话 init 会跑在空 DOM 上 —— 所有 getElementById 都返回 null。
+        window.__SIP_LEGACY_INIT = init;
+    } else if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
         init();
