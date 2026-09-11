@@ -5,8 +5,8 @@
  * （slug 与 page id 命名还不一致）。这里把它收敛成数据：shell 组件与路由表都从这里派生。
  */
 
-/** 本方案已迁到 Vue 的视图（其余仍由 js/app.js 驱动 legacy 面板） */
-export const MIGRATED = new Set(['log-analysis', 'bug-solve'])
+/** 已迁到 Vue 的视图（其余仍由 js/app.js 驱动 legacy 面板） */
+export const MIGRATED = new Set(['log-analysis', 'bug-solve', 'tickets', 'agent-registry'])
 
 /**
  * slug → legacy panel id。
@@ -20,6 +20,8 @@ export const PANEL_ID = {
   'knowledge-reflow-log': 'page-reflow-log',
   'knowledge-search': 'page-knowledge-search',
   'agent-tasks': 'page-agent-tasks',
+  // 新增的 Vue 原生页（无 legacy 面板对应）——值仅为占位，路由 meta.legacy=false
+  tickets: 'page-tickets',
   'l1-automation': 'page-l1-automation',
   'approval-center': 'page-approval-center',
   'smart-inspection': 'page-smart-inspection',
@@ -96,6 +98,7 @@ export const NAV = [
           key: 'ticket-workspace-svc',
           label: 'Ticket Workspace',
           items: [
+            { slug: 'tickets', label: 'Ticket Inbox' },
             { slug: 'approval-center', label: 'Approval Center' },
             { slug: 'l1-automation', label: 'L1 Automation' },
           ],

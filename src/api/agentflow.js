@@ -16,6 +16,36 @@ export const workflowApi = {
   preview: (yaml) => agentflow.post('/workflows/preview', { yaml }),
 }
 
+/** 工单（Ticket Inbox）。字段形状对齐后端 bug_report（ServiceNow 风格事件）。 */
+export const ticketApi = {
+  list: (params) => agentflow.get('/tickets', { params }),
+  detail: (tid) => agentflow.get(`/tickets/${tid}`),
+
+  /**
+   * 建工单。`number`/`service`/`namespace` 可由后端从 bug_report 兜底取，不必传。
+   */
+  create: (payload) => agentflow.post('/tickets', payload),
+
+  /** 从工单发起一次 run（组合端点）。不传 workflow_id 则用库里第一个已保存流程。 */
+  run: (tid, workflowId) =>
+    agentflow.post(`/tickets/${tid}/run`, workflowId ? { workflow_id: workflowId } : {}),
+}
+
+/** run 列表（Ticket/Run 页面共用）。 */
+export const runsApi = {
+  list: (params) => agentflow.get('/runs', { params }),
+}
+
+/** agent 编队（Agent 目录页）。 */
+export const agentsApi = {
+  /** 全部 agent：含 role/stage/local_tools(带 level)/mcp_tools/bound_servers。 */
+  list: () => agentflow.get('/agents'),
+  /** 单 agent 详情：含完整 system_prompt / schema / stored。 */
+  detail: (name) => agentflow.get(`/agents/${encodeURIComponent(name)}`),
+  /** 按 agent 聚合的执行统计（样本为空时各值为 null）。 */
+  stats: () => agentflow.get('/agents/stats'),
+}
+
 export const runApi = {
   /** 发起 run。body: {workflow_id, ticket} */
   start: (payload) => agentflow.post('/run', payload),

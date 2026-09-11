@@ -18,7 +18,19 @@ const LegacyPanelHost = { name: 'LegacyPanelHost', template: '<span />' }
 const VIEW_COMPONENTS = {
   'log-analysis': () => import('@/views/log-analysis/LogAnalysisView.vue'),
   'bug-solve': () => import('@/views/bug-solve/BugSolveView.vue'),
+  tickets: () => import('@/views/tickets/TicketsView.vue'),
+  'agent-registry': () => import('@/views/agents/AgentsView.vue'),
 }
+
+/** 不在侧边栏里的 Vue 原生页（动态路由 / 详情页） */
+const EXTRA_ROUTES = [
+  {
+    path: '/runs/:runId',
+    name: 'run-detail',
+    component: () => import('@/views/runs/RunDetailView.vue'),
+    meta: { label: 'Run 详情', legacy: false },
+  },
+]
 
 /** 取某 slug 的路由路径与别名 */
 function routeFor(item) {
@@ -67,6 +79,7 @@ const routes = [
   { path: '/', redirect: `/${DEFAULT_SLUG}` },
   ...[...flattenItems(), ...STANDALONE_PAGES].map(routeFor),
   ...emptyDomainRoutes,
+  ...EXTRA_ROUTES,
   // 落到底默认页，而不是抛 404（改造前任何未知入口也都落到 Service Ops）
   { path: '/:pathMatch(.*)*', redirect: `/${DEFAULT_SLUG}` },
 ]
