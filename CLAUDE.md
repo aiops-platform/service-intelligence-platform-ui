@@ -4,47 +4,90 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 概述
 
-Service Intelligence Platform (SIP) 前端 -- 一个服务运维事件管理的静态仪表盘。应用展示 KPI 指标、可筛选的应用列表，以及跨运维域的导航（Service Ops、Business Ops、Engineering Ops 等）。
+Service Intelligence Platform (SIP) 前端 —— 面向服务运维事件管理的仪表盘。展示 KPI 指标、可筛选的
+应用/告警/问题列表，以及跨运维域的导航（Service Ops、Business Ops、Engineering Ops、Agents 等）。
+
+**自 v2.0.0 起本仓是「双世界」结构**（见下），改动前请先确认你改的是哪一边。
 
 ## 常用命令
 
-项目无构建工具、包管理器或测试框架。这是一个纯静态站点，直接打开 `index.html` 即可：
-
 ```bash
-# 本地启动静态服务（任选一种）
-python3 -m http.server 8080          # Python 3
-npx serve .                          # Node
-ruby -run -e httpd . -p 8080        # Ruby
+npm install
+npm run dev       # Vite 开发服务器，默认 :5173
+npm run build     # 产出 dist/
+npm run preview   # 预览构建产物，默认 :4173
 ```
 
-浏览器访问 `http://localhost:8080`（或直接双击 `index.html`）。
+浏览器访问 `http://localhost:5173`。
 
-## 架构
+> **端口注意**：开发时前端在 `:5173`，经 Vite proxy 转发到后端（sip-aiops `:8080`、
+> agentflow `:8000`）。**不要**把前端起在 `8080` —— 那是 sip-aiops 的端口。
 
-```
-service_intelligence_platform_frontend/
-├── assets/          # 空目录，预留存放静态资源
-├── css/
-│   └── styles.css   # 所有样式，使用 CSS 自定义属性实现主题化
-├── js/
-│   └── app.js       # 所有交互逻辑，采用 IIFE + 'use strict' 模式
-└── index.html        # 单页面，所有数据硬编码在 HTML 中
-```
+## 架构：双世界（v2.0.0）
 
-- **无框架、无路由、无状态管理、无 API 层。** 全部是原生 HTML5/CSS3/ES5 JavaScript。
-- **CSS** 使用自定义属性（CSS 变量）作为设计令牌（颜色、边框、背景）。工具类命名类似 Tailwind（`.flex`、`.items-center`、`.gap-2`）。组件样式使用类似 BEM 的短横线命名（`.kpi-card`、`.filter-chip`）。
-- **JS** 是一个单独的 IIFE（`'use strict'`），在 DOMContentLoaded 时启动。`init()` 中初始化的模块包括：导航切换、筛选芯片、表格排序、按钮组切换、行点击处理、实时时钟。
-- **数据全部硬编码**在 HTML 表格中（19 个应用行）。筛选芯片和表格排序直接操作 DOM -- 没有数据模型。
-- 父目录（`mb_aiops_platform/`）包含一个早期版本（CSS/JS 内联在 index.html 中）。`service_intelligence_platform_frontend/` 是重构版本，采用外部文件并增加了交互功能。
+同一文档内两个世界共存，**唯一不变式是「同一棵 DOM 子树只能有一个所有者」**。
 
-## JS 模块模式
+| | Vue 世界 | 遗留世界 |
+|---|---|---|
+| 位置 | `src/` | `js/app.js`（8777 行 IIFE，原地保留） |
+| 拥有的 DOM | 外壳（header/sidebar/footer）+ **已迁移视图** | **未迁移的 15 个视图** + 12 个共享模态 + drawer |
+| 样式 | 共用 `css/styles.css`（7099 行，全局引入，**一字未改**） | 同左 |
 
-新增交互功能应遵循 `js/app.js` 中的现有模式：
-1. 创建一个 `init<功能名>()` 函数
-2. 在主 `init()` 函数中调用它
-3. 直接使用 DOM API（无虚拟 DOM，无数据绑定）
+**已迁移视图**（`src/router/nav.js` 的 `MIGRATED` 集合）：`log-analysis`、`bug-solve`。
 
+### 接缝（`js/app.js` 里的 `window.__SIP_*`）
 
+| 接缝 | 作用 |
+|---|---|
+| `legacyRoot()` | 全文档查询的作用域根。**本文件所有 `querySelectorAll` 都必须收进它**，否则会误伤 Vue 渲染的节点（典型后果：`initTableSorting` 重排 Vue 表格的行 → vdom 失步，症状随机难复现） |
+| `__SIP_LEGACY_ROOT` | 由 `src/legacy/bridge.js` 设置；同时是「嵌入模式」的判据（据此跳过 `initSidebar`/`initNavigation`/`initLogAnalysis`/`initBugSolve`） |
+| `__SIP_SHOW_PAGE` | 切 legacy 面板。路由守卫调用它，旧 `_pageRefreshers` 原样生效 |
+| `__SIP_NAVIGATE` | 旧代码跨页下钻 → Vue Router（context 变 URL query） |
+| `__SIP_OPEN_ALERT_DETAIL` | 旧视图（metrics-analysis）打开 Vue 的告警详情模态 |
+| `__SIP_SET_DOMAIN_HEADER` | 空壳域改写 service-ops 概览页标题（那两个节点归 legacy 所有） |
+| `__SIP_DEFER_LEGACY_INIT` / `__SIP_LEGACY_INIT` | 延迟自启动：等 Vue 注入完 legacy DOM 再调 `init()` |
+
+独立打开旧 `index.html` 时这些全不生效，行为与改造前一致。
+
+### 迁移一个新视图的步骤
+
+1. `src/views/<name>/` 建 `XxxView.vue` + `useXxx.js`（状态就近放，**不用 Pinia**）
+2. `src/router/nav.js` 的 `MIGRATED` 加入该 slug
+3. `src/router/index.js` 的 `VIEW_COMPONENTS` 加入懒加载（**两处必须同时改**，
+   否则会出现「组件渲染了但 legacy 面板没隐藏」的双显）
+4. `js/app.js` 的 `init()` 里跳过对应的 `initXxx()`（嵌入模式下）
+5. 从 `src/legacy/legacy-panels.html` 删掉该面板
+
+## 跨域
+
+**`src/` 下永不出现 `http://localhost:*`，只出现 `/` 开头的相对路径。**
+
+- 开发：`vite.config.js` 的 `server.proxy`（`/api/sip-aiops`→`:8080`；`/agentflow`→`:8000`，
+  后者需 `rewrite` 剥前缀，因 agentflow 路由挂根路径）。浏览器视角同源，**无 CORS 无预检**。
+- 生产：dist 静态托管 + 同源 nginx 反代（片段见 README）。
+
+`src/api/config.js` 的 base 三级回退：**localStorage > `VITE_*` > 相对路径默认**。
+dev 下可用 `__sipApi.setBase('sipAiops', 'http://host:8080/api/sip-aiops')` 临时改。
+
+> **未迁移的 15 个视图仍打硬编码绝对 URL**、依赖后端开 CORS —— 这是有意保留的不对称，
+> 等它们逐个迁移时自然收敛。**不要**为了它们去改那些 base。
+
+## 样式
+
+`css/styles.css` 全局引入、**不做 scoped、不重写**。组件模板**逐字沿用其中的 class 名**。
+
+- 少写一个 class 就掉样式；新加 class 无处定义
+- **样式表也是 id 的消费方**：`styles.css:6081` 有 `#bsZoomFit`。曾因为「反正改用 ref 了」
+  删掉 id 而静默丢样式（按钮仍可点，只是变窄）
+- 验证方法：用 `grep -o 'class="[^"]*"'` 对旧面板与新组件做 class 差集，期望为空
+
+## 渲染约定
+
+- **已迁移视图禁止拼 HTML 字符串**（旧世界有 100 处 `innerHTML`，是本次要消灭的模式）
+- 唯一允许 `v-html` 的地方是 `src/legacy/`（注入静态面板快照，自有内容非用户数据）
+- 告警详情模态 `renderAnalysis.js` 保留拼串 —— 那块内容是一次生成、之后不变的静态 DOM，
+  Vue 响应式买不到东西；但**其产物经 `v-html` 注入，`escapeHtml` 一处都不能省**，
+  且**不能用 `onclick`**（v-html 注入的 HTML 不会被 Vue 编译），一律用 `data-action` + 委托
 
 ## 项目约定
 
@@ -57,5 +100,5 @@ service_intelligence_platform_frontend/
 - changelog 文件放在 `changelogs/` 目录下
 - 命名格式：`v{MAJOR}.{MINOR}.{PATCH}-{slug}.md`
 - 模板和必须包含的内容见 `CONTRIBUTING.md` 第 48-90 行
-- 当前版本号：`v1.21.0`
+- 当前版本号：`v2.0.0`
 - 已有的 changelog 文件保留不动，只新增不修改历史文件

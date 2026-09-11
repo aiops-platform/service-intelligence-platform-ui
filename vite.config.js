@@ -38,24 +38,28 @@ function sipLegacyBuildCopy() {
   }
 }
 
+/**
+ * 后端转发规则。dev 与 preview **都要用** —— Vite 的 preview server 不继承 `server.proxy`，
+ * 只配 server 的话 `npm run preview` 会连不上后端、页面看着像坏了。
+ */
+const proxy = {
+  // sip-aiops 的真实路径就是 /api/sip-aiops/...，同名前缀直通，不 rewrite
+  '/api/sip-aiops': { target: 'http://localhost:8080', changeOrigin: true },
+  // agentflow 的路由挂在根路径（/workflows、/runs/{id}），加前缀后需剥掉
+  '/agentflow': {
+    target: 'http://localhost:8000',
+    changeOrigin: true,
+    rewrite: (p) => p.replace(/^\/agentflow/, ''),
+  },
+}
+
 export default defineConfig({
   plugins: [vue(), sipLegacyDevServe(), sipLegacyBuildCopy()],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
-  server: {
-    port: 5173,
-    proxy: {
-      // sip-aiops 的真实路径就是 /api/sip-aiops/...，同名前缀直通，不 rewrite
-      '/api/sip-aiops': { target: 'http://localhost:8080', changeOrigin: true },
-      // agentflow 的路由挂在根路径（/workflows、/runs/{id}），加前缀后需剥掉
-      '/agentflow': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/agentflow/, ''),
-      },
-    },
-  },
+  server: { port: 5173, proxy },
+  preview: { port: 4173, proxy },
   build: {
     outDir: 'dist',
     sourcemap: true,
