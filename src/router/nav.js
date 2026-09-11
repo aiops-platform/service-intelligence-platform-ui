@@ -207,6 +207,19 @@ export const NAV = [
 /** 默认落地页（改造前 `page-service-ops` 无 display:none，是唯一默认可见的面板） */
 export const DEFAULT_SLUG = 'service-ops'
 
+/**
+ * 5 个无侧边栏的「空壳」域：没有自己的页面。
+ *
+ * 改造前点它们会走 initNavigation 的 else 分支：隐藏所有侧边栏 → 落到 service-ops 概览
+ * → 把该页标题改成域名。
+ *
+ * 这里给每个空壳域**一条自己的路由**（`/constellation` 等，面板仍指向 page-service-ops），
+ * 而不是在组件里存一个"当前选的域"的覆盖状态 —— 否则高亮域与 URL 两套真源会打架：
+ * 早期实现用 domainOverride 覆盖，结果被 watch(activeSlug) 清掉，出现「标题是 FinOps
+ * 但侧边栏是 Service Ops」的错位。进 URL 后一切都从路由派生，且可分享可刷新。
+ */
+export const EMPTY_DOMAINS = NAV.filter((n) => !n.sidebar)
+
 /** 把分组树拍平成叶子列表（供路由表使用） */
 export function flattenItems(nav = NAV) {
   const out = []
@@ -221,6 +234,26 @@ export function flattenItems(nav = NAV) {
     for (const g of top.sidebar.groups) walk(g.items)
   }
   return out
+}
+
+/**
+ * 把 slug 或 legacy panel id 归一成规范 slug。
+ *
+ * 路由参数、旧代码传来的 `page-xxx`、历史别名（`agents`）都要能吃进同一个入口。
+ */
+export function resolveSlug(input) {
+  if (!input) return null
+  let s = String(input)
+  if (s.startsWith('page-')) {
+    const hit = Object.entries(PANEL_ID).find(([, pid]) => pid === s)
+    return hit ? hit[0] : s.slice(5)
+  }
+  return SLUG_ALIASES[s] || s
+}
+
+/** legacy panel id → 规范 slug（接缝 S3 用：旧代码传 `page-xxx` 过来） */
+export function slugFromPanelId(pageId) {
+  return resolveSlug(pageId)
 }
 
 /** slug → 所属顶部域的 key（供 header 高亮 + footer 文案） */

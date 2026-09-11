@@ -5,5 +5,10 @@ import { createApp } from 'vue'
 import '../css/styles.css'
 
 import App from './App.vue'
+import { router, installLegacyBridge } from './router'
 
-createApp(App).mount('#app')
+// 接缝 S3：把旧代码的 navigateToPage 接到路由上。必须在挂载前装好 ——
+// 未迁移的视图可能在首屏就触发跨页下钻。
+installLegacyBridge()
+
+createApp(App).use(router).mount('#app')
