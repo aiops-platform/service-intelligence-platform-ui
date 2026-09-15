@@ -71,7 +71,44 @@ export function describeBases() {
   )
 }
 
+// ----------------------------------------------------------------------
+// 租户（agentflow 的 X-Tenant-ID）
+// ----------------------------------------------------------------------
+/**
+ * 默认租户。
+ *
+ * agentflow 在 **dev 模式**（`AGENTFLOW_JWT_SECRET` 为空）下从 `X-Tenant-ID` 头取租户，
+ * 缺省是 `"local"`（`api/auth.py:61`）。而 agentflow **会给未注册的租户 id 自动建一个空库**
+ * —— 所以前端**必须显式声明租户**，否则会落进一个空库、什么都不显示。
+ *
+ * 切 JWT 模式后这个头不再起作用（租户改由 token claim 派生），届时可原样保留，
+ * 后端会忽略它。
+ */
+const DEFAULT_TENANT = 'otr'
+const TENANT_KEY = 'agentflowTenantId'
+
+/** 当前租户 id（localStorage 覆盖 > 默认值） */
+export function resolveTenant() {
+  try {
+    return window.localStorage.getItem(TENANT_KEY) || DEFAULT_TENANT
+  } catch {
+    return DEFAULT_TENANT
+  }
+}
+
+/** 运行时切换租户（刷新后生效 —— 缓存的视图数据属于上一个租户，不该跨租户复用） */
+export function setTenant(tenantId) {
+  try {
+    if (tenantId) window.localStorage.setItem(TENANT_KEY, tenantId)
+    else window.localStorage.removeItem(TENANT_KEY)
+  } catch (err) {
+    console.warn('[sip] 写入 localStorage 失败：', err)
+  }
+}
+
 // dev 下方便在 console 里改后端地址：__sipApi.setBase('sipAiops', 'http://host:8080/api/sip-aiops')
 if (import.meta.env.DEV) {
-  window.__sipApi = { resolveBase, setBase, describeBases }
+  // console 里可切租户（切完刷新页面，缓存的视图数据不该跨租户复用）：
+  //   __sipApi.setTenant('team-a')
+  window.__sipApi = { resolveBase, setBase, describeBases, resolveTenant, setTenant }
 }

@@ -7,8 +7,20 @@
  * agentflow 的路由挂在根路径（/workflows、/runs/{id}），所以前缀是必须的。
  */
 import { createClient } from './http'
+import { resolveTenant } from './config'
 
-export const agentflow = createClient({ name: 'agentflow', timeout: 30000 })
+/**
+ * agentflow 客户端。
+ *
+ * **每次都带 `X-Tenant-ID`**（函数式 headers，请求时才求值，支持运行时切换）。
+ * 不带的话 dev 模式下会落到 `"local"`，而 agentflow 会给未注册的租户 id **自动建一个空库**
+ * —— 页面会一片空白且看不出原因。见 config.js 的 `resolveTenant`。
+ */
+export const agentflow = createClient({
+  name: 'agentflow',
+  timeout: 30000,
+  headers: () => ({ 'X-Tenant-ID': resolveTenant() }),
+})
 
 export const workflowApi = {
   list: () => agentflow.get('/workflows'),
