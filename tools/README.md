@@ -10,7 +10,7 @@
 
 ## 快速开始
 
-**双击 `启动 Constellation.command`** → 浏览器自动打开 <http://localhost:8777/>
+**双击 `启动 Constellation.command`** → 浏览器自动打开 <http://localhost:8777/constellation-app.html>
 
 关掉那个终端窗口 = 停止服务。
 
@@ -107,9 +107,9 @@ python3 make-offline-page.py        # 构建时会提示「新增租户：xxx」
 ?tenant=<id>  →  localStorage["sip-active-tenant"]  →  兜底 "retail"
 ```
 
-所以加完直接开 `http://localhost:8777/?tenant=myco`。
+所以加完直接开 `http://localhost:8777/constellation-app.html?tenant=myco`。
 
-现成的 10 个租户也可以这么切，比如 <http://localhost:8777/?tenant=qantas>。
+现成的 10 个租户也可以这么切，比如 <http://localhost:8777/constellation-app.html?tenant=qantas>。
 
 ### 加租户必须过的校验
 
@@ -130,7 +130,7 @@ python3 make-offline-page.py        # 构建时会提示「新增租户：xxx」
 
 `python3 tenant_data.py check` 会逐条报缺什么。
 
-> **重建是可逆的。** 覆盖只写进 `constellation-offline/` 里的副本，源文件不动 ——
+> **重建是可逆的。** 覆盖只写进 `public/` 里的副本，源文件不动 ——
 > 删掉 `tenant-data/<id>.json` 重建就回到原样。别去改源文件，改一次叠一次，回不去。
 
 ---
@@ -153,15 +153,24 @@ tools/
 │
 ├── SIP … Acme Retail.html          Chrome 保存的 —— **不能当入口**
 ├── SIP … Acme Retail_files/        同上的 JS/CSS，是好资源（6.4 M）
-├── constellation-offline/          生成物，6.5 M
 └── constellation-export/           数据导出 + 独立查看器
     ├── extract.py                    从线上抓全部租户快照
-    ├── data/*.json                   产出
+    ├── data/*.json                   产出（已 gitignore）
     └── viewer/index.html             表格化查看器
 ```
 
-`constellation-offline/` 和 `constellation-export/data/` 已在 `.gitignore` 里
-（生成物，随时可重建）。
+构建产物**不在 tools/ 下**，在仓库的 `public/`：
+
+```
+public/
+├── constellation-app.html          ← 入口
+└── _next/static/{chunks,media}/    ← chunk / css / 字体，6.5 M
+```
+
+**这份是入库的**，不是可弃的中间产物 —— 它是「克隆下来 `npm run dev` 就能用」的关键。
+
+为什么放 `public/`：内层的 chunk 路径 `/_next/…` 是 turbopack **硬编码的根绝对路径**，
+而 Vite 的 `public/` 正好按根伺服，dev 和 build 都对得上，不需要任何 Vite 插件。
 
 ---
 

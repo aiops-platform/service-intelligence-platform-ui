@@ -20,7 +20,9 @@ dist/
 #   tools/*.py  tools/*.sh  tools/*.command      源码
 #
 # 生成物都能随时重建，不入库：
-#   python3 tools/make-offline-page.py      → constellation-offline/
 #   python3 tools/constellation-export/extract.py → constellation-export/data/
-tools/constellation-offline/
 tools/constellation-export/data/
+#
+# 注意 public/ 里那份**是入库的**（public/constellation-app.html + public/_next/）——
+# 它是「克隆下来就能用」的关键，不是随手可弃的中间产物。
+# 重建它：python3 tools/make-offline-page.py

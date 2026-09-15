@@ -238,7 +238,9 @@ def validate_snapshot(snap: dict):
 def find_bundle(here: Path, explicit=None) -> Path:
     if explicit:
         return Path(explicit)
-    for cand in [here / "constellation-offline/_next/static/chunks" / BUNDLE_NAME,
+    # 产物在仓库的 public/（Vite 按根伺服，/_next/… 才对得上）；
+    # 源在 Chrome 保存的 _files/。前者优先 —— 那是当前生效的那份。
+    for cand in [here.parent / "public/_next/static/chunks" / BUNDLE_NAME,
                  here / "SIP · The Constellation · Acme Retail_files" / BUNDLE_NAME]:
         if cand.is_file():
             return cand

@@ -7353,3 +7353,80 @@ svg { fill: currentColor; }
     margin-top: 2px;
     letter-spacing: .03em;
 }
+
+/* Constellation Embed */
+
+/*
+  Constellation 域内嵌企业架构星座图（src/views/constellation/ConstellationView.vue）。
+  内层是另一套 Next.js 应用，产物在 public/，由 Vite 按根伺服。
+
+  ## 为什么是 position: fixed
+
+  整个高度链是断的，只能绕开它：
+
+    body(100vh, flex column)
+      └ #app          ← styles.css 里**没有任何规则**，display:block + 自动高度，
+      │                 作为 flex 子项也不拉伸。实测只有 112px
+      └ .app-body     flex:1 —— 但父级没高度，撑不开
+      └ main          flex:1 + overflow-y:auto —— 同样只有 60px
+
+  旧视图没暴露这个问题，是因为它们是**在流内的真实内容**，把 #app 撑开了。
+  而这里的 iframe 是绝对/固定定位、不贡献高度，链一断就全塌。
+
+  ⚠️ 光给高度是不够的（踩过）：把 .cs-embed 写成 absolute + height: calc(100vh-92px)，
+  它确实有 821px，但 **main 只有 60px 且 overflow-y:auto —— 它会把溢出的部分裁掉**，
+  结果只露出内层顶部 60px，看着像"一层白布盖住页面"。
+
+  **`position: fixed` 相对视口定位，直接跳出发明的高度链和 main 的裁剪。**
+  这也是本组件唯一需要关心的东西，不影响任何其它路由。
+
+  ## 数字怎么来的
+
+  - `52px` = header 高度（见 Header 一节，position: fixed）
+  - `40px` = 给 fixed footer 让的位，与 main 的 padding-bottom 一致（见 Main Container）
+  - `z-index: 1` = 与 main 同级；header(100) 和 footer(30) 都在它之上，不会被盖
+
+  实测：帧 1600x821 @top52、底 873；footer 顶 880 → 不重叠。
+*/
+.cs-embed {
+    position: fixed;
+    top: 52px;
+    right: 0;
+    bottom: 40px;
+    left: 0;
+    z-index: 1;
+    background: var(--bg-white);
+}
+
+.cs-embed__frame {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+.cs-embed__mask {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: var(--bg-white);
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.cs-embed__spinner {
+    width: 26px;
+    height: 26px;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--accent-purple);
+    border-radius: 50%;
+    animation: cs-embed-spin .8s linear infinite;
+}
+
+@keyframes cs-embed-spin {
+    to { transform: rotate(360deg); }
+}

@@ -11,7 +11,7 @@
 然后：
 
     ./start-offline.sh
-    # 或：cd constellation-offline && python3 -m http.server 8777
+    # 或：python3 -m http.server 8777 --directory ../public
 
 
 ## 根因：Chrome「网页，完整」保存的 HTML 启动不了这个应用
@@ -72,6 +72,36 @@ UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 # 于是离线打开会卡在密码框。在应用启动前补上。
 UNLOCK_KEY = "sip-platform-unlocked"
 
+# 产出文件名。默认输出到 public/，于是路径就是 /constellation-app.html，
+# 而内层 chunk 走 /_next/…（turbopack 硬编码的**根绝对路径**）——
+# Vite 的 public/ 正好按根伺服，dev 与 build 都对得上。
+PAGE_NAME = "constellation-app.html"
+
+# 嵌入 Vue 应用时要剥掉的内层外壳。
+# 这三条由宿主外壳（AppHeader / AppFooter）提供，内层是重复的 ——
+# 不剥就会出现两条菜单栏（第一版 iframe 方案就是栽在这里）。
+# 选择器对着 Next 那边的 class 写，站点改版后要跟着改；剥错了不会报错，只是少了点东西。
+STRIP_CSS = """
+<style id="sip-embed-shell-strip">
+/* 顶栏：9 个域的导航 —— 与宿主 AppHeader 完全重复（同一份 NAV）。剥掉。 */
+header.fixed.top-0 { display: none !important; }
+
+/* 底栏之一：Live · SNAPSHOT · SCOPE · TOTAL NODES · PANEL 1/9 —— 宿主 AppFooter
+   就是照它做的（逐字），剥掉。 */
+footer.fixed.bottom-0 { display: none !important; }
+
+/* 底栏之二 footer.estate-status-bar **保留**。
+   它和上面那条内容不同：多了「0 agents online / 2 in queue / ⌘K to search」，
+   宿主没有。早先一并剥掉是判断失误（看着名字像就顺手藏了），
+   用户直接指出「为什么这个内容没展示」。
+   它是 position:absolute 覆盖在图底部，不占布局高度。 */
+
+/* 面板原本是 calc(100vh - 92px)，给顶栏那 52px 让位。
+   顶栏剥掉后还回来，否则底部会空一条。内联样式，必须 !important。 */
+main.flex.w-full.flex-col.overflow-hidden { height: 100vh !important; }
+</style>
+"""
+
 
 # ── 找源 ────────────────────────────────────────────────────────────
 
@@ -128,7 +158,7 @@ def load_vendor(vendor: Path):
 
 # ── 构建 ────────────────────────────────────────────────────────────
 
-def build(src_files: Path, out_dir: Path, server_html: str, fonts: dict):
+def build(src_files: Path, out_dir: Path, server_html: str, fonts: dict, embed_strip=True):
     chunks_dir = out_dir / "_next" / "static" / "chunks"
     media_dir = out_dir / "_next" / "static" / "media"
     chunks_dir.mkdir(parents=True, exist_ok=True)
@@ -168,6 +198,11 @@ def build(src_files: Path, out_dir: Path, server_html: str, fonts: dict):
         inject = f"<script>try{{localStorage.setItem('{UNLOCK_KEY}','1')}}catch(e){{}}</script>"
         html = re.sub(r"(<head[^>]*>)", r"\1" + inject, html, count=1)
 
+    # 3b. 嵌入 Vue 应用时剥掉内层外壳（顶栏 + 两条底栏），否则会有两条菜单栏。
+    #     --standalone 时跳过 —— 单独打开那个页面时，顶栏是你唯一的导航。
+    if embed_strip and "sip-embed-shell-strip" not in html:
+        html = html.replace("</head>", STRIP_CSS + "</head>", 1)
+
     # 4. 万一外壳里还留着 _files 的引用（换用保存版时才可能），一并改掉
     suffix = re.escape(src_files.name)
     html, n_ref = re.subn(rf"\./{suffix}/([^\"']+)", r"./_next/static/chunks/\1", html)
@@ -179,16 +214,21 @@ def build(src_files: Path, out_dir: Path, server_html: str, fonts: dict):
         r'engineering-ops|finops|security-ops|service-ops)/?"',
         r'href="#\1"', html)
 
-    (out_dir / "index.html").write_text(html, encoding="utf-8")
+    (out_dir / PAGE_NAME).write_text(html, encoding="utf-8")
     return {"moved": moved, "fonts": copied, "rewritten": n_ref, "navs": n_nav,
-            "size": len(html), "overrides": overrides}
+            "size": len(html), "overrides": overrides, "stripped": embed_strip}
 
 
 def main():
     here = Path(__file__).resolve().parent
     ap = argparse.ArgumentParser(description="构建离线可跑的 Constellation 页面")
     ap.add_argument("--src", type=Path, help="Chrome 保存的 html（用来定位 _files/ 目录）")
-    ap.add_argument("--out", type=Path, default=here / "constellation-offline")
+    ap.add_argument("--out", type=Path, default=here.parent / "public",
+                    help="输出目录。默认仓库的 public/ —— Vite 按根伺服，"
+                         "内层的 /_next/… 才对得上（dev 与 build 都适用）")
+    ap.add_argument("--standalone", action="store_true",
+                    help="保留内层顶栏/底栏。单独打开这个页面时用；"
+                         "嵌进 Vue 应用时不要加（会变成两条菜单栏）")
     ap.add_argument("--vendor", type=Path, default=here / "vendor",
                     help="离线缓存目录（默认 tools/vendor）")
     ap.add_argument("--refresh", action="store_true",
@@ -225,27 +265,30 @@ def main():
     print(f"→ 资源：{src_files.name}/（{len(list(src_files.iterdir()))} 项）")
     print(f"→ 字体：{args.vendor.name}/media/（{len(fonts)} 个）")
 
-    if args.out.exists():
-        shutil.rmtree(args.out)
-    r = build(src_files, args.out, server_html, fonts)
+    # 清掉上一次的 _next/（只删自己产出的那份，不动 public/ 里别的东西）
+    stale = args.out / "_next"
+    if stale.is_dir():
+        shutil.rmtree(stale)
+    args.out.mkdir(parents=True, exist_ok=True)
+
+    r = build(src_files, args.out, server_html, fonts, embed_strip=not args.standalone)
 
     print(f"\n✓ 输出到 {args.out.resolve()}")
-    print(f"  搬入 {r['moved']} 个资源到 _next/static/chunks/")
-    print(f"  拷入 {r['fonts']} 个字体到 _next/static/media/")
+    print(f"  {PAGE_NAME} + _next/（{r['moved']} 个资源 + {r['fonts']} 个字体）")
     if r["rewritten"]:
         print(f"  改写 {r['rewritten']} 处 _files 引用")
     print(f"  导航离线化 {r['navs']} 处")
+    print(f"  内层外壳：{'已剥离（嵌入模式）' if r['stripped'] else '保留（standalone）'}")
     ov = r.get("overrides") or {}
     if ov.get("added"):
         print(f"  新增租户：{', '.join(ov['added'])}")
         for tid in ov["added"]:
-            print(f"    → http://localhost:8777/?tenant={tid}")
+            print(f"    → http://localhost:8777/constellation-app.html?tenant={tid}")
     if ov.get("replaced"):
         print(f"  覆盖租户：{', '.join(ov['replaced'])}")
-    print("\n  打开方式（必须起 HTTP，服务根目录就是它）：")
-    print("    ./start-offline.sh")
-    print(f"    # 或：cd {args.out} && python3 -m http.server 8777")
-    print("    → http://localhost:8777/")
+    print("\n  打开方式：")
+    print("    npm run dev          → 顶栏点 Constellation（内嵌在 Vue 应用里）")
+    print(f"    ./start-offline.sh   → http://localhost:8777/{PAGE_NAME}（单独看）")
     print("\n  ⚠ 不要双击 html 用 file:// 打开，也不要拿 Chrome 保存的那份 html 当入口：")
     print("     前者 turbopack 会去找文件系统根的 /_next/，后者 React 根本不会启动。")
     return 0

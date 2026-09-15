@@ -8,11 +8,11 @@
 #   1) turbopack 运行时把懒加载 chunk 拼成从根算起的 "/_next/…"，
 #      file:// 下会落到文件系统根，必然 404
 #   2) Chrome 保存的那份 html 是 DOM 快照，React 根本不会启动
-#   所以必须起本地服务，且服务根目录 = constellation-offline/
+#   所以必须起本地服务，且服务根目录 = 仓库的 public/
 
 cd "$(dirname "$0")" || exit 1
 
-if [[ ! -f constellation-offline/index.html ]]; then
+if [[ ! -f ../public/constellation-app.html ]]; then
   clear
   echo "================================================"
   echo "  离线副本还没构建"
