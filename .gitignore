@@ -12,3 +12,15 @@ dist/
 # 本地环境变量（只提交 .env.example）
 .env
 .env.local
+
+# ── Constellation 离线副本 / 数据导出（v2.0.0）─────────────────────
+# 只忽略**生成物**；构建所需的输入和缓存要提交：
+#   tools/vendor/                      128 KB  构建缓存（离线构建的关键）
+#   tools/SIP … _files/                6.4 MB  保存下来的 JS/CSS，重建的源
+#   tools/*.py  tools/*.sh  tools/*.command      源码
+#
+# 生成物都能随时重建，不入库：
+#   python3 tools/make-offline-page.py      → constellation-offline/
+#   python3 tools/constellation-export/extract.py → constellation-export/data/
+tools/constellation-offline/
+tools/constellation-export/data/

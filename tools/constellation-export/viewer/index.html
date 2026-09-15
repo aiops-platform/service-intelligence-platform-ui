@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Constellation · 本地查看器</title>
+<style>
+  :root{
+    --bg:#0b1220; --bg2:#0f1a2e; --card:#12203a; --line:#1e3350;
+    --text:#e8eef7; --dim:#8ba0bd; --dim2:#5f7796;
+    --accent:#8b5cf6; --ok:#10b981; --warn:#f59e0b; --bad:#f43f5e;
+    --t1:#f43f5e; --t2:#f59e0b; --t3:#3b82f6;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font:13px/1.55 -apple-system,"Segoe UI",system-ui,"PingFang SC",sans-serif;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+
+  /* ── header ── */
+  header{
+    flex-shrink:0; background:var(--bg2); border-bottom:1px solid var(--line);
+    padding:9px 16px; display:flex; align-items:center; gap:12px;
+  }
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);flex-shrink:0}
+  h1{margin:0;font-size:14px;font-weight:700;letter-spacing:-.01em;white-space:nowrap}
+  select{
+    background:var(--bg); border:1px solid var(--line); color:var(--text);
+    border-radius:6px; padding:5px 8px; font:inherit; font-size:12px;
+  }
+  .facts{margin-left:auto; color:var(--dim); font-size:11px; white-space:nowrap}
+  .facts b{color:var(--text); font-weight:600}
+
+  /* ── tabs ── */
+  nav{flex-shrink:0; display:flex; gap:2px; padding:0 16px; background:var(--bg2); border-bottom:1px solid var(--line)}
+  nav button{
+    background:none;border:0;border-bottom:2px solid transparent;color:var(--dim);
+    padding:8px 13px;font:inherit;font-size:12px;cursor:pointer;
+  }
+  nav button:hover{color:var(--text)}
+  nav button.on{color:var(--text);border-bottom-color:var(--accent);font-weight:600}
+
+  main{flex:1;min-height:0;display:none}
+  main.on{display:flex}
+
+  /* ── 浏览：左树右详情 ── */
+  aside{width:330px;flex-shrink:0;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--bg2)}
+  .filters{padding:9px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:7px}
+  input[type=search],input[type=text]{
+    width:100%;background:var(--bg);border:1px solid var(--line);color:var(--text);
+    border-radius:6px;padding:7px 9px;font:inherit;font-size:12px;
+  }
+  #tree{flex:1;overflow:auto;padding:6px}
+  .node{padding:4px 7px;border-radius:5px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .node:hover{background:var(--card)}
+  .node.on{background:var(--card);box-shadow:inset 2px 0 0 var(--accent)}
+  .node .caret{width:11px;color:var(--dim);flex-shrink:0;font-size:9px}
+  .node .lbl{flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+  .node .cnt{color:var(--dim);font-size:10px;flex-shrink:0}
+  .node.d0{font-weight:700}
+  .node.d1{padding-left:16px}
+  .node.d2{padding-left:30px}
+  .node.d3{padding-left:44px}
+  .swatch{width:7px;height:7px;border-radius:2px;flex-shrink:0}
+
+  section{flex:1;min-width:0;overflow:auto;padding:16px 20px}
+  .empty{color:var(--dim);text-align:center;margin-top:70px}
+  .eyebrow{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  h2.title{font-size:17px;margin:5px 0 4px;font-weight:700}
+  .sub{color:var(--dim);font-size:11px;margin-bottom:14px}
+  h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:20px 0 7px;font-weight:600}
+
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:11px;position:sticky;top:0;background:var(--bg);cursor:pointer;user-select:none}
+  th:hover{color:var(--text)}
+  td:first-child{color:var(--dim);width:38%}
+  .kv td:first-child{width:38%}
+  tr:last-child td{border-bottom:0}
+
+  .metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:6px}
+  .metric{background:var(--card);padding:9px 11px}
+  .metric .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+  .metric .k{font-size:10px;color:var(--dim);margin-top:2px}
+
+  .bar{height:5px;background:var(--bg);border-radius:3px;overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;background:var(--accent)}
+
+  .chip{display:inline-block;font-size:10px;padding:1px 6px;border-radius:9px;border:1px solid var(--line);color:var(--dim);margin:1px 2px 1px 0}
+  .chip.t1{border-color:var(--t1);color:var(--t1)}
+  .chip.t2{border-color:var(--t2);color:var(--t2)}
+  .chip.t3{border-color:var(--t3);color:var(--t3)}
+  .chip.hc{background:rgba(244,63,94,.14);border-color:rgba(244,63,94,.4);color:#ff8fa3}
+  .chip.ff{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.4);color:#ffc266}
+  .st-ok{color:var(--ok)} .st-degraded{color:var(--warn)} .st-down{color:var(--bad)}
+
+  /* ── drop zone ── */
+  #drop{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;
+        align-items:center;justify-content:center;gap:11px;color:var(--dim);text-align:center;padding:24px;z-index:20}
+  #drop.over{border:3px dashed var(--accent)}
+  #drop h2{color:var(--text);margin:0;font-size:15px}
+  #drop code{background:var(--card);padding:2px 6px;border-radius:4px;color:var(--accent);font-size:12px}
+  .btn{background:var(--accent);border:0;color:#fff;padding:8px 16px;border-radius:6px;font:inherit;font-weight:600;cursor:pointer}
+  #file{display:none}
+  .hint{font-size:11px;line-height:1.9}
+
+  .scroll{flex:1;min-height:0;overflow:auto;padding:16px 20px;width:100%}
+  .cols{display:flex;gap:22px;align-items:flex-start}
+  .cols > div{flex:1;min-width:0}
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot"></span>
+  <h1 id="title">Constellation</h1>
+  <select id="tenant" style="display:none"></select>
+  <div class="facts" id="facts"></div>
+</header>
+
+<nav id="tabs" style="display:none">
+  <button data-tab="browse" class="on">浏览</button>
+  <button data-tab="apps">应用清单</button>
+  <button data-tab="edges">关系</button>
+  <button data-tab="extra">附录</button>
+</nav>
+
+<main id="main">
+  <!-- 浏览 -->
+  <aside id="side">
+    <div class="filters">
+      <input type="search" id="q" placeholder="搜索应用 / portfolio / journey…" />
+      <div id="chips"></div>
+    </div>
+    <div id="tree"></div>
+  </aside>
+  <section id="detail"><div class="empty">← 左边选一个实体</div></section>
+
+  <!-- 应用清单 -->
+  <div class="scroll" id="appsView" style="display:none"></div>
+
+  <!-- 关系 -->
+  <div class="scroll" id="edgesView" style="display:none"></div>
+
+  <!-- 附录 -->
+  <div class="scroll" id="extraView" style="display:none"></div>
+</main>
+
+<div id="drop">
+  <h2 id="dropTitle">载入 Constellation 数据</h2>
+  <p class="hint" id="dropHint">
+    把 <code>data/retail.json</code> 拖进来，或
+  </p>
+  <p><button class="btn" id="pick">选择 JSON 文件</button></p>
+  <p class="hint">
+    也可以在该目录下起个服务器，就能自动加载、还能切租户：<br/>
+    <code>python3 -m http.server 8777</code> → 打开 <code>localhost:8777/viewer/</code>
+  </p>
+  <input type="file" id="file" accept=".json,application/json" />
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = (id) => document.getElementById(id);
+let S = null;          // 当前 snapshot
+let INDEX = null;      // _index.json（有的话）
+let TENANTS = {};      // slug -> snapshot（起服务器时全量预载）
+let expanded = new Set(['enterprise']);
+let selected = null;
+let appSort = { key: 'incidentsTotal', dir: -1 };
+let appQuery = '';
+
+// ── 工具 ─────────────────────────────────────────────
+const num = (n) => (n == null ? '—' : Number(n).toLocaleString());
+const pct = (n, d = 1) => (n == null ? '—' : (n * 100).toFixed(d) + '%');
+const mins = (n) => (n == null ? '—' : n >= 60 ? `${(n / 60).toFixed(1)} h` : `${n.toFixed(0)} min`);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const tierCls = (t) => `t${t || 3}`;
+const statusCls = (s) => `st-${s || 'ok'}`;
+
+// ── 派生量（对齐页面 inspector 的算法）────────────────
+function appsOfPortfolio(p) { return S.apps.filter((a) => a.portfolioId === p.id); }
+function portfoliosOfJourney(j) { return S.portfolios.filter((p) => p.journeyId === j.id); }
+
+/** journeyId 为 "journey:null"（或任何不在 journeys 表里的值）的 portfolio。 */
+const ORPHAN_ID = '__orphan';
+function orphanPortfolios() {
+  const ids = new Set((S.journeys || []).map((j) => j.id));
+  return S.portfolios.filter((p) => !ids.has(p.journeyId));
+}
+function appsOfOrphans() { return orphanPortfolios().flatMap(appsOfPortfolio); }
+function appsOfJourney(j) {
+  const pids = new Set(portfoliosOfJourney(j).map((p) => p.id));
+  return S.apps.filter((a) => pids.has(a.portfolioId));
+}
+const sum = (arr, k) => arr.reduce((t, x) => t + (x[k] || 0), 0);
+const avg = (arr, k) => (arr.length ? sum(arr, k) / arr.length : null);
+
+function techsOfApp(appKey) {
+  const rec = (S.appTechnologies || []).find((t) => t.appKey === appKey);
+  return rec ? rec.techNames : [];
+}
+
+// ── 渲染：header ─────────────────────────────────────
+function renderHeader() {
+  const f = S.facts || {};
+  $('title').textContent = (S.enterprise?.label || 'Constellation');
+  $('facts').innerHTML =
+    `Snapshot · <b>${num(f.apps)}</b> apps · <b>${num(f.portfolios)}</b> portfolios · ` +
+    `<b>${num(f.journeys)}</b> journeys · <b>${num(f.teams)}</b> teams`;
+}
+
+// ── 渲染：树 ─────────────────────────────────────────
+function renderTree() {
+  const q = $('q').value.trim().toLowerCase();
+  const box = $('tree');
+  box.innerHTML = '';
+
+  const matchApp = (a) => !q || a.label.toLowerCase().includes(q) || a.appKey.toLowerCase().includes(q);
+  const matchPort = (p) => !q || p.label.toLowerCase().includes(q) || appsOfPortfolio(p).some(matchApp);
+  const matchJour = (j) => !q || j.label.toLowerCase().includes(q) || portfoliosOfJourney(j).some(matchPort);
+
+  const row = (depth, label, count, opts = {}) => {
+    const d = document.createElement('div');
+    d.className = `node d${depth}${opts.active ? ' on' : ''}`;
+    d.innerHTML =
+      `<span class="caret">${opts.hasKids ? (opts.open ? '▼' : '▶') : ''}</span>` +
+      (opts.color ? `<span class="swatch" style="background:${esc(opts.color)}"></span>` : '') +
+      `<span class="lbl">${esc(label)}</span>` +
+      (count != null ? `<span class="cnt">${count}</span>` : '');
+    d.onclick = opts.onClick;
+    box.appendChild(d);
+    return d;
+  };
+
+  // enterprise
+  row(0, S.enterprise?.label || 'Enterprise', null, {
+    hasKids: true, open: expanded.has('enterprise'), active: selected?.id === S.enterprise?.id,
+    color: '#8b5cf6',
+    onClick: () => { toggle('enterprise'); select({ ...S.enterprise, kind: 'enterprise' }); },
+  });
+
+  if (!expanded.has('enterprise')) return;
+
+  // 有些 portfolio 的 journeyId 字面量是 "journey:null" —— 它们是**企业级支撑
+  // portfolio**（Data/AI、基础设施、安全、财务、战略架构），本来就不挂在任何客户
+  // 旅程下。部分租户里这些占了 100+ 个 app。
+  // **必须单独成组**：早先只按 journeys 列表过滤，它们一个都不显示，等于静默吞数据。
+  const orphans = orphanPortfolios();
+
+  const groups = [
+    ...(S.journeys || []).map((j) => ({
+      id: j.id, label: j.label, color: '#a78bfa',
+      entity: { ...j, kind: 'journey' },
+      portfolios: portfoliosOfJourney(j),
+      match: matchJour(j), appCount: appsOfJourney(j).length,
+    })),
+  ];
+  if (orphans.length) {
+    const oApps = orphans.flatMap(appsOfPortfolio);
+    groups.push({
+      id: ORPHAN_ID, label: 'Enterprise services（未归属 journey）', color: '#64748b',
+      entity: { id: ORPHAN_ID, label: 'Enterprise services', kind: 'journey', capability: '跨 journey 的支撑组合' },
+      portfolios: orphans,
+      match: !q || orphans.some(matchPort),
+      appCount: oApps.length,
+    });
+  }
+
+  for (const g of groups) {
+    if (!g.match) continue;
+    const gk = `j:${g.id}`;
+    row(1, g.label, g.appCount, {
+      hasKids: true, open: expanded.has(gk), active: selected?.id === g.id,
+      color: g.color,
+      onClick: () => {
+        const t = selected?.id === g.id;
+        toggle(gk);
+        if (!t) select(g.entity);
+      },
+    });
+    if (!expanded.has(gk)) continue;
+
+    for (const p of g.portfolios) {
+      if (!matchPort(p)) continue;
+      const pk = `p:${p.id}`;
+      row(2, p.label, appsOfPortfolio(p).length, {
+        hasKids: true, open: expanded.has(pk), active: selected?.id === p.id,
+        color: ['#f43f5e', '#f59e0b', '#3b82f6', '#10b981', '#14b8a6'][(p.tier || 3) - 1],
+        onClick: () => {
+          const t = selected?.id === p.id;
+          toggle(pk);
+          if (!t) select({ ...p, kind: 'portfolio' });
+        },
+      });
+      if (!expanded.has(pk)) continue;
+
+      for (const a of appsOfPortfolio(p)) {
+        if (!matchApp(a)) continue;
+        row(3, a.label, null, {
+          active: selected?.id === a.id,
+          color: a.operationalStatus === 'ok' ? '#10b981' : a.operationalStatus === 'degraded' ? '#f59e0b' : '#f43f5e',
+          onClick: () => select({ ...a, kind: 'app' }),
+        });
+      }
+    }
+  }
+}
+function toggle(k) { expanded.has(k) ? expanded.delete(k) : expanded.add(k); renderTree(); }
+
+// ── 渲染：详情 ───────────────────────────────────────
+function metric(v, k) { return `<div class="metric"><div class="v">${v}</div><div class="k">${esc(k)}</div></div>`; }
+
+function select(entity) {
+  selected = entity;
+  renderTree();
+  const d = $('detail');
+  const kind = entity.kind || 'entity';
+
+  const aggFor = {
+    enterprise: () => S.apps,
+    journey: (e) => (e.id === ORPHAN_ID ? appsOfOrphans() : appsOfJourney(e)),
+    portfolio: (e) => appsOfPortfolio(e),
+    app: (e) => [e],
+  }[kind] || (() => []);
+
+  const apps = aggFor(entity);
+  const incidents = sum(apps, 'incidentsTotal');
+  const changes = sum(apps, 'changeCount');
+  const botRate = avg(apps, 'botResolutionRate');
+  const risk = avg(apps, 'riskScore');
+  const botMttr = avg(apps, 'botMttrMin');
+  const humMttr = avg(apps, 'humanMttrMin');
+
+  let html = `<div class="eyebrow">${esc({ enterprise: 'ENTERPRISE', journey: 'JOURNEY', portfolio: 'PORTFOLIO', app: 'APPLICATION' }[kind] || 'ENTITY')}</div>
+    <h2 class="title">${esc(entity.label)}</h2>`;
+
+  const sub = [];
+  if (kind === 'app') {
+    sub.push(`<span class="chip ${tierCls(entity.tier)}">Tier ${entity.tier}</span>`);
+    if (entity.holidayCritical) sub.push('<span class="chip hc">Holiday-Critical</span>');
+    if (entity.financeFreeze) sub.push('<span class="chip ff">Finance Freeze</span>');
+    sub.push(`<span class="${statusCls(entity.operationalStatus)}">${esc(entity.operationalStatus)}</span>`);
+  } else {
+    sub.push(`${apps.length} apps`);
+    const ports = [...new Set(apps.map((a) => a.portfolioId))].length;
+    sub.push(`${ports} portfolios`);
+  }
+  html += `<div class="sub">${sub.join(' · ')}</div>`;
+
+  if (apps.length) {
+    html += `<div class="metrics">
+      ${metric(num(incidents), 'Incidents · 18m')}
+      ${metric(num(changes), 'Changes · 13m')}
+      ${metric(pct(botRate, 0), 'Bot resolution')}
+      ${metric(Math.round(risk), 'Avg risk')}
+      ${metric(mins(botMttr), 'Bot MTTR')}
+      ${metric(mins(humMttr), 'Human MTTR')}
+    </div>`;
+
+    if (botMttr && humMttr) {
+      html += `<div class="sub">修复速度差 <b>${(humMttr / botMttr).toFixed(1)}×</b>（人工 vs 机器人）</div>`;
+    }
+  }
+
+  // 字段表
+  const FIELDS = {
+    app: [['App key', 'appKey'], ['Portfolio', 'portfolioId'], ['Tier', 'tier'],
+          ['Operational status', 'operationalStatus'], ['Holiday-critical', 'holidayCritical'],
+          ['Finance freeze', 'financeFreeze'], ['Incidents · 18m', 'incidentsTotal'],
+          ['Changes · 13m', 'changeCount'], ['Risk score', 'riskScore'],
+          ['Bot resolution rate', 'botResolutionRate'], ['Bot MTTR (min)', 'botMttrMin'],
+          ['Human MTTR (min)', 'humanMttrMin']],
+    portfolio: [['Portfolio id', 'id'], ['Tier', 'tier'], ['Journey', 'journeyId']],
+    journey: [['Journey id', 'id'], ['Capability', 'capability']],
+    enterprise: [['Enterprise id', 'id']],
+  }[kind] || [];
+
+  if (FIELDS.length) {
+    html += `<h3>字段</h3><table class="kv"><tbody>${FIELDS.map(([label, key]) => {
+      let v = entity[key];
+      if (typeof v === 'boolean') v = v ? '✓ 是' : '—';
+      else if (typeof v === 'number' && /rate/i.test(key)) v = pct(v, 2);
+      else if (typeof v === 'number' && /mttr/i.test(key)) v = mins(v);
+      return `<tr><td>${esc(label)}</td><td>${esc(v ?? '—')}</td></tr>`;
+    }).join('')}</tbody></table>`;
+  }
+
+  // 技术栈
+  if (kind === 'app') {
+    const t = techsOfApp(entity.appKey);
+    if (t.length) html += `<h3>技术栈</h3><div>${t.map((x) => `<span class="chip">${esc(x)}</span>`).join('')}</div>`;
+  }
+
+  // 下属应用
+  if (kind !== 'app' && apps.length) {
+    const top = [...apps].sort((a, b) => b.incidentsTotal - a.incidentsTotal).slice(0, 15);
+    html += `<h3>事件最多的应用（前 ${top.length}）</h3><table>
+      <thead><tr><th>应用</th><th>Tier</th><th>Incidents</th><th>Bot 解决率</th><th>Risk</th></tr></thead><tbody>
+      ${top.map((a) => `<tr>
+        <td style="color:var(--text)">${esc(a.label)}</td>
+        <td><span class="chip ${tierCls(a.tier)}">T${a.tier}</span></td>
+        <td>${num(a.incidentsTotal)}</td>
+        <td>${pct(a.botResolutionRate, 0)}</td>
+        <td>${a.riskScore}</td></tr>`).join('')}
+      </tbody></table>`;
+  }
+
+  d.innerHTML = html;
+}
+
+// ── 渲染：应用清单 ───────────────────────────────────
+function renderApps() {
+  const q = appQuery.toLowerCase();
+  const portName = Object.fromEntries(S.portfolios.map((p) => [p.id, p.label]));
+  const jourName = Object.fromEntries((S.journeys || []).map((j) => [j.id, j.label]));
+  const portJour = Object.fromEntries(S.portfolios.map((p) => [p.id, p.journeyId]));
+
+  let rows = S.apps.filter((a) =>
+    !q || a.label.toLowerCase().includes(q) || a.appKey.toLowerCase().includes(q));
+
+  rows = [...rows].sort((x, y) => {
+    const a = x[appSort.key], b = y[appSort.key];
+    const c = typeof a === 'string' ? String(a).localeCompare(String(b)) : (a - b);
+    return c * appSort.dir;
+  });
+
+  const COLS = [
+    ['label', '应用'], ['appKey', 'Key'], ['portfolioId', 'Portfolio'], ['tier', 'Tier'],
+    ['operationalStatus', '状态'], ['incidentsTotal', 'Incidents'], ['changeCount', 'Changes'],
+    ['botResolutionRate', 'Bot 解决率'], ['riskScore', 'Risk'],
+    ['botMttrMin', 'Bot MTTR'], ['humanMttrMin', 'Human MTTR'],
+  ];
+
+  $('appsView').innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+      <input type="search" id="appQ" placeholder="筛选应用…" value="${esc(appQuery)}" style="max-width:280px" />
+      <span class="sub" style="margin:0">${rows.length} / ${S.apps.length} 个应用</span>
+    </div>
+    <table><thead><tr>${COLS.map(([k, label]) =>
+      `<th data-k="${k}">${esc(label)}${appSort.key === k ? (appSort.dir > 0 ? ' ↑' : ' ↓') : ''}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map((a) => `<tr>
+      <td style="color:var(--text)">${esc(a.label)}</td>
+      <td>${esc(a.appKey)}</td>
+      <td>${esc(portName[a.portfolioId] || a.portfolioId)} <span style="color:var(--dim2)">/ ${esc(jourName[portJour[a.portfolioId]] || '')}</span></td>
+      <td><span class="chip ${tierCls(a.tier)}">T${a.tier}</span></td>
+      <td class="${statusCls(a.operationalStatus)}">${esc(a.operationalStatus)}</td>
+      <td>${num(a.incidentsTotal)}</td>
+      <td>${num(a.changeCount)}</td>
+      <td>${pct(a.botResolutionRate, 0)}</td>
+      <td>${a.riskScore}</td>
+      <td>${mins(a.botMttrMin)}</td>
+      <td>${mins(a.humanMttrMin)}</td>
+    </tr>`).join('')}</tbody></table>`;
+
+  $('appQ')?.addEventListener('input', (e) => { appQuery = e.target.value; renderApps(); $('appQ').focus(); });
+  $('appsView').querySelectorAll('th').forEach((th) => {
+    th.onclick = () => {
+      const k = th.dataset.k;
+      appSort = appSort.key === k ? { key: k, dir: -appSort.dir } : { key: k, dir: 1 };
+      renderApps();
+    };
+  });
+}
+
+// ── 渲染：关系 ───────────────────────────────────────
+function renderEdges() {
+  const pe = S.portfolioEdges || {};
+  const name = Object.fromEntries(S.portfolios.map((p) => [p.id, p.label]));
+  const nm = (id) => name[id] || id;
+
+  const blk = (title, key, desc, valKey, fmt) => {
+    const list = (pe[key] || []).slice().sort((a, b) => b[valKey] - a[valKey]).slice(0, 20);
+    if (!list.length) return '';
+    const max = list[0][valKey] || 1;
+    return `<h3>${esc(title)} <span style="text-transform:none;font-weight:400">— ${esc(desc)}，共 ${pe[key].length} 条，示前 ${list.length}</span></h3>
+      <table><thead><tr><th>源</th><th>目标</th><th>${esc(valKey)}</th></tr></thead><tbody>
+      ${list.map((e) => `<tr>
+        <td style="color:var(--text)">${esc(nm(e.source))}</td>
+        <td style="color:var(--text)">${esc(nm(e.target))}</td>
+        <td style="width:42%">${fmt(e[valKey])}
+          <div class="bar"><i style="width:${Math.max(2, (e[valKey] / max) * 100)}%"></i></div></td>
+      </tr>`).join('')}</tbody></table>`;
+  };
+
+  $('edgesView').innerHTML =
+    blk('技术重叠', 'techOverlap', '两个 portfolio 共用多少项技术', 'sharedTechs', (v) => num(v)) +
+    blk('变更级联', 'changeCascade', '同批变更中一起出现的次数', 'pairCount', (v) => num(v)) +
+    blk('事件共现', 'incidentCoincidence', '事件同时发生的权重', 'weight', (v) => v.toFixed(3)) +
+    (pe.techOverlap ? '' : '<div class="empty">这份数据没有 portfolioEdges。</div>');
+}
+
+// ── 渲染：附录 ───────────────────────────────────────
+function renderExtra() {
+  const f = S.facts || {}, vp = S.valuePool, ts = S.topStorm;
+  let h = '';
+
+  h += `<h3>Facts</h3><div class="metrics">
+    ${metric(num(f.apps), 'Applications')}${metric(num(f.portfolios), 'Portfolios')}
+    ${metric(num(f.journeys), 'Journeys')}${metric(num(f.teams), 'Teams')}
+    ${metric(num(f.incidents), 'Incidents · 18m')}${metric(num(f.changes), 'Changes · 13m')}
+    ${metric(num(f.problems), 'Problems')}${metric(num(f.infraIncidents), 'Infra incidents')}
+    ${metric(`${f.mttrGapMultiplier}×`, 'MTTR gap (human/bot)')}
+    ${metric(`${f.emergencyBackoutMultiplier?.toFixed(0)}×`, 'Emergency backout')}
+    ${metric(`${f.mondayNormalMultiplier}×`, 'Monday backout')}
+    ${metric(pct(f.issueGenericPct, 0), 'Generic issue text')}
+  </div>`;
+  h += `<div class="sub">数据源 <code>${esc(S.source?.db)}</code> · asOf ${esc(S.source?.asOf)} · 生成于 ${esc(S.generatedAt)}</div>`;
+
+  // 口径差：facts.portfolios 数的是「有应用的 portfolio」，列表里的空组合不计。
+  // 不点破的话，看的人会以为数据对不上。
+  const emptyP = S.portfolios.filter((p) => appsOfPortfolio(p).length === 0);
+  if (S.facts?.portfolios !== S.portfolios.length) {
+    h += `<div class="sub">口径说明：<code>facts.portfolios</code> = <b>${S.facts.portfolios}</b>，
+      而 portfolios 列表有 <b>${S.portfolios.length}</b> 条 —— 差在${
+      emptyP.length ? `有 ${emptyP.length} 个不含任何应用的组合（${emptyP.map((p) => esc(p.label)).join('、')}）`
+                    : '数据源自身的计数口径'}。树里两者都列。</div>`;
+  }
+
+  if (ts) {
+    h += `<h3>告警风暴（最大的一次）</h3><table class="kv"><tbody>
+      <tr><td>工单号</td><td>${esc(ts.incidentNumber)}</td></tr>
+      <tr><td>应用</td><td>${esc(ts.appName)} <span style="color:var(--dim2)">(${esc(ts.appKey)})</span></td></tr>
+      <tr><td>Portfolio / Journey</td><td>${esc(ts.portfolioName)} / ${esc(ts.journey)}</td></tr>
+      <tr><td>优先级 / 严重度</td><td>${esc(ts.priority)} · ${esc(ts.severity)}</td></tr>
+      <tr><td>派生工单数</td><td>${num(ts.childCount)}</td></tr>
+      <tr><td>开始 → 恢复</td><td>${esc(ts.openedAt)} → ${esc(ts.resolvedAt)}</td></tr>
+    </tbody></table>`;
+  }
+
+  // 技术分布**从 appTechnologies 全量统计**，不用 snapshot 自带的 topTechnologies ——
+  // 那个只有前 5 条，直接拿它渲染会让人误以为整个 estate 只有 5 种技术。
+  const dist = new Map();
+  for (const r of S.appTechnologies || []) {
+    for (const n of r.techNames || []) dist.set(n, (dist.get(n) || 0) + 1);
+  }
+  const tt = [...dist.entries()].sort((a, b) => b[1] - a[1]);
+  if (tt.length) {
+    const max = tt[0][1];
+    h += `<h3>技术分布 <span style="text-transform:none;font-weight:400">— ${tt.length} 项</span></h3>
+      <table><thead><tr><th>技术</th><th>应用数</th></tr></thead><tbody>
+      ${tt.map(([name, n]) => `<tr><td style="color:var(--text)">${esc(name)}</td>
+        <td style="width:55%">${num(n)}
+        <div class="bar"><i style="width:${(n / max) * 100}%"></i></div></td></tr>`).join('')}
+    </tbody></table>
+    <div class="sub">来自 ${(S.appTechnologies || []).length} 个应用的技术标注（snapshot 自带的 topTechnologies 只列前 ${(S.topTechnologies || []).length} 项）。</div>`;
+  }
+
+  if (vp) {
+    h += `<h3>价值池</h3><div class="metrics">
+      ${metric(`$${vp.baseline?.datTotalM}M`, 'Baseline')}
+      ${metric(`$${vp.totals?.addressableM}M`, 'Addressable')}
+      ${metric(`$${vp.totals?.cumulativeRoundedM}M`, '累计节约')}
+      ${metric(`${vp.totals?.roi}×`, 'ROI')}
+      ${metric(pct(vp.totals?.shareToday, 0), '战略占比 今天')}
+      ${metric(pct(vp.totals?.shareCutPath, 0), '战略占比 削减路径')}
+    </div><table><thead><tr><th>池</th><th>可寻址</th><th>Y4 节约</th><th>ROI</th></tr></thead><tbody>
+      ${(vp.pools || []).map((p) => `<tr><td style="color:var(--text)">${esc(p.name)}</td>
+        <td>$${p.addressableM}M</td><td>$${p.savingsY4M}M</td><td>${p.roi}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
+
+  const agents = S.agents || {};
+  const totalAgents = Object.values(agents).reduce((n, a) => n + a.length, 0);
+  h += `<h3>Agent 舰队</h3><div class="metrics">${
+    Object.entries(agents).map(([k, v]) => metric(v.length, k)).join('')}</div>`;
+  if (!totalAgents) h += `<div class="sub">这份快照里 agents 是空的 —— 该页面的 agent 目录由别处提供，不在 snapshot 内。</div>`;
+
+  if (S.scenarios) {
+    h += `<h3>Scenario</h3><table><thead><tr><th>Scenario</th><th>宿主面板</th></tr></thead><tbody>
+      ${Object.entries(S.scenarios).map(([k, v]) =>
+        `<tr><td style="color:var(--text)">${esc(v.label || k)}</td><td>${esc(v.hostPanel)}</td></tr>`).join('')}
+    </tbody></table>`;
+  }
+
+  $('extraView').innerHTML = h;
+}
+
+// ── 载入 ─────────────────────────────────────────────
+function apply(snapshot, { resetView = true } = {}) {
+  S = snapshot;
+  selected = null;
+  expanded = new Set(['enterprise']);
+  $('drop').style.display = 'none';
+  $('main').classList.add('on');
+  $('tabs').style.display = 'flex';
+  renderHeader();
+  renderTree();
+  renderApps();
+  renderEdges();
+  renderExtra();
+  $('detail').innerHTML = '<div class="empty">← 左边选一个实体</div>';
+  if (resetView) switchTab('browse');
+}
+
+function switchTab(name) {
+  document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === name));
+  $('side').style.display = name === 'browse' ? 'flex' : 'none';
+  $('detail').style.display = name === 'browse' ? 'block' : 'none';
+  $('appsView').style.display = name === 'apps' ? 'block' : 'none';
+  $('edgesView').style.display = name === 'edges' ? 'block' : 'none';
+  $('extraView').style.display = name === 'extra' ? 'block' : 'none';
+}
+
+document.querySelectorAll('nav button').forEach((b) => { b.onclick = () => switchTab(b.dataset.tab); });
+$('q').addEventListener('input', renderTree);
+
+// 起服务器时自动加载；file:// 下 fetch 会被 CORS 挡掉，落到拖拽
+(async () => {
+  try {
+    const idx = await fetch('../data/_index.json').then((r) => r.ok ? r.json() : null);
+    if (idx) {
+      INDEX = idx;
+      const sel = $('tenant');
+      sel.style.display = '';
+      for (const [slug, info] of Object.entries(idx.tenants)) {
+        const o = document.createElement('option');
+        o.value = slug;
+        o.textContent = `${info.enterprise || slug} · ${info.apps} apps` + (slug === idx.activeTenant ? ' ★' : '');
+        sel.appendChild(o);
+      }
+      sel.value = idx.activeTenant || Object.keys(idx.tenants)[0];
+      sel.onchange = async () => {
+        const s = await fetch(`../data/${sel.value}.json`).then((r) => r.json());
+        apply(s);
+      };
+      const first = sel.value;
+      const snap = await fetch(`../data/${first}.json`).then((r) => r.json());
+      apply(snap);
+      return;
+    }
+  } catch { /* 走拖拽路径 */ }
+
+  // 单文件兜底：试一下同目录
+  try {
+    const snap = await fetch('./retail.json').then((r) => (r.ok ? r.json() : null));
+    if (snap) { apply(snap); return; }
+  } catch { /* ignore */ }
+})();
+
+function loadText(text) {
+  let obj;
+  try { obj = JSON.parse(text); }
+  catch (e) { alert('JSON 解析失败：' + e.message); return; }
+  if (obj.tenants && !obj.apps) {
+    alert('这是 _index.json（索引文件），请载入具体租户的 JSON，例如 data/retail.json。');
+    return;
+  }
+  if (!obj.apps) { alert('这份 JSON 里没有 apps —— 看起来不是 Constellation 快照。'); return; }
+  apply(obj);
+}
+
+$('pick').onclick = () => $('file').click();
+$('file').onchange = (e) => { const f = e.target.files[0]; if (f) f.text().then(loadText); };
+const drop = $('drop');
+['dragenter', 'dragover'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) f.text().then(loadText); });
+})();
+</script>
+</body>
+</html>
