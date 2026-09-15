@@ -62,26 +62,24 @@ export const NAV = [
     sidebar: null,
   },
   {
+    /*
+     * Business Ops 现在自成一页（内嵌部署站的 Business Ops 概览页），与 Constellation 同构：
+     * sidebar 为 null ⇒ 落进 EMPTY_DOMAINS ⇒ 走自己的路由 /biz-ops，不挂侧边栏。
+     *
+     * 不挂侧边栏还有个布局原因：那页**右侧自带 340px 的 inspector**，再来一条外层侧边栏
+     * 会把中间挤没。
+     *
+     * 原先这里有 Ticket Workspace（approval-center / agent-tasks）。按用户要求
+     * 「顶栏点 Business Ops 直接展示概览页，老的侧边栏对应的页面暂时不要了」摘掉。
+     * 那两个 legacy 面板**仍在** js/app.js 与 legacy-panels.html 里，只是导航到不了 ——
+     * 要恢复就把这段 sidebar 放回来，并从 index.js 的 DOMAIN_COMPONENTS 摘掉 biz-ops。
+     */
     key: 'biz-ops',
     label: 'Business Ops',
-    landing: 'approval-center',
     dot: '#ec4899',
     panel: '2/9 · BUSINESS OPS',
     title: 'XLA dashboard · journey health · freeze readiness',
-    sidebar: {
-      id: 'sidebar-biz-ops',
-      title: 'Business Ops',
-      groups: [
-        {
-          key: 'ticket-workspace',
-          label: 'Ticket Workspace',
-          items: [
-            { slug: 'approval-center', label: 'Approval Center' },
-            { slug: 'agent-tasks', label: 'Agent Tasks' },
-          ],
-        },
-      ],
-    },
+    sidebar: null,
   },
   {
     key: 'service-ops',

@@ -13,16 +13,19 @@ dist/
 .env
 .env.local
 
-# ── Constellation 离线副本 / 数据导出（v2.0.0）─────────────────────
+# ── 部署站离线副本 / 数据导出（v2.0.0）────────────────────────────
 # 只忽略**生成物**；构建所需的输入和缓存要提交：
-#   tools/vendor/                      128 KB  构建缓存（离线构建的关键）
-#   tools/SIP … _files/                6.4 MB  保存下来的 JS/CSS，重建的源
+#   tools/vendor/                      构建缓存（离线构建的关键）
+#     └ business-ops/                  ← 这份**不是缓存**，是独有的源，删了没法离线重建
+#   tools/SIP … _files/                6.4 MB  保存下来的 JS/CSS，重建的源（两页共用）
 #   tools/*.py  tools/*.sh  tools/*.command      源码
 #
 # 生成物都能随时重建，不入库：
 #   python3 tools/constellation-export/extract.py → constellation-export/data/
 tools/constellation-export/data/
 #
-# 注意 public/ 里那份**是入库的**（public/constellation-app.html + public/_next/）——
-# 它是「克隆下来就能用」的关键，不是随手可弃的中间产物。
-# 重建它：python3 tools/make-offline-page.py
+# 注意 public/ 里那两份**是入库的**：
+#   public/constellation-app.html + public/_next/     （Constellation）
+#   public/business-ops/index.html + public/_next/    （Business Ops，路径不能改）
+# 它们是「克隆下来就能用」的关键，不是随手可弃的中间产物。
+# 重建：python3 tools/make-offline-page.py [--page business-ops]

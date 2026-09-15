@@ -1,10 +1,18 @@
-# tools/ — SIP · Constellation 离线副本与数据
+# tools/ — SIP 部署站离线副本与数据
 
-把部署站 `https://sip-platform.web.app/` 的 **Constellation** 页面做成
-本地可跑、可交互、可改数据的离线副本。
+把部署站 `https://sip-platform.web.app/` 的两个页面做成
+本地可跑、可交互、可改数据的离线副本：
+
+| 页面 | 部署站路由 | 产物 | 本仓入口 |
+|---|---|---|---|
+| **Constellation** | `/` | `public/constellation-app.html` | 顶栏点 Constellation |
+| **Business Ops** | `/business-ops/` | `public/business-ops/index.html` | 顶栏点 Business Ops |
 
 > 部署站**不是本仓库的产物**。它是另一套 Next.js 应用，与本仓的 Vue + legacy IIFE
 > 是同一产品的不同世代。这个目录跟 `src/`、`js/app.js`、`css/styles.css` 无关。
+>
+> 两个页面共用同一套 Next 外壳、同一批 chunk（实测 30/31 个资源 md5 逐字节相同），
+> 只是入口路由不同。
 
 ---
 
@@ -13,6 +21,12 @@
 **双击 `启动 Constellation.command`** → 浏览器自动打开 <http://localhost:8777/constellation-app.html>
 
 关掉那个终端窗口 = 停止服务。
+
+要看 Business Ops 单独版：<http://localhost:8777/business-ops/index.html>
+
+> Business Ops 那个**路径不能改**：内层页面用 `usePathname()` 查面板表决定 h1，
+> 路径对不上时 h1 会从「Business Ops」静默变成「SIP」（`d?.label ?? "SIP"`，不报错）。
+> 详见 `src/views/business-ops/BusinessOpsView.vue`。
 
 > **不能双击 html。** 两个独立原因：
 > 1. turbopack 运行时把懒加载 chunk 拼成从根算起的 `/_next/…`，`file://` 下会落到
@@ -145,9 +159,12 @@ tools/
 ├── tenant_data.py                  读写 bundle 里的租户数据
 ├── README.md                       本文件
 │
-├── vendor/                         构建缓存，128 K —— 别删
-│   ├── server.html                   服务器原始外壳（能启动 React 的那份）
-│   └── media/*.woff2 × 3             字体
+├── vendor/                         构建缓存 —— 别删
+│   ├── server.html                   Constellation 的服务器原始外壳（能启动 React 的那份）
+│   ├── media/*.woff2 × 3             字体（两页共用）
+│   └── business-ops/
+│       ├── server.html                Business Ops 的服务器原始外壳
+│       └── chunks/×3                  只有它独有的 3 个 chunk
 │
 ├── tenant-data/                    你编辑的覆盖文件（空表示用原始数据）
 │
@@ -159,30 +176,44 @@ tools/
     └── viewer/index.html             表格化查看器
 ```
 
+> `vendor/business-ops/` 是**必需的**，不是缓存 —— Business Ops 独有的 3 个 chunk
+> 与外壳只存在那里（分享池 `_files/` 里没有）。所以它入库、且删了就没法离线重建。
+
 构建产物**不在 tools/ 下**，在仓库的 `public/`：
 
 ```
 public/
-├── constellation-app.html          ← 入口
-└── _next/static/{chunks,media}/    ← chunk / css / 字体，6.5 M
+├── constellation-app.html          ← Constellation 入口
+├── business-ops/index.html         ← Business Ops 入口（路径不能改，见开头）
+└── _next/static/{chunks,media}/    ← chunk / css / 字体，6.5 M，**两页共用**
 ```
 
 **这份是入库的**，不是可弃的中间产物 —— 它是「克隆下来 `npm run dev` 就能用」的关键。
 
 为什么放 `public/`：内层的 chunk 路径 `/_next/…` 是 turbopack **硬编码的根绝对路径**，
-而 Vite 的 `public/` 正好按根伺服，dev 和 build 都对得上，不需要任何 Vite 插件。
+而 Vite 的 `public/` 正好按根伺服，dev 和 build 都对得上。
+
+> ⚠️ 唯一的例外是**目录索引**：Vite 不把 `/business-ops/` 解析成
+> `business-ops/index.html`（实测会落到 SPA 兜底），所以 `vite.config.js` 里补了个
+> `sipEmbedPageIndex` 插件管 dev 与 preview。生产 nginx 用
+> `try_files $uri $uri/ /index.html` 就行，不需要额外配置。
 
 ---
 
 ## 重新构建
 
 ```bash
-python3 make-offline-page.py              # 离线，只读 vendor/
-python3 make-offline-page.py --refresh    # 站点更新后刷新 vendor/（唯一联网的操作）
+python3 make-offline-page.py                          # Constellation（离线，只读 vendor/）
+python3 make-offline-page.py --page business-ops      # Business Ops
+python3 make-offline-page.py --page business-ops --refresh   # 站点更新后（唯一联网的操作）
 ```
 
-`--refresh` 会重新抓两样东西：服务器原始 HTML 和 3 个字体。其余资源一直来自本地
-`_files/`。
+`--refresh` 会重新抓：服务器原始 HTML、3 个字体、以及该页独有的 chunk（**与分享池
+同名的会跳过**，那些已经在 `_files/` 里了）。其余资源一直来自本地 `_files/`。
+
+> **两个页面共用 `public/_next/`**：每次构建先清空、再把**所有页面**的资源铺满
+> （分享池 + 每个页面的独有 chunk）。所以随便重建哪一个，另一个都不会被拆掉 ——
+> 构建会打印铺了几个来源，可以据此确认。
 
 ---
 

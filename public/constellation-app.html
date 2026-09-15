@@ -3,15 +3,9 @@
 /* 顶栏：9 个域的导航 —— 与宿主 AppHeader 完全重复（同一份 NAV）。剥掉。 */
 header.fixed.top-0 { display: none !important; }
 
-/* 底栏之一：Live · SNAPSHOT · SCOPE · TOTAL NODES · PANEL 1/9 —— 宿主 AppFooter
+/* 底栏：Live · SNAPSHOT · SCOPE · TOTAL NODES · PANEL n/9 —— 宿主 AppFooter
    就是照它做的（逐字），剥掉。 */
 footer.fixed.bottom-0 { display: none !important; }
-
-/* 底栏之二 footer.estate-status-bar **保留**。
-   它和上面那条内容不同：多了「0 agents online / 2 in queue / ⌘K to search」，
-   宿主没有。早先一并剥掉是判断失误（看着名字像就顺手藏了），
-   用户直接指出「为什么这个内容没展示」。
-   它是 position:absolute 覆盖在图底部，不占布局高度。 */
 
 /* 面板原本是 calc(100vh - 92px)，给顶栏那 52px 让位。
    顶栏剥掉后还回来，否则底部会空一条。内联样式，必须 !important。 */

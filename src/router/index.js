@@ -51,6 +51,20 @@ function routeFor(item) {
 }
 
 /**
+ * 首屏落地页：打开站点根路径 `/` 时跳到哪。
+ *
+ * ⚠️ 它**故意不等于** DEFAULT_SLUG —— 两者语义不同：
+ *   - `DEFAULT_SLUG`（service-ops）是「**没有页面可落**时的兜底」：catch-all、
+ *     空壳域的面板 id、`__SIP_NAVIGATE` 空参，都指它；
+ *   - 这里只是「**打开站点先看哪一页**」，当前指向 Constellation。
+ * 改 DEFAULT_SLUG 去实现落地页会连带把兜底一起改掉（未知入口也跳到空壳域），所以分开。
+ *
+ * 落地到空壳域是安全的：LegacyPanels 用 v-show（不是 v-if），旧世界在首屏就完成装载，
+ * 于是 `onLegacyBooted` 仍能在 `syncDomainHeader` 改写标题**之前**留底原始标题。
+ */
+const LANDING_PATH = '/constellation'
+
+/**
  * 不在任何侧边栏里的独立页面。
  *
  * `service-ops`（域概览页）**只**能由默认值和顶部导航落过来，侧边栏里没有它 ——
@@ -69,10 +83,14 @@ const STANDALONE_PAGES = [{ slug: DEFAULT_SLUG, label: 'Service Ops' }]
  * 那条针对的是**侧边栏叶子**（会经 flattenItems() 产出路由）。空壳域不在任何侧边栏里，
  * 走的是下面 emptyDomainRoutes 这条独立分支，所以只需要在这里登记一次。
  *
+ * ⚠️ 这里跟的是**域的 key**，不是 slug —— 所以 Business Ops 是 `biz-ops`（它的 slug
+ * 集合为空：摘掉侧边栏后没有任何叶子指向它），落在 `/biz-ops` 这个 URL 上。
+ *
  * 其余 4 个空壳域（architecture / finops / security-ops / value-pool）仍是空壳。
  */
 const DOMAIN_COMPONENTS = {
   constellation: () => import('@/views/constellation/ConstellationView.vue'),
+  'biz-ops': () => import('@/views/business-ops/BusinessOpsView.vue'),
 }
 
 /**
@@ -100,7 +118,7 @@ const emptyDomainRoutes = EMPTY_DOMAINS.map((d) => {
 })
 
 const routes = [
-  { path: '/', redirect: `/${DEFAULT_SLUG}` },
+  { path: '/', redirect: LANDING_PATH },
   ...[...flattenItems(), ...STANDALONE_PAGES].map(routeFor),
   ...emptyDomainRoutes,
   ...EXTRA_ROUTES,

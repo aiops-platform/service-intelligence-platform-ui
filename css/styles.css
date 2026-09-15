@@ -7354,11 +7354,15 @@ svg { fill: currentColor; }
     letter-spacing: .03em;
 }
 
-/* Constellation Embed */
+/* Next.js Embed */
 
 /*
-  Constellation 域内嵌企业架构星座图（src/views/constellation/ConstellationView.vue）。
-  内层是另一套 Next.js 应用，产物在 public/，由 Vite 按根伺服。
+  Constellation 与 Business Ops 两个域内嵌部署站的页面，共用这一套规则
+  （src/components/NextEmbed.vue）。内层是另一套 Next.js 应用，产物在 public/，
+  由 Vite 按根伺服。
+
+  ⚠️ 类名保留 `cs-` 前缀（cs = Constellation，最早只服务它）。**不要为了改名而改名** ——
+  样式表也是类名的消费方，改一处漏一处就是静默掉样式（本仓在 `#bsZoomFit` 上踩过同一个坑）。
 
   ## 为什么是 position: fixed
 
