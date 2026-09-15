@@ -58,7 +58,22 @@ LEGACY = {
     "counts_nav": "893 apps · 22 portfolios · 6 journeys · 173 teams",
     # 保存视图 "Tier 1 · Holiday" 的说明
     "t1h_desc": "Highest-criticality + holiday-peak apps",
+    # Business Ops 的 "Avg Journey XLA" KPI 副标题 —— `across 6 journeys · N incidents/day`
+    # 后半段是算出来的，前半段的 6 写死
+    "xla_sub": "across 6 journeys",
+    # 拼写形式的数字（不是阿拉伯数字）—— 光扫 \d+ 会漏掉这类
+    "six_card": "Six journeys · click to inspect · column headers sort",
+    "all_six": "All six journeys · the full estate",
 }
+
+# 拼写数字：用词而不是阿拉伯数字，这样 retail（6 条）不会被从 "Six" 改成 "6" ——
+# 替换值等于原文时该条就不产出，retail 的文案原样保留。
+_WORDS = {1: "One", 2: "Two", 3: "Three", 4: "Four", 5: "Five", 6: "Six",
+          7: "Seven", 8: "Eight", 9: "Nine", 10: "Ten"}
+
+
+def _word(n):
+    return _WORDS.get(n, str(n))
 
 
 def _num(n):
@@ -144,6 +159,13 @@ def tenant_pairs(d):
         pairs.append((LEGACY["t1h_desc"],
                       f"Highest-criticality + {lb['peakSeasonNoun']} apps"))
 
+    if pj:
+        pairs.append((LEGACY["xla_sub"], f"across {pj} journeys"))
+        pairs.append((LEGACY["six_card"],
+                      f"{_word(pj)} journeys · click to inspect · column headers sort"))
+        pairs.append((LEGACY["all_six"],
+                      f"All {_word(pj).lower()} journeys · the full estate"))
+
     out = []
     for a, b in pairs:
         if a and b and a != b:
@@ -182,6 +204,113 @@ def _array_span(t: str, start: int) -> int:
                 return i
         i += 1
     return -1
+
+
+# 页面把 journey 槽位写死成 6 个 —— 见 patch_journey_slots()
+JOURNEY_SLOTS_FILE = "0pfw3-ib1qee0.js"
+JOURNEY_SLOTS_FIND = "let h=[1,2,3,4,5,6].map("
+JOURNEY_SLOTS_REPL = "let h=e.snapshot.journeys.map((_,i)=>i+1).map("
+
+
+def patch_journey_slots(chunks_dir) -> bool:
+    """
+    Business Ops 的 journey 表固定渲染 6 行：
+
+        function u(t){ let n=e.snapshot.journeys.find(e=>e.id===`journey:${t}`); return n?.label??`Journey ${t}` }
+        let h=[1,2,3,4,5,6].map(t=>…)        // ← 写死
+
+    原有 10 个租户**恰好都是 6 条 journey**，所以从没暴露。租户少于此数时，
+    多出来的槽位查不到就退回字面量，渲染成 `Journey 3`…`Journey 6` 的空行（0 apps）。
+
+    **不改数据去迁就硬编码** —— 编造 journey 会伪造客户的业务结构。
+    改成按 `snapshot.journeys.length` 自适应，对任何租户都成立。
+    """
+    f = chunks_dir / JOURNEY_SLOTS_FILE
+    if not f.is_file():
+        return False
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if JOURNEY_SLOTS_REPL in t:
+        return False                                # 已打过
+    if t.count(JOURNEY_SLOTS_FIND) != 1:
+        return False                                # 站点改版/已不是唯一 → 静默跳过
+    f.write_text(t.replace(JOURNEY_SLOTS_FIND, JOURNEY_SLOTS_REPL),
+                 encoding="utf-8", errors="surrogateescape")
+    return True
+
+
+# Business Ops / Constellation 的域选择器：Cross-Journey 兜底桶 —— 见 patch_cross_journey()
+CJ_FILE = "0pfw3-ib1qee0.js"
+CJ_FIND = ',{id:"cross-journey",label:"Cross-Journey"}]'
+CJ_REPL = (',...(e.snapshot.portfolios.some(p=>!p.journeyId||"journey:null"===p.journeyId)'
+           '?[{id:"cross-journey",label:"Cross-Journey"}]:[])]')
+
+
+def patch_cross_journey(chunks_dir) -> bool:
+    """
+    域选择器里有一项 `Cross-Journey`，它是**兜底桶** —— 装 `journeyId` 为
+    `null` / `"journey:null"` / `""` 的组合（企业级支撑组合，本来就不挂客户旅程）：
+
+        m = d("cross-journey", …, t => null==t || "journey:null"===t || ""===t)
+
+    但这一项**永远显示**，即使桶里 0 个组合。mb-retail 的 11 个组合全部挂了 journey，
+    点进去是空的。原有租户里 bunnings(5)/qantas(4)/data-sicg(1) 有内容，
+    retail 也有（`portfolio:real-estate`）—— 所以**不能无条件删**。
+
+    改成按数据判断：桶空才不显示，对任何租户都成立。
+
+    判据直接内联原来那句（`!x` 覆盖 null/undefined/""），不依赖 `m` 的返回结构。
+    """
+    f = chunks_dir / CJ_FILE
+    if not f.is_file():
+        return False
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if CJ_REPL in t:
+        return False                                # 已打过
+    if t.count(CJ_FIND) != 1:
+        return False                                # 站点改版/不唯一 → 静默跳过
+    f.write_text(t.replace(CJ_FIND, CJ_REPL),
+                 encoding="utf-8", errors="surrogateescape")
+    return True
+
+
+# Business Ops 面板末尾的 "Ask SIP · Operational executive view" 卡片 —— 见 patch_ask_sip()
+AS_FILE = "00tsl~72wvlrr.js"
+AS_FIND = (',(0,t.jsxs)(n.Card,{className:"mt-4",children:[(0,t.jsx)(n.CardTitle,'
+           '{icon:"\U0001f4ac",children:"Ask SIP · Operational executive view"})')
+AS_REPL = (',null&&(0,t.jsxs)(n.Card,{className:"mt-4",children:[(0,t.jsx)(n.CardTitle,'
+           '{icon:"\U0001f4ac",children:"Ask SIP · Operational executive view"})')
+
+
+def patch_ask_sip(chunks_dir) -> bool:
+    """
+    隐藏 Business Ops 面板末尾的 "Ask SIP · Operational executive view" 卡片。
+
+    组件 `g()` 的返回是个**逗号表达式**（不是普通的 `return jsx`）：
+
+        return (0,r.useEffect)(…),[e,l]),(0,t.jsxs)(n.Card,{className:"mt-4",…})
+
+    所以往第二个操作数前面插 `null&&` 即可 —— 逗号表达式整体返回 null，卡片不渲染：
+
+        return (useEffect(…), null && Card)   →   null
+
+    **React hooks 仍然照常执行**（它们在 return 之前），不破坏 hooks 顺序 ——
+    比「让组件整体 return null」更稳。
+
+    只在 Business Ops 出现（实测 Constellation 页面的 DOM 里 Ask SIP 为 0 次），
+    但 `00tsl~72wvlrr.js` 是两页共享 chunk，所以这个替换对两页都生效 ——
+    对 Constellation 无影响（它本来就不渲染这个卡片）。
+    """
+    f = chunks_dir / AS_FILE
+    if not f.is_file():
+        return False
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if AS_REPL in t:
+        return False                                # 已打过
+    if t.count(AS_FIND) != 1:
+        return False                                # 站点改版/不唯一 → 静默跳过
+    f.write_text(t.replace(AS_FIND, AS_REPL),
+                 encoding="utf-8", errors="surrogateescape")
+    return True
 
 
 def patch_switcher(chunks_dir, all_tenants: dict) -> list:

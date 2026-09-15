@@ -71,6 +71,17 @@ FINANCE_FREEZE = {
     "OTR Vehicle",         # 车辆计价 —— 资产入账
 }
 
+# ── 事件量整体缩放 ─────────────────────────────────────────────────
+# `inc` 的均值来自 retail 实测（139 / 79 / 30），但那是 **282 个应用**的零售集团。
+# 50 个应用的经销商集团套同一套数值，算出来天均 ~1100、峰值 ~1460（Business Ops
+# 热力图上看得见），量级不合理。0.5 让它落在天均 ~550、峰值 ~730。
+#
+# 下游全部跟着走，不用分别改：
+#   应用级 incidentsTotal  →  求和 × INC_MULT(123) = facts.incidents  →  sparkline90d
+# 乘 123 这个口径与 retail 一致，缩放不影响「应用级 : 全量告警」的比例关系。
+INCIDENT_SCALE = 0.5
+STORM_CHILDREN = round(318 * INCIDENT_SCALE)        # 风暴子事件数，同样缩放
+
 # ── app 指标：retail 实测的 per-tier 分布 ───────────────────────────
 TIER_PROFILE = {
     1: dict(inc=139, chg=28.8, risk=82.9, botres=0.62, hc=0.70, deg=0.20),
@@ -169,7 +180,7 @@ def build_positions(d):
 def build_app_metrics(d):
     for a in d["apps"]:
         pr = TIER_PROFILE[a["tier"]]
-        a["incidentsTotal"] = int(rep(pr["inc"]))
+        a["incidentsTotal"] = max(1, round(rep(pr["inc"]) * INCIDENT_SCALE))
         a["changeCount"] = int(rep(pr["chg"]))
         a["riskScore"] = min(99, int(rep(pr["risk"], 0.09)))
         a["botResolutionRate"] = round(min(0.95, rep(pr["botres"], 0.15)), 4)
@@ -229,7 +240,7 @@ def build_facts(d, apps):
         "infraIncidents": round(tot_inc * INFRA_RATIO),
         "monthsCovered": 18,
         "mttrBotMin": 42, "mttrHumanMin": 1850, "mttrGapMultiplier": 44,
-        "topAlertStormId": "INC-MBR-77104", "topAlertStormChildren": 318,
+        "topAlertStormId": "INC-MBR-77104", "topAlertStormChildren": STORM_CHILDREN,
         "emergencyBackoutRate": 0.019, "standardBackoutRate": 0.0003,
         "emergencyBackoutMultiplier": 63.3,
         "mondayNormalBackoutRate": 0.0009, "sundayNormalBackoutRate": 0.0002,
@@ -281,7 +292,7 @@ def build_topstorm(apps):
     return {"incidentNumber": "INC-MBR-77104", "appKey": a["_key"], "appName": a["label"],
             "portfolioName": slug(a["portfolio"]), "journey": "Sales Customer Journey",
             "openedAt": "2026-11-27T08:42:00", "resolvedAt": "2026-11-27T09:15:00",
-            "priority": "1 - Critical", "severity": "3 - Low", "childCount": 318}
+            "priority": "1 - Critical", "severity": "3 - Low", "childCount": STORM_CHILDREN}
 
 
 def build_valuepool():
@@ -309,13 +320,13 @@ def build_scenarios(apps):
             "label": f"Replay {rid}", "hostPanel": "service-ops",
             "acts": [
                 {"id": "without-sip", "title": "Without SIP", "duration": 4000,
-                 "counterTarget": 318, "mttrMinutes": 33, "rootIncident": rid},
+                 "counterTarget": STORM_CHILDREN, "mttrMinutes": 33, "rootIncident": rid},
                 {"id": "with-sip", "title": "With SIP", "duration": 4000,
-                 "counterTarget": 318, "mttrMinutes": 4, "rootIncident": rid},
+                 "counterTarget": STORM_CHILDREN, "mttrMinutes": 4, "rootIncident": rid},
             ],
             "agentSuggestions": [
                 {"agent": "Storm Detector", "confidence": 0.96,
-                 "action": f"Correlate 318 child alerts under {rid} on {anchor['label']}",
+                 "action": f"Correlate {STORM_CHILDREN} child alerts under {rid} on {anchor['label']}",
                  "eta": "immediate", "impact": "Containment", "provenance": "demo-illustrative"},
                 {"agent": "Probable Cause Agent", "confidence": 0.83,
                  "action": "Attribute to the overnight dealer-master data sync, not the app tier",

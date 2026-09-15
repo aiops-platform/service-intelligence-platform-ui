@@ -295,6 +295,15 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
             extra = tenant_copy.patch_switcher(chunks_dir, all_tenants)
             if extra:
                 print(f"  切换面板补入租户：{', '.join(extra)}")
+            # journey 表的行数写死成 6 —— 租户不足 6 条 journey 会渲染空占位
+            if tenant_copy.patch_journey_slots(chunks_dir):
+                print("  journey 表行数：6（写死）→ 按 snapshot.journeys 自适应")
+            # Cross-Journey 兜底桶没有内容时不该显示
+            if tenant_copy.patch_cross_journey(chunks_dir):
+                print("  Cross-Journey 选项：常显 → 仅当桶里有组合时显示")
+            # Business Ops 末尾的 Ask SIP 卡片 —— 按需求隐藏
+            if tenant_copy.patch_ask_sip(chunks_dir):
+                print("  Ask SIP 卡片：已隐藏（Business Ops 面板末尾）")
     except Exception as e:
         print(f"    ! 注入租户文案失败，跳过：{e}")
 

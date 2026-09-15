@@ -171,16 +171,16 @@
       "portfolios": 11,
       "journeys": 2,
       "teams": 10,
-      "incidents": 671088,
+      "incidents": 337020,
       "changes": 5250,
       "problems": 530,
-      "infraIncidents": 167772,
+      "infraIncidents": 84255,
       "monthsCovered": 18,
       "mttrBotMin": 42,
       "mttrHumanMin": 1850,
       "mttrGapMultiplier": 44,
       "topAlertStormId": "INC-MBR-77104",
-      "topAlertStormChildren": 318,
+      "topAlertStormChildren": 159,
       "emergencyBackoutRate": 0.019,
       "standardBackoutRate": 0.0003,
       "emergencyBackoutMultiplier": 63.3,
@@ -365,7 +365,7 @@
         "holidayCritical": false,
         "financeFreeze": true,
         "operationalStatus": "ok",
-        "incidentsTotal": 34,
+        "incidentsTotal": 17,
         "botResolutionRate": 0.95,
         "changeCount": 5,
         "riskScore": 35,
@@ -386,7 +386,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "degraded",
-        "incidentsTotal": 110,
+        "incidentsTotal": 55,
         "botResolutionRate": 0.95,
         "changeCount": 46,
         "riskScore": 80,
@@ -407,7 +407,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 168,
+        "incidentsTotal": 84,
         "botResolutionRate": 0.95,
         "changeCount": 25,
         "riskScore": 83,
@@ -428,7 +428,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 127,
+        "incidentsTotal": 64,
         "botResolutionRate": 0.95,
         "changeCount": 30,
         "riskScore": 78,
@@ -449,7 +449,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 136,
+        "incidentsTotal": 68,
         "botResolutionRate": 0.95,
         "changeCount": 27,
         "riskScore": 82,
@@ -470,7 +470,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 100,
+        "incidentsTotal": 50,
         "botResolutionRate": 0.95,
         "changeCount": 17,
         "riskScore": 61,
@@ -491,7 +491,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 78,
+        "incidentsTotal": 39,
         "botResolutionRate": 0.95,
         "changeCount": 16,
         "riskScore": 66,
@@ -512,7 +512,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 71,
+        "incidentsTotal": 36,
         "botResolutionRate": 0.95,
         "changeCount": 15,
         "riskScore": 63,
@@ -533,7 +533,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 88,
+        "incidentsTotal": 44,
         "botResolutionRate": 0.95,
         "changeCount": 18,
         "riskScore": 63,
@@ -554,7 +554,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 91,
+        "incidentsTotal": 46,
         "botResolutionRate": 0.95,
         "changeCount": 16,
         "riskScore": 66,
@@ -575,7 +575,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 85,
+        "incidentsTotal": 43,
         "botResolutionRate": 0.95,
         "changeCount": 15,
         "riskScore": 63,
@@ -596,7 +596,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 77,
+        "incidentsTotal": 39,
         "botResolutionRate": 0.95,
         "changeCount": 9,
         "riskScore": 51,
@@ -617,7 +617,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 82,
+        "incidentsTotal": 41,
         "botResolutionRate": 0.95,
         "changeCount": 15,
         "riskScore": 56,
@@ -638,7 +638,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 68,
+        "incidentsTotal": 34,
         "botResolutionRate": 0.95,
         "changeCount": 15,
         "riskScore": 51,
@@ -659,7 +659,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 105,
+        "incidentsTotal": 53,
         "botResolutionRate": 0.95,
         "changeCount": 33,
         "riskScore": 92,
@@ -680,7 +680,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "degraded",
-        "incidentsTotal": 137,
+        "incidentsTotal": 69,
         "botResolutionRate": 0.95,
         "changeCount": 32,
         "riskScore": 75,
@@ -701,7 +701,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 157,
+        "incidentsTotal": 79,
         "botResolutionRate": 0.95,
         "changeCount": 23,
         "riskScore": 85,
@@ -722,7 +722,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 138,
+        "incidentsTotal": 69,
         "botResolutionRate": 0.95,
         "changeCount": 28,
         "riskScore": 82,
@@ -743,7 +743,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "degraded",
-        "incidentsTotal": 131,
+        "incidentsTotal": 66,
         "botResolutionRate": 0.95,
         "changeCount": 21,
         "riskScore": 99,
@@ -764,7 +764,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 109,
+        "incidentsTotal": 55,
         "botResolutionRate": 0.95,
         "changeCount": 31,
         "riskScore": 91,
@@ -785,7 +785,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 118,
+        "incidentsTotal": 59,
         "botResolutionRate": 0.95,
         "changeCount": 26,
         "riskScore": 91,
@@ -806,7 +806,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 166,
+        "incidentsTotal": 83,
         "botResolutionRate": 0.95,
         "changeCount": 21,
         "riskScore": 79,
@@ -827,7 +827,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 182,
+        "incidentsTotal": 91,
         "botResolutionRate": 0.95,
         "changeCount": 24,
         "riskScore": 91,
@@ -848,7 +848,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 147,
+        "incidentsTotal": 74,
         "botResolutionRate": 0.95,
         "changeCount": 26,
         "riskScore": 72,
@@ -869,7 +869,7 @@
         "holidayCritical": false,
         "financeFreeze": true,
         "operationalStatus": "ok",
-        "incidentsTotal": 193,
+        "incidentsTotal": 97,
         "botResolutionRate": 0.95,
         "changeCount": 32,
         "riskScore": 87,
@@ -890,7 +890,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "degraded",
-        "incidentsTotal": 122,
+        "incidentsTotal": 61,
         "botResolutionRate": 0.95,
         "changeCount": 31,
         "riskScore": 89,
@@ -911,7 +911,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 75,
+        "incidentsTotal": 38,
         "botResolutionRate": 0.95,
         "changeCount": 12,
         "riskScore": 55,
@@ -932,7 +932,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "degraded",
-        "incidentsTotal": 145,
+        "incidentsTotal": 73,
         "botResolutionRate": 0.95,
         "changeCount": 29,
         "riskScore": 71,
@@ -953,7 +953,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 132,
+        "incidentsTotal": 66,
         "botResolutionRate": 0.95,
         "changeCount": 29,
         "riskScore": 82,
@@ -974,7 +974,7 @@
         "holidayCritical": true,
         "financeFreeze": true,
         "operationalStatus": "ok",
-        "incidentsTotal": 149,
+        "incidentsTotal": 75,
         "botResolutionRate": 0.95,
         "changeCount": 19,
         "riskScore": 79,
@@ -995,7 +995,7 @@
         "holidayCritical": true,
         "financeFreeze": true,
         "operationalStatus": "ok",
-        "incidentsTotal": 156,
+        "incidentsTotal": 78,
         "botResolutionRate": 0.95,
         "changeCount": 28,
         "riskScore": 77,
@@ -1016,7 +1016,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "degraded",
-        "incidentsTotal": 171,
+        "incidentsTotal": 86,
         "botResolutionRate": 0.95,
         "changeCount": 16,
         "riskScore": 74,
@@ -1037,7 +1037,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 147,
+        "incidentsTotal": 74,
         "botResolutionRate": 0.95,
         "changeCount": 20,
         "riskScore": 82,
@@ -1058,7 +1058,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 134,
+        "incidentsTotal": 67,
         "botResolutionRate": 0.95,
         "changeCount": 22,
         "riskScore": 93,
@@ -1079,7 +1079,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 29,
+        "incidentsTotal": 15,
         "botResolutionRate": 0.95,
         "changeCount": 5,
         "riskScore": 38,
@@ -1100,7 +1100,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 24,
+        "incidentsTotal": 12,
         "botResolutionRate": 0.95,
         "changeCount": 4,
         "riskScore": 35,
@@ -1121,7 +1121,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 26,
+        "incidentsTotal": 13,
         "botResolutionRate": 0.95,
         "changeCount": 6,
         "riskScore": 39,
@@ -1142,7 +1142,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 63,
+        "incidentsTotal": 32,
         "botResolutionRate": 0.95,
         "changeCount": 15,
         "riskScore": 58,
@@ -1163,7 +1163,7 @@
         "holidayCritical": false,
         "financeFreeze": true,
         "operationalStatus": "ok",
-        "incidentsTotal": 78,
+        "incidentsTotal": 39,
         "botResolutionRate": 0.95,
         "changeCount": 16,
         "riskScore": 55,
@@ -1184,7 +1184,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 71,
+        "incidentsTotal": 36,
         "botResolutionRate": 0.95,
         "changeCount": 15,
         "riskScore": 60,
@@ -1205,7 +1205,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 67,
+        "incidentsTotal": 34,
         "botResolutionRate": 0.95,
         "changeCount": 16,
         "riskScore": 68,
@@ -1226,7 +1226,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "degraded",
-        "incidentsTotal": 100,
+        "incidentsTotal": 50,
         "botResolutionRate": 0.95,
         "changeCount": 33,
         "riskScore": 90,
@@ -1247,7 +1247,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 65,
+        "incidentsTotal": 33,
         "botResolutionRate": 0.95,
         "changeCount": 17,
         "riskScore": 62,
@@ -1268,7 +1268,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 114,
+        "incidentsTotal": 57,
         "botResolutionRate": 0.95,
         "changeCount": 24,
         "riskScore": 65,
@@ -1289,7 +1289,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 120,
+        "incidentsTotal": 60,
         "botResolutionRate": 0.95,
         "changeCount": 29,
         "riskScore": 79,
@@ -1310,7 +1310,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 69,
+        "incidentsTotal": 35,
         "botResolutionRate": 0.95,
         "changeCount": 13,
         "riskScore": 54,
@@ -1331,7 +1331,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 76,
+        "incidentsTotal": 38,
         "botResolutionRate": 0.95,
         "changeCount": 15,
         "riskScore": 62,
@@ -1352,7 +1352,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 144,
+        "incidentsTotal": 72,
         "botResolutionRate": 0.95,
         "changeCount": 25,
         "riskScore": 76,
@@ -1373,7 +1373,7 @@
         "holidayCritical": false,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 82,
+        "incidentsTotal": 41,
         "botResolutionRate": 0.95,
         "changeCount": 12,
         "riskScore": 68,
@@ -1394,7 +1394,7 @@
         "holidayCritical": true,
         "financeFreeze": false,
         "operationalStatus": "ok",
-        "incidentsTotal": 199,
+        "incidentsTotal": 100,
         "botResolutionRate": 0.95,
         "changeCount": 33,
         "riskScore": 76,
@@ -1417,372 +1417,372 @@
       "resolvedAt": "2026-11-27T09:15:00",
       "priority": "1 - Critical",
       "severity": "3 - Low",
-      "childCount": 318
+      "childCount": 159
     },
     "sparkline90d": [
       {
         "day": "2026-02-11",
-        "n": 1455
+        "n": 730
       },
       {
         "day": "2026-02-12",
-        "n": 1367
+        "n": 686
       },
       {
         "day": "2026-02-13",
-        "n": 1449
+        "n": 727
       },
       {
         "day": "2026-02-14",
-        "n": 803
+        "n": 403
       },
       {
         "day": "2026-02-15",
-        "n": 785
+        "n": 394
       },
       {
         "day": "2026-02-16",
-        "n": 1459
+        "n": 732
       },
       {
         "day": "2026-02-17",
-        "n": 1438
+        "n": 722
       },
       {
         "day": "2026-02-18",
-        "n": 1299
+        "n": 652
       },
       {
         "day": "2026-02-19",
-        "n": 1281
+        "n": 643
       },
       {
         "day": "2026-02-20",
-        "n": 1252
+        "n": 629
       },
       {
         "day": "2026-02-21",
-        "n": 716
+        "n": 359
       },
       {
         "day": "2026-02-22",
-        "n": 662
+        "n": 332
       },
       {
         "day": "2026-02-23",
-        "n": 1257
+        "n": 631
       },
       {
         "day": "2026-02-24",
-        "n": 1176
+        "n": 590
       },
       {
         "day": "2026-02-25",
-        "n": 1037
+        "n": 521
       },
       {
         "day": "2026-02-26",
-        "n": 1093
+        "n": 549
       },
       {
         "day": "2026-02-27",
-        "n": 1312
+        "n": 658
       },
       {
         "day": "2026-02-28",
-        "n": 714
+        "n": 358
       },
       {
         "day": "2026-03-01",
-        "n": 614
+        "n": 308
       },
       {
         "day": "2026-03-02",
-        "n": 1128
+        "n": 566
       },
       {
         "day": "2026-03-03",
-        "n": 1368
+        "n": 687
       },
       {
         "day": "2026-03-04",
-        "n": 1184
+        "n": 594
       },
       {
         "day": "2026-03-05",
-        "n": 1417
+        "n": 711
       },
       {
         "day": "2026-03-06",
-        "n": 1148
+        "n": 576
       },
       {
         "day": "2026-03-07",
-        "n": 766
+        "n": 384
       },
       {
         "day": "2026-03-08",
-        "n": 601
+        "n": 301
       },
       {
         "day": "2026-03-09",
-        "n": 1377
+        "n": 691
       },
       {
         "day": "2026-03-10",
-        "n": 1342
-      },
-      {
-        "day": "2026-03-11",
-        "n": 1318
-      },
-      {
-        "day": "2026-03-12",
-        "n": 1413
-      },
-      {
-        "day": "2026-03-13",
-        "n": 1019
-      },
-      {
-        "day": "2026-03-14",
-        "n": 772
-      },
-      {
-        "day": "2026-03-15",
-        "n": 636
-      },
-      {
-        "day": "2026-03-16",
-        "n": 1139
-      },
-      {
-        "day": "2026-03-17",
-        "n": 1055
-      },
-      {
-        "day": "2026-03-18",
-        "n": 1430
-      },
-      {
-        "day": "2026-03-19",
-        "n": 1085
-      },
-      {
-        "day": "2026-03-20",
-        "n": 1330
-      },
-      {
-        "day": "2026-03-21",
-        "n": 561
-      },
-      {
-        "day": "2026-03-22",
-        "n": 662
-      },
-      {
-        "day": "2026-03-23",
-        "n": 1272
-      },
-      {
-        "day": "2026-03-24",
-        "n": 1085
-      },
-      {
-        "day": "2026-03-25",
-        "n": 1403
-      },
-      {
-        "day": "2026-03-26",
-        "n": 1119
-      },
-      {
-        "day": "2026-03-27",
-        "n": 1201
-      },
-      {
-        "day": "2026-03-28",
-        "n": 739
-      },
-      {
-        "day": "2026-03-29",
-        "n": 638
-      },
-      {
-        "day": "2026-03-30",
-        "n": 1114
-      },
-      {
-        "day": "2026-03-31",
-        "n": 1043
-      },
-      {
-        "day": "2026-04-01",
-        "n": 1243
-      },
-      {
-        "day": "2026-04-02",
-        "n": 1101
-      },
-      {
-        "day": "2026-04-03",
-        "n": 1212
-      },
-      {
-        "day": "2026-04-04",
-        "n": 793
-      },
-      {
-        "day": "2026-04-05",
-        "n": 580
-      },
-      {
-        "day": "2026-04-06",
-        "n": 1087
-      },
-      {
-        "day": "2026-04-07",
-        "n": 1122
-      },
-      {
-        "day": "2026-04-08",
-        "n": 1057
-      },
-      {
-        "day": "2026-04-09",
-        "n": 1301
-      },
-      {
-        "day": "2026-04-10",
-        "n": 1080
-      },
-      {
-        "day": "2026-04-11",
-        "n": 713
-      },
-      {
-        "day": "2026-04-12",
         "n": 674
       },
       {
+        "day": "2026-03-11",
+        "n": 662
+      },
+      {
+        "day": "2026-03-12",
+        "n": 710
+      },
+      {
+        "day": "2026-03-13",
+        "n": 511
+      },
+      {
+        "day": "2026-03-14",
+        "n": 387
+      },
+      {
+        "day": "2026-03-15",
+        "n": 319
+      },
+      {
+        "day": "2026-03-16",
+        "n": 572
+      },
+      {
+        "day": "2026-03-17",
+        "n": 530
+      },
+      {
+        "day": "2026-03-18",
+        "n": 718
+      },
+      {
+        "day": "2026-03-19",
+        "n": 545
+      },
+      {
+        "day": "2026-03-20",
+        "n": 668
+      },
+      {
+        "day": "2026-03-21",
+        "n": 282
+      },
+      {
+        "day": "2026-03-22",
+        "n": 332
+      },
+      {
+        "day": "2026-03-23",
+        "n": 638
+      },
+      {
+        "day": "2026-03-24",
+        "n": 545
+      },
+      {
+        "day": "2026-03-25",
+        "n": 704
+      },
+      {
+        "day": "2026-03-26",
+        "n": 562
+      },
+      {
+        "day": "2026-03-27",
+        "n": 603
+      },
+      {
+        "day": "2026-03-28",
+        "n": 371
+      },
+      {
+        "day": "2026-03-29",
+        "n": 320
+      },
+      {
+        "day": "2026-03-30",
+        "n": 559
+      },
+      {
+        "day": "2026-03-31",
+        "n": 524
+      },
+      {
+        "day": "2026-04-01",
+        "n": 624
+      },
+      {
+        "day": "2026-04-02",
+        "n": 552
+      },
+      {
+        "day": "2026-04-03",
+        "n": 609
+      },
+      {
+        "day": "2026-04-04",
+        "n": 398
+      },
+      {
+        "day": "2026-04-05",
+        "n": 291
+      },
+      {
+        "day": "2026-04-06",
+        "n": 546
+      },
+      {
+        "day": "2026-04-07",
+        "n": 563
+      },
+      {
+        "day": "2026-04-08",
+        "n": 531
+      },
+      {
+        "day": "2026-04-09",
+        "n": 653
+      },
+      {
+        "day": "2026-04-10",
+        "n": 542
+      },
+      {
+        "day": "2026-04-11",
+        "n": 358
+      },
+      {
+        "day": "2026-04-12",
+        "n": 338
+      },
+      {
         "day": "2026-04-13",
-        "n": 1158
+        "n": 581
       },
       {
         "day": "2026-04-14",
-        "n": 1426
+        "n": 716
       },
       {
         "day": "2026-04-15",
-        "n": 1178
+        "n": 591
       },
       {
         "day": "2026-04-16",
-        "n": 1200
+        "n": 602
       },
       {
         "day": "2026-04-17",
-        "n": 1364
+        "n": 685
       },
       {
         "day": "2026-04-18",
-        "n": 789
+        "n": 396
       },
       {
         "day": "2026-04-19",
-        "n": 612
+        "n": 307
       },
       {
         "day": "2026-04-20",
-        "n": 1368
+        "n": 687
       },
       {
         "day": "2026-04-21",
-        "n": 1219
+        "n": 612
       },
       {
         "day": "2026-04-22",
-        "n": 1297
+        "n": 651
       },
       {
         "day": "2026-04-23",
-        "n": 1282
+        "n": 644
       },
       {
         "day": "2026-04-24",
-        "n": 1353
+        "n": 679
       },
       {
         "day": "2026-04-25",
-        "n": 714
+        "n": 358
       },
       {
         "day": "2026-04-26",
-        "n": 721
+        "n": 362
       },
       {
         "day": "2026-04-27",
-        "n": 1310
+        "n": 658
       },
       {
         "day": "2026-04-28",
-        "n": 1396
+        "n": 701
       },
       {
         "day": "2026-04-29",
-        "n": 1284
+        "n": 645
       },
       {
         "day": "2026-04-30",
-        "n": 1306
+        "n": 655
       },
       {
         "day": "2026-05-01",
-        "n": 1229
+        "n": 617
       },
       {
         "day": "2026-05-02",
-        "n": 649
+        "n": 326
       },
       {
         "day": "2026-05-03",
-        "n": 776
+        "n": 389
       },
       {
         "day": "2026-05-04",
-        "n": 1296
+        "n": 650
       },
       {
         "day": "2026-05-05",
-        "n": 1129
+        "n": 567
       },
       {
         "day": "2026-05-06",
-        "n": 1233
+        "n": 619
       },
       {
         "day": "2026-05-07",
-        "n": 1324
+        "n": 664
       },
       {
         "day": "2026-05-08",
-        "n": 1328
+        "n": 667
       },
       {
         "day": "2026-05-09",
-        "n": 573
+        "n": 288
       },
       {
         "day": "2026-05-10",
-        "n": 737
+        "n": 370
       },
       {
         "day": "2026-05-11",
-        "n": 1189
+        "n": 597
       },
       {
         "day": "2026-05-12",
-        "n": 1405
+        "n": 705
       }
     ],
     "portfolioEdges": {
@@ -2946,7 +2946,7 @@
             "id": "without-sip",
             "title": "Without SIP",
             "duration": 4000,
-            "counterTarget": 318,
+            "counterTarget": 159,
             "mttrMinutes": 33,
             "rootIncident": "INC-MBR-77104"
           },
@@ -2954,7 +2954,7 @@
             "id": "with-sip",
             "title": "With SIP",
             "duration": 4000,
-            "counterTarget": 318,
+            "counterTarget": 159,
             "mttrMinutes": 4,
             "rootIncident": "INC-MBR-77104"
           }
@@ -2963,7 +2963,7 @@
           {
             "agent": "Storm Detector",
             "confidence": 0.96,
-            "action": "Correlate 318 child alerts under INC-MBR-77104 on Xentry",
+            "action": "Correlate 159 child alerts under INC-MBR-77104 on Xentry",
             "eta": "immediate",
             "impact": "Containment",
             "provenance": "demo-illustrative"
