@@ -1,0 +1,3143 @@
+{
+  "tenant": {
+    "id": "mb-retail",
+    "name": "MB Retail",
+    "industry": "Automotive Retail",
+    "demoTitle": "Service Intelligence Platform · MB Retail",
+    "client": {
+      "displayName": "MB Retail",
+      "ticker": "MBR"
+    },
+    "brand": {
+      "accentHex": "#00adef",
+      "accentInkHex": "#00263a"
+    },
+    "labels": {
+      "criticalLong": "Peak-Season-Critical apps",
+      "criticalShort": "PS",
+      "criticalCaption": "Peak-Season-Critical",
+      "freezeLong": "Finance Freeze",
+      "freezeShort": "FF",
+      "peakSeasonNoun": "the plate-change peak"
+    },
+    "taxonomy": {
+      "portfolios": [
+        {
+          "id": "campaign",
+          "name": "Campaign",
+          "tier": 1
+        },
+        {
+          "id": "lead",
+          "name": "Lead",
+          "tier": 1
+        },
+        {
+          "id": "consulation",
+          "name": "Consulation",
+          "tier": 2
+        },
+        {
+          "id": "offer-order",
+          "name": "Offer&Order",
+          "tier": 1
+        },
+        {
+          "id": "handover",
+          "name": "Handover",
+          "tier": 2
+        },
+        {
+          "id": "used-car",
+          "name": "Used Car",
+          "tier": 3
+        },
+        {
+          "id": "work-order",
+          "name": "Work Order",
+          "tier": 1
+        },
+        {
+          "id": "workshop",
+          "name": "Workshop",
+          "tier": 1
+        },
+        {
+          "id": "warranty",
+          "name": "Warranty",
+          "tier": 2
+        },
+        {
+          "id": "parts",
+          "name": "Parts",
+          "tier": 1
+        },
+        {
+          "id": "accounting",
+          "name": "Accounting",
+          "tier": 3
+        }
+      ],
+      "appArchetypes": [
+        {
+          "name": "Accounting",
+          "portfolio": "accounting",
+          "tier": "T3"
+        },
+        {
+          "name": "CRM Campaign",
+          "portfolio": "campaign",
+          "tier": "T1"
+        },
+        {
+          "name": "DSR",
+          "portfolio": "consulation",
+          "tier": "T2"
+        },
+        {
+          "name": "Cesar",
+          "portfolio": "handover",
+          "tier": "T2"
+        },
+        {
+          "name": "CRM Lead",
+          "portfolio": "lead",
+          "tier": "T1"
+        },
+        {
+          "name": "Cesar",
+          "portfolio": "offer-order",
+          "tier": "T1"
+        },
+        {
+          "name": "BLM",
+          "portfolio": "parts",
+          "tier": "T2"
+        },
+        {
+          "name": "OTR Used Car",
+          "portfolio": "used-car",
+          "tier": "T3"
+        },
+        {
+          "name": "EVA",
+          "portfolio": "warranty",
+          "tier": "T2"
+        },
+        {
+          "name": "EVA",
+          "portfolio": "work-order",
+          "tier": "T2"
+        },
+        {
+          "name": "BLM",
+          "portfolio": "workshop",
+          "tier": "T2"
+        }
+      ]
+    },
+    "businessCase": {
+      "baselineUsdM": 42.5,
+      "opportunityUsdM": 18.4,
+      "roiMultiplier": 3.8,
+      "splitNarrative": "Roughly two thirds of the opportunity sits in aftersales — workshop throughput, parts availability and warranty recovery — with the remainder in the sales journey and shared integration estate."
+    },
+    "talkTrack": {
+      "constellation": "MB Retail's operating fabric: 50 applications across 11 business portfolios and two customer journeys — Sales and Customer Service — serving dealerships across three markets.",
+      "serviceOps": "Aftersales carries the incident load. Workshop and Parts together generate the majority of volume, and a single dealer-master sync failure fans out into hundreds of child alerts within minutes.",
+      "engOps": "Change risk concentrates on the shared estate. Four systems are used by three or more portfolios, so a routine deploy can put the sales journey and the workshop at risk in the same window.",
+      "businessOps": "Handover is the exposure. Every application it depends on is shared with an upstream portfolio, which means it has no independent failure domain of its own.",
+      "architecture": "The estate grew by acquisition. DCP, VLMS and Xentry each appear in three portfolios, integration runs on a mix of MuleSoft and IBM MQ, and Oracle and SQL Server both carry master data.",
+      "finops": "Spend is concentrated in the ERP and diagnostic layers, with a long tail of portfolio-specific tooling that never reaches scale.",
+      "securityOps": "Identity sprawl across dealer-facing systems is the standing finding; third-party workshop tooling is the least governed surface.",
+      "agents": "The ITIL run fleet handles detection through closure. Recovery and runbook selection stay in suggest mode pending sign-off; storm detection and severity classification already run live.",
+      "valuePool": "The value case is built bottom-up from the workshop and parts bottlenecks rather than from a top-down cost baseline."
+    },
+    "highlightEntities": {
+      "stormIncident": "INC-MBR-77104",
+      "anchorApp": "xentry-workshop",
+      "anchorChange": "CHG2026-11-27-118"
+    }
+  },
+  "snapshot": {
+    "schemaVersion": 1,
+    "generatedAt": "2026-09-15T00:00:00.000Z",
+    "source": {
+      "db": "design:mb-retail@1",
+      "asOf": "2026-09-01T00:00:00"
+    },
+    "facts": {
+      "apps": 50,
+      "portfolios": 11,
+      "journeys": 2,
+      "teams": 10,
+      "incidents": 671088,
+      "changes": 5250,
+      "problems": 530,
+      "infraIncidents": 167772,
+      "monthsCovered": 18,
+      "mttrBotMin": 42,
+      "mttrHumanMin": 1850,
+      "mttrGapMultiplier": 44,
+      "topAlertStormId": "INC-MBR-77104",
+      "topAlertStormChildren": 318,
+      "emergencyBackoutRate": 0.019,
+      "standardBackoutRate": 0.0003,
+      "emergencyBackoutMultiplier": 63.3,
+      "mondayNormalBackoutRate": 0.0009,
+      "sundayNormalBackoutRate": 0.0002,
+      "mondayNormalMultiplier": 4.5,
+      "issueGenericPct": 0.89,
+      "changeUnlinkedPct": 0.31
+    },
+    "enterprise": {
+      "id": "enterprise",
+      "label": "MB Retail",
+      "position": {
+        "x": 0.0,
+        "y": 0.0,
+        "angle": 0.0
+      }
+    },
+    "journeys": [
+      {
+        "label": "Sales Customer Journey",
+        "capability": "Sales Customer Journey",
+        "id": "journey:1",
+        "position": {
+          "x": -3.3065463576978534e-14,
+          "y": -180.0,
+          "angle": 4.71238898038469
+        }
+      },
+      {
+        "label": "Customer Server Journey",
+        "capability": "Customer Server Journey",
+        "id": "journey:2",
+        "position": {
+          "x": 5.51091059616309e-14,
+          "y": 180.0,
+          "angle": 7.853981633974483
+        }
+      }
+    ],
+    "portfolios": [
+      {
+        "label": "Campaign",
+        "tier": 1,
+        "journey": null,
+        "id": "portfolio:campaign",
+        "position": {
+          "x": -6.613092715395707e-14,
+          "y": -360.0,
+          "angle": 4.71238898038469
+        },
+        "journeyId": "journey:1"
+      },
+      {
+        "label": "Lead",
+        "tier": 1,
+        "journey": null,
+        "id": "portfolio:lead",
+        "position": {
+          "x": 194.63069428401525,
+          "y": -302.85127181922513,
+          "angle": 5.2835876446737435
+        },
+        "journeyId": "journey:1"
+      },
+      {
+        "label": "Consulation",
+        "tier": 2,
+        "journey": null,
+        "id": "portfolio:consulation",
+        "position": {
+          "x": 327.4675183276266,
+          "y": -149.54940468067912,
+          "angle": 5.8547863089627965
+        },
+        "journeyId": "journey:1"
+      },
+      {
+        "label": "Offer&Order",
+        "tier": 1,
+        "journey": null,
+        "id": "portfolio:offer-order",
+        "position": {
+          "x": 356.3357190771358,
+          "y": 51.23334177838253,
+          "angle": 6.4259849732518495
+        },
+        "journeyId": "journey:1"
+      },
+      {
+        "label": "Handover",
+        "tier": 2,
+        "journey": null,
+        "id": "portfolio:handover",
+        "position": {
+          "x": 272.06984676753314,
+          "y": 235.74986422030244,
+          "angle": 6.9971836375409024
+        },
+        "journeyId": "journey:1"
+      },
+      {
+        "label": "Used Car",
+        "tier": 3,
+        "journey": null,
+        "id": "portfolio:used-car",
+        "position": {
+          "x": 101.42372046291474,
+          "y": 345.41747050121904,
+          "angle": 7.568382301829956
+        },
+        "journeyId": "journey:1"
+      },
+      {
+        "label": "Work Order",
+        "tier": 1,
+        "journey": null,
+        "id": "portfolio:work-order",
+        "position": {
+          "x": -101.42372046291452,
+          "y": 345.4174705012191,
+          "angle": 8.13958096611901
+        },
+        "journeyId": "journey:2"
+      },
+      {
+        "label": "Workshop",
+        "tier": 1,
+        "journey": null,
+        "id": "portfolio:workshop",
+        "position": {
+          "x": -272.0698467675332,
+          "y": 235.74986422030236,
+          "angle": 8.710779630408064
+        },
+        "journeyId": "journey:2"
+      },
+      {
+        "label": "Warranty",
+        "tier": 2,
+        "journey": null,
+        "id": "portfolio:warranty",
+        "position": {
+          "x": -356.3357190771357,
+          "y": 51.23334177838307,
+          "angle": 9.281978294697115
+        },
+        "journeyId": "journey:2"
+      },
+      {
+        "label": "Parts",
+        "tier": 1,
+        "journey": null,
+        "id": "portfolio:parts",
+        "position": {
+          "x": -327.46751832762686,
+          "y": -149.5494046806786,
+          "angle": 9.853176958986168
+        },
+        "journeyId": "journey:2"
+      },
+      {
+        "label": "Accounting",
+        "tier": 3,
+        "journey": null,
+        "id": "portfolio:accounting",
+        "position": {
+          "x": -194.63069428401516,
+          "y": -302.8512718192252,
+          "angle": 10.424375623275223
+        },
+        "journeyId": "journey:2"
+      }
+    ],
+    "apps": [
+      {
+        "id": "app:accounting",
+        "appKey": "accounting",
+        "label": "Accounting",
+        "portfolioId": "portfolio:accounting",
+        "tier": 3,
+        "holidayCritical": false,
+        "financeFreeze": true,
+        "operationalStatus": "ok",
+        "incidentsTotal": 34,
+        "botResolutionRate": 0.95,
+        "changeCount": 5,
+        "riskScore": 35,
+        "botMttrMin": 61.2,
+        "humanMttrMin": 1852.5,
+        "position": {
+          "x": -353.6505074108236,
+          "y": -640.3012574414589,
+          "angle": -2.075418165154091
+        }
+      },
+      {
+        "id": "app:crm-campaign",
+        "appKey": "crm-campaign",
+        "label": "CRM Campaign",
+        "portfolioId": "portfolio:campaign",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "degraded",
+        "incidentsTotal": 110,
+        "botResolutionRate": 0.95,
+        "changeCount": 46,
+        "riskScore": 80,
+        "botMttrMin": 51.3,
+        "humanMttrMin": 2091.8,
+        "position": {
+          "x": 44.4715849849139,
+          "y": -574.479892146829,
+          "angle": -1.4935384973908339
+        }
+      },
+      {
+        "id": "app:mystar",
+        "appKey": "mystar",
+        "label": "Mystar",
+        "portfolioId": "portfolio:campaign",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 168,
+        "botResolutionRate": 0.95,
+        "changeCount": 25,
+        "riskScore": 83,
+        "botMttrMin": 23.8,
+        "humanMttrMin": 2168.3,
+        "position": {
+          "x": -42.68219815581636,
+          "y": -538.9466729048967,
+          "angle": -1.6498269641295873
+        }
+      },
+      {
+        "id": "app:ofe-campaign",
+        "appKey": "ofe-campaign",
+        "label": "OFE",
+        "portfolioId": "portfolio:campaign",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 127,
+        "botResolutionRate": 0.95,
+        "changeCount": 30,
+        "riskScore": 78,
+        "botMttrMin": 47.7,
+        "humanMttrMin": 1294.9,
+        "position": {
+          "x": -97.72257678163164,
+          "y": -520.888033205144,
+          "angle": -1.756248263084945
+        }
+      },
+      {
+        "id": "app:otr-campaign",
+        "appKey": "otr-campaign",
+        "label": "OTR Campaign",
+        "portfolioId": "portfolio:campaign",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 136,
+        "botResolutionRate": 0.95,
+        "changeCount": 27,
+        "riskScore": 82,
+        "botMttrMin": 47.2,
+        "humanMttrMin": 1876.9,
+        "position": {
+          "x": -89.65565162046464,
+          "y": -583.0968861492403,
+          "angle": -1.72335927138801
+        }
+      },
+      {
+        "id": "app:dsr-consulation",
+        "appKey": "dsr-consulation",
+        "label": "DSR",
+        "portfolioId": "portfolio:consulation",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 100,
+        "botResolutionRate": 0.95,
+        "changeCount": 17,
+        "riskScore": 61,
+        "botMttrMin": 37.6,
+        "humanMttrMin": 1689.1,
+        "position": {
+          "x": 500.2417933389613,
+          "y": -317.1557462627537,
+          "angle": -0.5650485555384722
+        }
+      },
+      {
+        "id": "app:ebadge",
+        "appKey": "ebadge",
+        "label": "Ebadge",
+        "portfolioId": "portfolio:consulation",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 78,
+        "botResolutionRate": 0.95,
+        "changeCount": 16,
+        "riskScore": 66,
+        "botMttrMin": 29.5,
+        "humanMttrMin": 1952.9,
+        "position": {
+          "x": 503.55333782918973,
+          "y": -270.30378941103754,
+          "angle": -0.4926467870046126
+        }
+      },
+      {
+        "id": "app:metouch-consulation",
+        "appKey": "metouch-consulation",
+        "label": "Metouch",
+        "portfolioId": "portfolio:consulation",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 71,
+        "botResolutionRate": 0.95,
+        "changeCount": 15,
+        "riskScore": 63,
+        "botMttrMin": 45.3,
+        "humanMttrMin": 1552.7,
+        "position": {
+          "x": 602.704092999574,
+          "y": -330.53780239093885,
+          "angle": -0.5016329516094735
+        }
+      },
+      {
+        "id": "app:otr-lead-consulation",
+        "appKey": "otr-lead-consulation",
+        "label": "OTR Lead",
+        "portfolioId": "portfolio:consulation",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 88,
+        "botResolutionRate": 0.95,
+        "changeCount": 18,
+        "riskScore": 63,
+        "botMttrMin": 32.5,
+        "humanMttrMin": 1846.4,
+        "position": {
+          "x": 531.7474404991748,
+          "y": -294.7904653862994,
+          "angle": -0.5062002135622572
+        }
+      },
+      {
+        "id": "app:cesar-handover",
+        "appKey": "cesar-handover",
+        "label": "Cesar",
+        "portfolioId": "portfolio:handover",
+        "tier": 2,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 91,
+        "botResolutionRate": 0.95,
+        "changeCount": 16,
+        "riskScore": 66,
+        "botMttrMin": 40.8,
+        "humanMttrMin": 1499.1,
+        "position": {
+          "x": 511.16512753483784,
+          "y": 502.57614712598087,
+          "angle": 0.7769258094402334
+        }
+      },
+      {
+        "id": "app:dcp-handover",
+        "appKey": "dcp-handover",
+        "label": "DCP",
+        "portfolioId": "portfolio:handover",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 85,
+        "botResolutionRate": 0.95,
+        "changeCount": 15,
+        "riskScore": 63,
+        "botMttrMin": 34.3,
+        "humanMttrMin": 1872.0,
+        "position": {
+          "x": 526.4747571430228,
+          "y": 310.49458148520364,
+          "angle": 0.5328572310135177
+        }
+      },
+      {
+        "id": "app:otr-stock-handover",
+        "appKey": "otr-stock-handover",
+        "label": "OTR Stock",
+        "portfolioId": "portfolio:handover",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 77,
+        "botResolutionRate": 0.95,
+        "changeCount": 9,
+        "riskScore": 51,
+        "botMttrMin": 48.1,
+        "humanMttrMin": 2485.7,
+        "position": {
+          "x": 445.98740207586275,
+          "y": 464.62892330694524,
+          "angle": 0.8058666277775143
+        }
+      },
+      {
+        "id": "app:sop-handover",
+        "appKey": "sop-handover",
+        "label": "SOP",
+        "portfolioId": "portfolio:handover",
+        "tier": 2,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 82,
+        "botResolutionRate": 0.95,
+        "changeCount": 15,
+        "riskScore": 56,
+        "botMttrMin": 32.6,
+        "humanMttrMin": 2313.8,
+        "position": {
+          "x": 420.81437696247565,
+          "y": 535.1741992196274,
+          "angle": 0.9044570754744995
+        }
+      },
+      {
+        "id": "app:vlms-handover",
+        "appKey": "vlms-handover",
+        "label": "VLMS",
+        "portfolioId": "portfolio:handover",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 68,
+        "botResolutionRate": 0.95,
+        "changeCount": 15,
+        "riskScore": 51,
+        "botMttrMin": 68.3,
+        "humanMttrMin": 2097.5,
+        "position": {
+          "x": 506.2412491781563,
+          "y": 297.8261538644412,
+          "angle": 0.5317786342579238
+        }
+      },
+      {
+        "id": "app:crm-lead",
+        "appKey": "crm-lead",
+        "label": "CRM Lead",
+        "portfolioId": "portfolio:lead",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 105,
+        "botResolutionRate": 0.95,
+        "changeCount": 33,
+        "riskScore": 92,
+        "botMttrMin": 42.6,
+        "humanMttrMin": 1493.1,
+        "position": {
+          "x": 342.9540808395166,
+          "y": -447.6242546354984,
+          "angle": -0.9170295724984476
+        }
+      },
+      {
+        "id": "app:dmp",
+        "appKey": "dmp",
+        "label": "DMP",
+        "portfolioId": "portfolio:lead",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "degraded",
+        "incidentsTotal": 137,
+        "botResolutionRate": 0.95,
+        "changeCount": 32,
+        "riskScore": 75,
+        "botMttrMin": 43.2,
+        "humanMttrMin": 1233.3,
+        "position": {
+          "x": 285.5494765922837,
+          "y": -474.2514737730931,
+          "angle": -1.0288300163100401
+        }
+      },
+      {
+        "id": "app:dsr-lead",
+        "appKey": "dsr-lead",
+        "label": "DSR",
+        "portfolioId": "portfolio:lead",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 157,
+        "botResolutionRate": 0.95,
+        "changeCount": 23,
+        "riskScore": 85,
+        "botMttrMin": 50.8,
+        "humanMttrMin": 1558.1,
+        "position": {
+          "x": 230.37504805918476,
+          "y": -447.19970815805146,
+          "angle": -1.095102096092801
+        }
+      },
+      {
+        "id": "app:metouch-lead",
+        "appKey": "metouch-lead",
+        "label": "Metouch",
+        "portfolioId": "portfolio:lead",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 138,
+        "botResolutionRate": 0.95,
+        "changeCount": 28,
+        "riskScore": 82,
+        "botMttrMin": 49.4,
+        "humanMttrMin": 1549.6,
+        "position": {
+          "x": 295.4121699509045,
+          "y": -380.7414773185194,
+          "angle": -0.9109326537459524
+        }
+      },
+      {
+        "id": "app:odp",
+        "appKey": "odp",
+        "label": "ODP",
+        "portfolioId": "portfolio:lead",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "degraded",
+        "incidentsTotal": 131,
+        "botResolutionRate": 0.95,
+        "changeCount": 21,
+        "riskScore": 99,
+        "botMttrMin": 46.3,
+        "humanMttrMin": 1471.3,
+        "position": {
+          "x": 334.5844938773166,
+          "y": -434.6444940856153,
+          "angle": -0.9147501668579474
+        }
+      },
+      {
+        "id": "app:ofe-lead",
+        "appKey": "ofe-lead",
+        "label": "OFE · Lead",
+        "portfolioId": "portfolio:lead",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 109,
+        "botResolutionRate": 0.95,
+        "changeCount": 31,
+        "riskScore": 91,
+        "botMttrMin": 40.2,
+        "humanMttrMin": 1651.5,
+        "position": {
+          "x": 197.6877006876304,
+          "y": -463.50051515267256,
+          "angle": -1.1676472161121665
+        }
+      },
+      {
+        "id": "app:otr-lead-lead",
+        "appKey": "otr-lead-lead",
+        "label": "OTR Lead",
+        "portfolioId": "portfolio:lead",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 118,
+        "botResolutionRate": 0.95,
+        "changeCount": 26,
+        "riskScore": 91,
+        "botMttrMin": 25.7,
+        "humanMttrMin": 1717.3,
+        "position": {
+          "x": 290.4617482550209,
+          "y": -531.9983007759831,
+          "angle": -1.0710428207903977
+        }
+      },
+      {
+        "id": "app:cesar-offer-order",
+        "appKey": "cesar-offer-order",
+        "label": "Cesar",
+        "portfolioId": "portfolio:offer-order",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 166,
+        "botResolutionRate": 0.95,
+        "changeCount": 21,
+        "riskScore": 79,
+        "botMttrMin": 49.7,
+        "humanMttrMin": 1962.4,
+        "position": {
+          "x": 502.356490912553,
+          "y": 12.702615387747999,
+          "angle": 0.02528067093687437
+        }
+      },
+      {
+        "id": "app:dcp-offer-order",
+        "appKey": "dcp-offer-order",
+        "label": "DCP",
+        "portfolioId": "portfolio:offer-order",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 182,
+        "botResolutionRate": 0.95,
+        "changeCount": 24,
+        "riskScore": 91,
+        "botMttrMin": 68.4,
+        "humanMttrMin": 2033.8,
+        "position": {
+          "x": 560.1135063340739,
+          "y": 137.0546818501404,
+          "angle": 0.23997566160043815
+        }
+      },
+      {
+        "id": "app:otr-stock-offer-order",
+        "appKey": "otr-stock-offer-order",
+        "label": "OTR Stock",
+        "portfolioId": "portfolio:offer-order",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 147,
+        "botResolutionRate": 0.95,
+        "changeCount": 26,
+        "riskScore": 72,
+        "botMttrMin": 48.6,
+        "humanMttrMin": 1665.6,
+        "position": {
+          "x": 504.48099748977495,
+          "y": 83.54620428646341,
+          "angle": 0.16411866922183804
+        }
+      },
+      {
+        "id": "app:otr-vehicle",
+        "appKey": "otr-vehicle",
+        "label": "OTR Vehicle",
+        "portfolioId": "portfolio:offer-order",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": true,
+        "operationalStatus": "ok",
+        "incidentsTotal": 193,
+        "botResolutionRate": 0.95,
+        "changeCount": 32,
+        "riskScore": 87,
+        "botMttrMin": 33.9,
+        "humanMttrMin": 1727.3,
+        "position": {
+          "x": 483.07662874966695,
+          "y": 137.5843304686726,
+          "angle": 0.27746203511961787
+        }
+      },
+      {
+        "id": "app:sop-offer-order",
+        "appKey": "sop-offer-order",
+        "label": "SOP",
+        "portfolioId": "portfolio:offer-order",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "degraded",
+        "incidentsTotal": 122,
+        "botResolutionRate": 0.95,
+        "changeCount": 31,
+        "riskScore": 89,
+        "botMttrMin": 37.7,
+        "humanMttrMin": 1857.6,
+        "position": {
+          "x": 572.0049784783075,
+          "y": 24.806141991023093,
+          "angle": 0.04333984755822993
+        }
+      },
+      {
+        "id": "app:blm-parts",
+        "appKey": "blm-parts",
+        "label": "BLM",
+        "portfolioId": "portfolio:parts",
+        "tier": 2,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 75,
+        "botResolutionRate": 0.95,
+        "changeCount": 12,
+        "riskScore": 55,
+        "botMttrMin": 39.1,
+        "humanMttrMin": 1637.5,
+        "position": {
+          "x": -549.7797940353846,
+          "y": -281.1934138372893,
+          "angle": -2.6688147487991434
+        }
+      },
+      {
+        "id": "app:dcp-parts",
+        "appKey": "dcp-parts",
+        "label": "DCP",
+        "portfolioId": "portfolio:parts",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "degraded",
+        "incidentsTotal": 145,
+        "botResolutionRate": 0.95,
+        "changeCount": 29,
+        "riskScore": 71,
+        "botMttrMin": 45.1,
+        "humanMttrMin": 1783.6,
+        "position": {
+          "x": -535.6088093098331,
+          "y": -192.8997617974977,
+          "angle": -2.7959038772677043
+        }
+      },
+      {
+        "id": "app:dpts",
+        "appKey": "dpts",
+        "label": "DPTS",
+        "portfolioId": "portfolio:parts",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 132,
+        "botResolutionRate": 0.95,
+        "changeCount": 29,
+        "riskScore": 82,
+        "botMttrMin": 48.1,
+        "humanMttrMin": 1978.0,
+        "position": {
+          "x": -531.12309966018,
+          "y": -224.48997622754314,
+          "angle": -2.7416969105815117
+        }
+      },
+      {
+        "id": "app:otr-parts-purchase",
+        "appKey": "otr-parts-purchase",
+        "label": "OTR Parts Purchase",
+        "portfolioId": "portfolio:parts",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": true,
+        "operationalStatus": "ok",
+        "incidentsTotal": 149,
+        "botResolutionRate": 0.95,
+        "changeCount": 19,
+        "riskScore": 79,
+        "botMttrMin": 32.7,
+        "humanMttrMin": 2211.5,
+        "position": {
+          "x": -447.30214175373976,
+          "y": -215.8300902924833,
+          "angle": -2.6920304575364353
+        }
+      },
+      {
+        "id": "app:otr-parts-sales",
+        "appKey": "otr-parts-sales",
+        "label": "OTR Parts Sales",
+        "portfolioId": "portfolio:parts",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": true,
+        "operationalStatus": "ok",
+        "incidentsTotal": 156,
+        "botResolutionRate": 0.95,
+        "changeCount": 28,
+        "riskScore": 77,
+        "botMttrMin": 55.4,
+        "humanMttrMin": 1586.6,
+        "position": {
+          "x": -535.3161743021407,
+          "y": -196.75423374624722,
+          "angle": -2.7893714514632806
+        }
+      },
+      {
+        "id": "app:otr-parts-stock",
+        "appKey": "otr-parts-stock",
+        "label": "OTR Parts Stock",
+        "portfolioId": "portfolio:parts",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "degraded",
+        "incidentsTotal": 171,
+        "botResolutionRate": 0.95,
+        "changeCount": 16,
+        "riskScore": 74,
+        "botMttrMin": 44.6,
+        "humanMttrMin": 2040.9,
+        "position": {
+          "x": -431.24405314493424,
+          "y": -222.90492420291415,
+          "angle": -2.6645260152125916
+        }
+      },
+      {
+        "id": "app:spm",
+        "appKey": "spm",
+        "label": "SPM",
+        "portfolioId": "portfolio:parts",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 147,
+        "botResolutionRate": 0.95,
+        "changeCount": 20,
+        "riskScore": 82,
+        "botMttrMin": 36.0,
+        "humanMttrMin": 2243.4,
+        "position": {
+          "x": -490.1085833842982,
+          "y": -135.69645670578745,
+          "angle": -2.8714885744316203
+        }
+      },
+      {
+        "id": "app:xentry-parts",
+        "appKey": "xentry-parts",
+        "label": "Xentry",
+        "portfolioId": "portfolio:parts",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 134,
+        "botResolutionRate": 0.95,
+        "changeCount": 22,
+        "riskScore": 93,
+        "botMttrMin": 31.3,
+        "humanMttrMin": 1623.0,
+        "position": {
+          "x": -558.2530972709683,
+          "y": -137.73369378650963,
+          "angle": -2.89970090851468
+        }
+      },
+      {
+        "id": "app:otr-used-car",
+        "appKey": "otr-used-car",
+        "label": "OTR Used Car",
+        "portfolioId": "portfolio:used-car",
+        "tier": 3,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 29,
+        "botResolutionRate": 0.95,
+        "changeCount": 5,
+        "riskScore": 38,
+        "botMttrMin": 39.2,
+        "humanMttrMin": 1630.8,
+        "position": {
+          "x": 269.8909399846604,
+          "y": 636.8919989552568,
+          "angle": 1.1699743273662364
+        }
+      },
+      {
+        "id": "app:piston",
+        "appKey": "piston",
+        "label": "PISTON",
+        "portfolioId": "portfolio:used-car",
+        "tier": 3,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 24,
+        "botResolutionRate": 0.95,
+        "changeCount": 4,
+        "riskScore": 35,
+        "botMttrMin": 42.3,
+        "humanMttrMin": 2246.1,
+        "position": {
+          "x": 284.67644610543397,
+          "y": 655.6132369801703,
+          "angle": 1.1611472954927036
+        }
+      },
+      {
+        "id": "app:rv",
+        "appKey": "rv",
+        "label": "RV",
+        "portfolioId": "portfolio:used-car",
+        "tier": 3,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 26,
+        "botResolutionRate": 0.95,
+        "changeCount": 6,
+        "riskScore": 39,
+        "botMttrMin": 24.2,
+        "humanMttrMin": 1509.8,
+        "position": {
+          "x": 111.49896784562874,
+          "y": 799.9323293211875,
+          "angle": 1.432303123232409
+        }
+      },
+      {
+        "id": "app:eva-warranty",
+        "appKey": "eva-warranty",
+        "label": "EVA",
+        "portfolioId": "portfolio:warranty",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 63,
+        "botResolutionRate": 0.95,
+        "changeCount": 15,
+        "riskScore": 58,
+        "botMttrMin": 37.1,
+        "humanMttrMin": 1258.2,
+        "position": {
+          "x": -675.8273042164107,
+          "y": 154.84082949371765,
+          "angle": 2.9163668521086143
+        }
+      },
+      {
+        "id": "app:otr-warranty",
+        "appKey": "otr-warranty",
+        "label": "OTR Warranty",
+        "portfolioId": "portfolio:warranty",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": true,
+        "operationalStatus": "ok",
+        "incidentsTotal": 78,
+        "botResolutionRate": 0.95,
+        "changeCount": 16,
+        "riskScore": 55,
+        "botMttrMin": 45.2,
+        "humanMttrMin": 1840.9,
+        "position": {
+          "x": -692.4960545524576,
+          "y": 119.44539154529309,
+          "angle": 2.970787997774287
+        }
+      },
+      {
+        "id": "app:vega",
+        "appKey": "vega",
+        "label": "VEGA",
+        "portfolioId": "portfolio:warranty",
+        "tier": 2,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 71,
+        "botResolutionRate": 0.95,
+        "changeCount": 15,
+        "riskScore": 60,
+        "botMttrMin": 42.3,
+        "humanMttrMin": 1913.7,
+        "position": {
+          "x": -653.7573895549209,
+          "y": 20.567485495161666,
+          "angle": 3.1101426015721367
+        }
+      },
+      {
+        "id": "app:eva-work-order",
+        "appKey": "eva-work-order",
+        "label": "EVA",
+        "portfolioId": "portfolio:work-order",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 67,
+        "botResolutionRate": 0.95,
+        "changeCount": 16,
+        "riskScore": 68,
+        "botMttrMin": 40.6,
+        "humanMttrMin": 1635.5,
+        "position": {
+          "x": -182.8849927831316,
+          "y": 642.7148767589165,
+          "angle": 1.8480199230922219
+        }
+      },
+      {
+        "id": "app:otr-order",
+        "appKey": "otr-order",
+        "label": "OTR ORDER",
+        "portfolioId": "portfolio:work-order",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "degraded",
+        "incidentsTotal": 100,
+        "botResolutionRate": 0.95,
+        "changeCount": 33,
+        "riskScore": 90,
+        "botMttrMin": 31.9,
+        "humanMttrMin": 1565.0,
+        "position": {
+          "x": -172.7179156470196,
+          "y": 519.5504206989274,
+          "angle": 1.8917401939333485
+        }
+      },
+      {
+        "id": "app:vdoc",
+        "appKey": "vdoc",
+        "label": "VDOC",
+        "portfolioId": "portfolio:work-order",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 65,
+        "botResolutionRate": 0.95,
+        "changeCount": 17,
+        "riskScore": 62,
+        "botMttrMin": 37.2,
+        "humanMttrMin": 1750.8,
+        "position": {
+          "x": -136.2828020507255,
+          "y": 672.1495387621297,
+          "angle": 1.7708411199953056
+        }
+      },
+      {
+        "id": "app:vlms-work-order",
+        "appKey": "vlms-work-order",
+        "label": "VLMS",
+        "portfolioId": "portfolio:work-order",
+        "tier": 2,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 114,
+        "botResolutionRate": 0.95,
+        "changeCount": 24,
+        "riskScore": 65,
+        "botMttrMin": 37.4,
+        "humanMttrMin": 1503.0,
+        "position": {
+          "x": -254.4261029417223,
+          "y": 619.769417313558,
+          "angle": 1.9603363818447375
+        }
+      },
+      {
+        "id": "app:xentry-work-order",
+        "appKey": "xentry-work-order",
+        "label": "Xentry",
+        "portfolioId": "portfolio:work-order",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 120,
+        "botResolutionRate": 0.95,
+        "changeCount": 29,
+        "riskScore": 79,
+        "botMttrMin": 47.2,
+        "humanMttrMin": 1706.5,
+        "position": {
+          "x": -284.7494434981697,
+          "y": 560.1799293494421,
+          "angle": 2.041076032673418
+        }
+      },
+      {
+        "id": "app:blm-workshop",
+        "appKey": "blm-workshop",
+        "label": "BLM",
+        "portfolioId": "portfolio:workshop",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 69,
+        "botResolutionRate": 0.95,
+        "changeCount": 13,
+        "riskScore": 54,
+        "botMttrMin": 49.4,
+        "humanMttrMin": 1765.2,
+        "position": {
+          "x": -407.77507947887267,
+          "y": 431.7905587950159,
+          "angle": 2.32759764033741
+        }
+      },
+      {
+        "id": "app:bms",
+        "appKey": "bms",
+        "label": "BMS",
+        "portfolioId": "portfolio:workshop",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 76,
+        "botResolutionRate": 0.95,
+        "changeCount": 15,
+        "riskScore": 62,
+        "botMttrMin": 45.9,
+        "humanMttrMin": 1807.3,
+        "position": {
+          "x": -417.49979687408785,
+          "y": 478.65084688952584,
+          "angle": 2.288062640787954
+        }
+      },
+      {
+        "id": "app:otr-jobcard",
+        "appKey": "otr-jobcard",
+        "label": "OTR Jobcard",
+        "portfolioId": "portfolio:workshop",
+        "tier": 1,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 144,
+        "botResolutionRate": 0.95,
+        "changeCount": 25,
+        "riskScore": 76,
+        "botMttrMin": 31.7,
+        "humanMttrMin": 2295.0,
+        "position": {
+          "x": -401.88725285061184,
+          "y": 403.32312296821885,
+          "angle": 2.3544112685166656
+        }
+      },
+      {
+        "id": "app:vlms-workshop",
+        "appKey": "vlms-workshop",
+        "label": "VLMS",
+        "portfolioId": "portfolio:workshop",
+        "tier": 2,
+        "holidayCritical": false,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 82,
+        "botResolutionRate": 0.95,
+        "changeCount": 12,
+        "riskScore": 68,
+        "botMttrMin": 49.1,
+        "humanMttrMin": 1557.1,
+        "position": {
+          "x": -464.4432416202378,
+          "y": 469.83035612819754,
+          "angle": 2.350428454612711
+        }
+      },
+      {
+        "id": "app:xentry-workshop",
+        "appKey": "xentry-workshop",
+        "label": "Xentry",
+        "portfolioId": "portfolio:workshop",
+        "tier": 1,
+        "holidayCritical": true,
+        "financeFreeze": false,
+        "operationalStatus": "ok",
+        "incidentsTotal": 199,
+        "botResolutionRate": 0.95,
+        "changeCount": 33,
+        "riskScore": 76,
+        "botMttrMin": 43.8,
+        "humanMttrMin": 2090.3,
+        "position": {
+          "x": -404.11390985136404,
+          "y": 273.8612435270677,
+          "angle": 2.546001886834297
+        }
+      }
+    ],
+    "topStorm": {
+      "incidentNumber": "INC-MBR-77104",
+      "appKey": "xentry-workshop",
+      "appName": "Xentry",
+      "portfolioName": "workshop",
+      "journey": "Sales Customer Journey",
+      "openedAt": "2026-11-27T08:42:00",
+      "resolvedAt": "2026-11-27T09:15:00",
+      "priority": "1 - Critical",
+      "severity": "3 - Low",
+      "childCount": 318
+    },
+    "sparkline90d": [
+      {
+        "day": "2026-02-11",
+        "n": 1455
+      },
+      {
+        "day": "2026-02-12",
+        "n": 1367
+      },
+      {
+        "day": "2026-02-13",
+        "n": 1449
+      },
+      {
+        "day": "2026-02-14",
+        "n": 803
+      },
+      {
+        "day": "2026-02-15",
+        "n": 785
+      },
+      {
+        "day": "2026-02-16",
+        "n": 1459
+      },
+      {
+        "day": "2026-02-17",
+        "n": 1438
+      },
+      {
+        "day": "2026-02-18",
+        "n": 1299
+      },
+      {
+        "day": "2026-02-19",
+        "n": 1281
+      },
+      {
+        "day": "2026-02-20",
+        "n": 1252
+      },
+      {
+        "day": "2026-02-21",
+        "n": 716
+      },
+      {
+        "day": "2026-02-22",
+        "n": 662
+      },
+      {
+        "day": "2026-02-23",
+        "n": 1257
+      },
+      {
+        "day": "2026-02-24",
+        "n": 1176
+      },
+      {
+        "day": "2026-02-25",
+        "n": 1037
+      },
+      {
+        "day": "2026-02-26",
+        "n": 1093
+      },
+      {
+        "day": "2026-02-27",
+        "n": 1312
+      },
+      {
+        "day": "2026-02-28",
+        "n": 714
+      },
+      {
+        "day": "2026-03-01",
+        "n": 614
+      },
+      {
+        "day": "2026-03-02",
+        "n": 1128
+      },
+      {
+        "day": "2026-03-03",
+        "n": 1368
+      },
+      {
+        "day": "2026-03-04",
+        "n": 1184
+      },
+      {
+        "day": "2026-03-05",
+        "n": 1417
+      },
+      {
+        "day": "2026-03-06",
+        "n": 1148
+      },
+      {
+        "day": "2026-03-07",
+        "n": 766
+      },
+      {
+        "day": "2026-03-08",
+        "n": 601
+      },
+      {
+        "day": "2026-03-09",
+        "n": 1377
+      },
+      {
+        "day": "2026-03-10",
+        "n": 1342
+      },
+      {
+        "day": "2026-03-11",
+        "n": 1318
+      },
+      {
+        "day": "2026-03-12",
+        "n": 1413
+      },
+      {
+        "day": "2026-03-13",
+        "n": 1019
+      },
+      {
+        "day": "2026-03-14",
+        "n": 772
+      },
+      {
+        "day": "2026-03-15",
+        "n": 636
+      },
+      {
+        "day": "2026-03-16",
+        "n": 1139
+      },
+      {
+        "day": "2026-03-17",
+        "n": 1055
+      },
+      {
+        "day": "2026-03-18",
+        "n": 1430
+      },
+      {
+        "day": "2026-03-19",
+        "n": 1085
+      },
+      {
+        "day": "2026-03-20",
+        "n": 1330
+      },
+      {
+        "day": "2026-03-21",
+        "n": 561
+      },
+      {
+        "day": "2026-03-22",
+        "n": 662
+      },
+      {
+        "day": "2026-03-23",
+        "n": 1272
+      },
+      {
+        "day": "2026-03-24",
+        "n": 1085
+      },
+      {
+        "day": "2026-03-25",
+        "n": 1403
+      },
+      {
+        "day": "2026-03-26",
+        "n": 1119
+      },
+      {
+        "day": "2026-03-27",
+        "n": 1201
+      },
+      {
+        "day": "2026-03-28",
+        "n": 739
+      },
+      {
+        "day": "2026-03-29",
+        "n": 638
+      },
+      {
+        "day": "2026-03-30",
+        "n": 1114
+      },
+      {
+        "day": "2026-03-31",
+        "n": 1043
+      },
+      {
+        "day": "2026-04-01",
+        "n": 1243
+      },
+      {
+        "day": "2026-04-02",
+        "n": 1101
+      },
+      {
+        "day": "2026-04-03",
+        "n": 1212
+      },
+      {
+        "day": "2026-04-04",
+        "n": 793
+      },
+      {
+        "day": "2026-04-05",
+        "n": 580
+      },
+      {
+        "day": "2026-04-06",
+        "n": 1087
+      },
+      {
+        "day": "2026-04-07",
+        "n": 1122
+      },
+      {
+        "day": "2026-04-08",
+        "n": 1057
+      },
+      {
+        "day": "2026-04-09",
+        "n": 1301
+      },
+      {
+        "day": "2026-04-10",
+        "n": 1080
+      },
+      {
+        "day": "2026-04-11",
+        "n": 713
+      },
+      {
+        "day": "2026-04-12",
+        "n": 674
+      },
+      {
+        "day": "2026-04-13",
+        "n": 1158
+      },
+      {
+        "day": "2026-04-14",
+        "n": 1426
+      },
+      {
+        "day": "2026-04-15",
+        "n": 1178
+      },
+      {
+        "day": "2026-04-16",
+        "n": 1200
+      },
+      {
+        "day": "2026-04-17",
+        "n": 1364
+      },
+      {
+        "day": "2026-04-18",
+        "n": 789
+      },
+      {
+        "day": "2026-04-19",
+        "n": 612
+      },
+      {
+        "day": "2026-04-20",
+        "n": 1368
+      },
+      {
+        "day": "2026-04-21",
+        "n": 1219
+      },
+      {
+        "day": "2026-04-22",
+        "n": 1297
+      },
+      {
+        "day": "2026-04-23",
+        "n": 1282
+      },
+      {
+        "day": "2026-04-24",
+        "n": 1353
+      },
+      {
+        "day": "2026-04-25",
+        "n": 714
+      },
+      {
+        "day": "2026-04-26",
+        "n": 721
+      },
+      {
+        "day": "2026-04-27",
+        "n": 1310
+      },
+      {
+        "day": "2026-04-28",
+        "n": 1396
+      },
+      {
+        "day": "2026-04-29",
+        "n": 1284
+      },
+      {
+        "day": "2026-04-30",
+        "n": 1306
+      },
+      {
+        "day": "2026-05-01",
+        "n": 1229
+      },
+      {
+        "day": "2026-05-02",
+        "n": 649
+      },
+      {
+        "day": "2026-05-03",
+        "n": 776
+      },
+      {
+        "day": "2026-05-04",
+        "n": 1296
+      },
+      {
+        "day": "2026-05-05",
+        "n": 1129
+      },
+      {
+        "day": "2026-05-06",
+        "n": 1233
+      },
+      {
+        "day": "2026-05-07",
+        "n": 1324
+      },
+      {
+        "day": "2026-05-08",
+        "n": 1328
+      },
+      {
+        "day": "2026-05-09",
+        "n": 573
+      },
+      {
+        "day": "2026-05-10",
+        "n": 737
+      },
+      {
+        "day": "2026-05-11",
+        "n": 1189
+      },
+      {
+        "day": "2026-05-12",
+        "n": 1405
+      }
+    ],
+    "portfolioEdges": {
+      "techOverlap": [
+        {
+          "source": "portfolio:lead",
+          "target": "portfolio:consulation",
+          "sharedTechs": 13
+        },
+        {
+          "source": "portfolio:offer-order",
+          "target": "portfolio:handover",
+          "sharedTechs": 15
+        },
+        {
+          "source": "portfolio:offer-order",
+          "target": "portfolio:parts",
+          "sharedTechs": 7
+        },
+        {
+          "source": "portfolio:handover",
+          "target": "portfolio:work-order",
+          "sharedTechs": 7
+        },
+        {
+          "source": "portfolio:handover",
+          "target": "portfolio:workshop",
+          "sharedTechs": 7
+        },
+        {
+          "source": "portfolio:handover",
+          "target": "portfolio:parts",
+          "sharedTechs": 7
+        },
+        {
+          "source": "portfolio:work-order",
+          "target": "portfolio:workshop",
+          "sharedTechs": 10
+        },
+        {
+          "source": "portfolio:work-order",
+          "target": "portfolio:warranty",
+          "sharedTechs": 7
+        },
+        {
+          "source": "portfolio:work-order",
+          "target": "portfolio:parts",
+          "sharedTechs": 7
+        },
+        {
+          "source": "portfolio:workshop",
+          "target": "portfolio:parts",
+          "sharedTechs": 10
+        }
+      ],
+      "changeCascade": [
+        {
+          "source": "portfolio:lead",
+          "target": "portfolio:consulation",
+          "pairCount": 18
+        },
+        {
+          "source": "portfolio:offer-order",
+          "target": "portfolio:handover",
+          "pairCount": 28
+        },
+        {
+          "source": "portfolio:offer-order",
+          "target": "portfolio:parts",
+          "pairCount": 16
+        },
+        {
+          "source": "portfolio:handover",
+          "target": "portfolio:work-order",
+          "pairCount": 16
+        },
+        {
+          "source": "portfolio:handover",
+          "target": "portfolio:workshop",
+          "pairCount": 15
+        },
+        {
+          "source": "portfolio:handover",
+          "target": "portfolio:parts",
+          "pairCount": 11
+        },
+        {
+          "source": "portfolio:work-order",
+          "target": "portfolio:workshop",
+          "pairCount": 16
+        },
+        {
+          "source": "portfolio:work-order",
+          "target": "portfolio:warranty",
+          "pairCount": 16
+        },
+        {
+          "source": "portfolio:work-order",
+          "target": "portfolio:parts",
+          "pairCount": 11
+        },
+        {
+          "source": "portfolio:workshop",
+          "target": "portfolio:parts",
+          "pairCount": 18
+        }
+      ],
+      "incidentCoincidence": [
+        {
+          "source": "portfolio:lead",
+          "target": "portfolio:consulation",
+          "weight": 0.79,
+          "pairCount": 54
+        },
+        {
+          "source": "portfolio:offer-order",
+          "target": "portfolio:handover",
+          "weight": 0.87,
+          "pairCount": 84
+        },
+        {
+          "source": "portfolio:offer-order",
+          "target": "portfolio:parts",
+          "weight": 0.63,
+          "pairCount": 48
+        },
+        {
+          "source": "portfolio:handover",
+          "target": "portfolio:work-order",
+          "weight": 0.63,
+          "pairCount": 48
+        },
+        {
+          "source": "portfolio:handover",
+          "target": "portfolio:workshop",
+          "weight": 0.63,
+          "pairCount": 45
+        },
+        {
+          "source": "portfolio:handover",
+          "target": "portfolio:parts",
+          "weight": 0.63,
+          "pairCount": 33
+        },
+        {
+          "source": "portfolio:work-order",
+          "target": "portfolio:workshop",
+          "weight": 0.71,
+          "pairCount": 48
+        },
+        {
+          "source": "portfolio:work-order",
+          "target": "portfolio:warranty",
+          "weight": 0.63,
+          "pairCount": 48
+        },
+        {
+          "source": "portfolio:work-order",
+          "target": "portfolio:parts",
+          "weight": 0.63,
+          "pairCount": 33
+        },
+        {
+          "source": "portfolio:workshop",
+          "target": "portfolio:parts",
+          "weight": 0.71,
+          "pairCount": 54
+        }
+      ]
+    },
+    "topTechnologies": [
+      {
+        "techId": 2,
+        "name": "Java",
+        "appCount": 28
+      },
+      {
+        "techId": 6,
+        "name": "Node.js",
+        "appCount": 10
+      },
+      {
+        "techId": 3,
+        "name": "C#/.NET",
+        "appCount": 5
+      },
+      {
+        "techId": 16,
+        "name": "Xentry Protocol",
+        "appCount": 3
+      },
+      {
+        "techId": 1,
+        "name": "SAP",
+        "appCount": 2
+      }
+    ],
+    "appTechnologies": [
+      {
+        "appKey": "crm-campaign",
+        "techIds": [
+          3,
+          5,
+          10,
+          17
+        ],
+        "techNames": [
+          "C#/.NET",
+          "SQL Server",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-campaign",
+        "techIds": [
+          3,
+          5,
+          10,
+          17
+        ],
+        "techNames": [
+          "C#/.NET",
+          "SQL Server",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "ofe-campaign",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "mystar",
+        "techIds": [
+          3,
+          5,
+          10,
+          17
+        ],
+        "techNames": [
+          "C#/.NET",
+          "SQL Server",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "crm-lead",
+        "techIds": [
+          3,
+          5,
+          10,
+          17
+        ],
+        "techNames": [
+          "C#/.NET",
+          "SQL Server",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "ofe-lead",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "dsr-lead",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "metouch-lead",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "odp",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "dmp",
+        "techIds": [
+          1,
+          4,
+          15,
+          17
+        ],
+        "techNames": [
+          "SAP",
+          "Oracle DB",
+          "Power BI",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-lead-lead",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-lead-consulation",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "metouch-consulation",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "dsr-consulation",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "ebadge",
+        "techIds": [
+          3,
+          5,
+          10,
+          17
+        ],
+        "techNames": [
+          "C#/.NET",
+          "SQL Server",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-vehicle",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-stock-offer-order",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "dcp-offer-order",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "sop-offer-order",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "cesar-offer-order",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-stock-handover",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "dcp-handover",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "sop-handover",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "cesar-handover",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "vlms-handover",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-used-car",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "rv",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "piston",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-order",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "vlms-work-order",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "vdoc",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "eva-work-order",
+        "techIds": [
+          9,
+          17,
+          20
+        ],
+        "techNames": [
+          "REST API",
+          "Splunk",
+          "Kubernetes"
+        ]
+      },
+      {
+        "appKey": "xentry-work-order",
+        "techIds": [
+          3,
+          5,
+          16,
+          17
+        ],
+        "techNames": [
+          "Xentry Protocol",
+          "C#/.NET",
+          "SQL Server",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-jobcard",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "vlms-workshop",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "xentry-workshop",
+        "techIds": [
+          3,
+          5,
+          16,
+          17
+        ],
+        "techNames": [
+          "Xentry Protocol",
+          "C#/.NET",
+          "SQL Server",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "bms",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "blm-workshop",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-warranty",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "eva-warranty",
+        "techIds": [
+          9,
+          17,
+          20
+        ],
+        "techNames": [
+          "REST API",
+          "Splunk",
+          "Kubernetes"
+        ]
+      },
+      {
+        "appKey": "vega",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-parts-sales",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-parts-purchase",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "otr-parts-stock",
+        "techIds": [
+          2,
+          9,
+          17,
+          18
+        ],
+        "techNames": [
+          "Java",
+          "PostgreSQL",
+          "Kubernetes",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "xentry-parts",
+        "techIds": [
+          3,
+          5,
+          16,
+          17
+        ],
+        "techNames": [
+          "Xentry Protocol",
+          "C#/.NET",
+          "SQL Server",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "spm",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "dpts",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "blm-parts",
+        "techIds": [
+          6,
+          10,
+          17,
+          18
+        ],
+        "techNames": [
+          "Node.js",
+          "PostgreSQL",
+          "Azure",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "dcp-parts",
+        "techIds": [
+          2,
+          4,
+          8,
+          17
+        ],
+        "techNames": [
+          "Java",
+          "Oracle DB",
+          "Kafka",
+          "REST API"
+        ]
+      },
+      {
+        "appKey": "accounting",
+        "techIds": [
+          1,
+          4,
+          15,
+          17
+        ],
+        "techNames": [
+          "SAP",
+          "Oracle DB",
+          "Power BI",
+          "REST API"
+        ]
+      }
+    ],
+    "valuePool": {
+      "baseline": {
+        "datTotalM": 143.3,
+        "sipPlusOpsM": 150.7,
+        "strategicTodayM": 22.7,
+        "strategicTodayPct": 0.15,
+        "changeM": 69.3,
+        "discretionaryM": 39.2,
+        "coreM": 5.3
+      },
+      "pools": [
+        {
+          "id": "VP1",
+          "name": "Brilliant Basics",
+          "addressableM": 33.2,
+          "savingsRateY4": 0.04,
+          "savingsY1M": 0.3,
+          "savingsY4M": 1.3,
+          "savingsM": 5.3,
+          "ctaM": 5.3,
+          "roi": 0.35,
+          "tagline": "Foundations before scale · GCC reinvention · integrated tech ops · vendor consolidation.",
+          "sourceLine": "tenant pack · businessCase",
+          "provenInScene": "constellation",
+          "scenario": "Conservative"
+        },
+        {
+          "id": "VP2",
+          "name": "Storm Response",
+          "addressableM": 42.2,
+          "savingsRateY4": 0.09,
+          "savingsY1M": 0.8,
+          "savingsY4M": 3.8,
+          "savingsM": 15.2,
+          "ctaM": 6.8,
+          "roi": 1.1,
+          "tagline": "Bot-first triage on alert storms · 51× MTTR gap closed · holiday peak guarded.",
+          "sourceLine": "tenant pack · businessCase",
+          "provenInScene": "constellation",
+          "scenario": "Intermediate"
+        },
+        {
+          "id": "VP3",
+          "name": "Change Confidence",
+          "addressableM": 27.1,
+          "savingsRateY4": 0.06,
+          "savingsY1M": 0.3,
+          "savingsY4M": 1.6,
+          "savingsM": 6.5,
+          "ctaM": 4.3,
+          "roi": 0.85,
+          "tagline": "CAB review at the speed of agents · backout differential reduced · Monday risk priced in.",
+          "sourceLine": "tenant pack · businessCase",
+          "provenInScene": "constellation",
+          "scenario": "Aggressive"
+        },
+        {
+          "id": "VP4",
+          "name": "Modernization Wave",
+          "addressableM": 48.2,
+          "savingsRateY4": 0.07,
+          "savingsY1M": 0.7,
+          "savingsY4M": 3.4,
+          "savingsM": 13.5,
+          "ctaM": 7.7,
+          "roi": 0.7,
+          "tagline": "6R-led reinvention queue · Retire 23% · Refactor 41% · Replatform 18% · funded by VP1-3 reinvestment.",
+          "sourceLine": "tenant pack · businessCase",
+          "provenInScene": "constellation",
+          "scenario": "Conservative"
+        }
+      ],
+      "totals": {
+        "addressableM": 150.7,
+        "cumulativeM": 40.5,
+        "cumulativeRoundedM": 40.4,
+        "y4RunRateM": 10.1,
+        "y1NetM": -22.1,
+        "ctaM": 24.1,
+        "roi": 4.2,
+        "poolWeightedRoi": 0.8,
+        "shareToday": 0.15,
+        "shareCutPath": 0.2,
+        "shareReallocatePath": 0.35,
+        "runChangeToday": "63/37",
+        "runChangeFY32": "40/60"
+      },
+      "yearlySavings": [
+        {
+          "year": "Y1",
+          "fy": "FY28",
+          "netM": 6.4
+        },
+        {
+          "year": "Y2",
+          "fy": "FY29",
+          "netM": 12.8
+        },
+        {
+          "year": "Y3",
+          "fy": "FY30",
+          "netM": 19.1
+        },
+        {
+          "year": "Y4",
+          "fy": "FY31",
+          "netM": 25.5
+        },
+        {
+          "year": "Y5",
+          "fy": "FY32",
+          "netM": 31.9
+        }
+      ],
+      "benchmarks": [
+        {
+          "company": "Industry baseline",
+          "pct": 0.034,
+          "absoluteB": 0.9,
+          "source": "Gartner / Forrester industry benchmark",
+          "note": "Industry-mid IT spend as % of revenue"
+        },
+        {
+          "company": "Industry target",
+          "pct": 0.028,
+          "absoluteB": 0.7,
+          "source": "Top-quartile peer benchmark"
+        }
+      ],
+      "trajectory": {
+        "fyLabels": [
+          "FY27",
+          "FY28",
+          "FY29",
+          "FY30",
+          "FY31",
+          "FY32"
+        ],
+        "futureSpendM": [
+          850,
+          843.7,
+          838.5,
+          834.4,
+          831.4,
+          829.5
+        ],
+        "counterfactualM": [
+          850,
+          879.7,
+          910.5,
+          942.4,
+          975.4,
+          1009.5
+        ],
+        "annualSavingsM": [
+          0,
+          36,
+          72,
+          108,
+          144,
+          180
+        ],
+        "fy32DeltaM": 31.9,
+        "cumulativeSavingsB": 0.5,
+        "counterfactual5yB": 4.7,
+        "futureState5yB": 4.2
+      },
+      "composition": {
+        "paths": [
+          {
+            "id": "today",
+            "label": "Today",
+            "title": "Run dominates · strategic share at 15%",
+            "strategicSharePct": 0.15,
+            "totalM": 150.7,
+            "strategicM": 22.6,
+            "changeM": 63.3,
+            "runM": 60.3,
+            "coreM": 4.5,
+            "caption": "Operations + change dominate · strategic share is the residual."
+          },
+          {
+            "id": "bank",
+            "label": "Bank the savings",
+            "title": "Spend down 17% · strategic share barely moves",
+            "strategicSharePct": 0.2,
+            "totalM": 147.1,
+            "strategicM": 29.4,
+            "changeM": 58.8,
+            "runM": 54.4,
+            "coreM": 4.4,
+            "caption": "The denominator shrinks · strategic ratio drifts up modestly."
+          },
+          {
+            "id": "reinvest",
+            "label": "Reinvest the savings",
+            "title": "Flat spend · strategic share lifts to 35%",
+            "strategicSharePct": 0.35,
+            "totalM": 150.7,
+            "strategicM": 52.7,
+            "changeM": 54.3,
+            "runM": 39.2,
+            "coreM": 4.5,
+            "caption": "Same envelope · strategic share lifts 15% → 35%.",
+            "featured": true
+          }
+        ]
+      }
+    },
+    "scenarios": {
+      "replay-storm": {
+        "label": "Replay INC-MBR-77104",
+        "hostPanel": "service-ops",
+        "acts": [
+          {
+            "id": "without-sip",
+            "title": "Without SIP",
+            "duration": 4000,
+            "counterTarget": 318,
+            "mttrMinutes": 33,
+            "rootIncident": "INC-MBR-77104"
+          },
+          {
+            "id": "with-sip",
+            "title": "With SIP",
+            "duration": 4000,
+            "counterTarget": 318,
+            "mttrMinutes": 4,
+            "rootIncident": "INC-MBR-77104"
+          }
+        ],
+        "agentSuggestions": [
+          {
+            "agent": "Storm Detector",
+            "confidence": 0.96,
+            "action": "Correlate 318 child alerts under INC-MBR-77104 on Xentry",
+            "eta": "immediate",
+            "impact": "Containment",
+            "provenance": "demo-illustrative"
+          },
+          {
+            "agent": "Probable Cause Agent",
+            "confidence": 0.83,
+            "action": "Attribute to the overnight dealer-master data sync, not the app tier",
+            "eta": "2 min",
+            "impact": "Diagnosis",
+            "provenance": "demo-illustrative"
+          },
+          {
+            "agent": "Recovery Agent",
+            "confidence": 0.91,
+            "action": "Restart the integration worker pool behind the affected queue",
+            "eta": "3 min",
+            "impact": "Recovery",
+            "provenance": "demo-illustrative"
+          },
+          {
+            "agent": "Closure Agent",
+            "confidence": 0.88,
+            "action": "Auto-close the 291 duplicate child incidents with a shared RCA",
+            "eta": "1 min",
+            "impact": "Toil reduction",
+            "provenance": "demo-illustrative"
+          }
+        ]
+      },
+      "run-cab-review": {
+        "label": "Run CAB review",
+        "hostPanel": "engineering-ops",
+        "session": [
+          {
+            "delay": 600,
+            "text": "CAB opened · 14 change requests across Sales and Aftersales."
+          },
+          {
+            "delay": 900,
+            "text": "Risk scoring flags 2 changes touching shared services used by 3+ portfolios."
+          },
+          {
+            "delay": 900,
+            "text": "Collision check: both target the same integration weekend window."
+          },
+          {
+            "delay": 1200,
+            "text": "Recommendation: stagger. One moves to the following window."
+          }
+        ]
+      },
+      "ask-sip": {
+        "label": "Ask SIP",
+        "hostPanel": "business-ops",
+        "thread": [
+          {
+            "role": "user",
+            "text": "Which portfolios depend on the shared systems, and how exposed is Handover?"
+          },
+          {
+            "role": "assistant",
+            "text": "Four systems are shared across portfolios. Handover draws every one of its applications from that shared set, so it has no independent failure domain.",
+            "chips": [
+              {
+                "phrase": "shared services",
+                "source": "portfolioEdges"
+              },
+              {
+                "phrase": "Handover exposure",
+                "source": "snapshot"
+              }
+            ]
+          }
+        ],
+        "suggested": [
+          "Show shared-system blast radius",
+          "Which changes touch shared services this quarter?",
+          "Compare Handover MTTR to the group average"
+        ]
+      }
+    },
+    "agents": {
+      "itil-run": [
+        {
+          "name": "Storm Detector",
+          "mode": "Live",
+          "threshold": 0.95
+        },
+        {
+          "name": "Severity Classifier",
+          "mode": "Live",
+          "threshold": 0.9
+        },
+        {
+          "name": "Probable Cause Agent",
+          "mode": "Live",
+          "threshold": 0.78
+        },
+        {
+          "name": "Recovery Agent",
+          "mode": "Suggest",
+          "threshold": 0.92
+        },
+        {
+          "name": "Closure Agent",
+          "mode": "Live",
+          "threshold": 0.85
+        },
+        {
+          "name": "Runbook Selector",
+          "mode": "Suggest",
+          "threshold": 0.8
+        },
+        {
+          "name": "Major Incident Scribe",
+          "mode": "Live",
+          "threshold": 0.88
+        },
+        {
+          "name": "Knowledge Miner",
+          "mode": "Shadow",
+          "threshold": 0.72
+        },
+        {
+          "name": "Change Risk Scorer",
+          "mode": "Live",
+          "threshold": 0.87
+        },
+        {
+          "name": "Backout Advisor",
+          "mode": "Suggest",
+          "threshold": 0.83
+        }
+      ],
+      "sdlc": [
+        {
+          "name": "Test Selector",
+          "mode": "Live",
+          "threshold": 0.86
+        },
+        {
+          "name": "Release Notes Writer",
+          "mode": "Suggest",
+          "threshold": 0.79
+        },
+        {
+          "name": "Deploy Guard",
+          "mode": "Live",
+          "threshold": 0.93
+        },
+        {
+          "name": "Regression Triager",
+          "mode": "Shadow",
+          "threshold": 0.74
+        }
+      ],
+      "governance": [
+        {
+          "name": "CAB Reviewer",
+          "mode": "Suggest",
+          "threshold": 0.81
+        },
+        {
+          "name": "Policy Drift Detector",
+          "mode": "Live",
+          "threshold": 0.89
+        },
+        {
+          "name": "Audit Evidence Collector",
+          "mode": "Shadow",
+          "threshold": 0.76
+        }
+      ]
+    }
+  }
+}

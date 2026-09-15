@@ -280,6 +280,24 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
     if embed_strip and "sip-embed-shell-strip" not in html:
         html = html.replace("</head>", STRIP_CSS + "</head>", 1)
 
+    # 3c. 按租户改写**写死的外壳文案**（副标题、<title>、meta、筛选面板那批）。
+    #     必须在 1b 之后读 bundle —— 那时输出目录那份才含全部租户（含新增的）。
+    #     租户是运行时选的（localStorage），所以注入的是「全租户映射 + 运行时改写器」，
+    #     不是把某个租户的值烤死。见 tenant_copy.py。
+    n_copy = 0
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import tenant_data, tenant_copy          # 显式导入 —— 不依赖 1b 那个 try 成功
+        if bundle.is_file():
+            _, all_tenants, _ = tenant_data.read_bundle(bundle)
+            html, n_copy = tenant_copy.inject(html, all_tenants)
+            # 切换面板的租户清单写死在 chunk 里，DOM 改写够不着 —— 直接补数组
+            extra = tenant_copy.patch_switcher(chunks_dir, all_tenants)
+            if extra:
+                print(f"  切换面板补入租户：{', '.join(extra)}")
+    except Exception as e:
+        print(f"    ! 注入租户文案失败，跳过：{e}")
+
     # 4. 万一外壳里还留着 _files 的引用（换用保存版时才可能），一并改掉
     n_ref = 0
     for src in chunk_srcs:
@@ -300,7 +318,7 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
     out_file.write_text(html, encoding="utf-8")
     return {"moved": moved, "fonts": copied, "rewritten": n_ref, "navs": n_nav,
             "size": len(html), "overrides": overrides, "stripped": embed_strip,
-            "out_file": out_file}
+            "out_file": out_file, "copy": n_copy}
 
 
 def main():
@@ -387,6 +405,8 @@ def main():
         print(f"  新增租户：{', '.join(ov['added'])}")
     if ov.get("replaced"):
         print(f"  覆盖租户：{', '.join(ov['replaced'])}")
+    if r.get("copy"):
+        print(f"  租户文案：已注入 {r['copy']} 条替换（副标题 / <title> / 筛选面板，按租户运行时生效）")
     print("\n  打开方式：")
     print(f"    npm run dev          → /{rel.parent if rel.parent.name else ''}（内嵌在 Vue 应用里）")
     print(f"    ./start-offline.sh   → http://localhost:8777/{rel}（单独看）")
