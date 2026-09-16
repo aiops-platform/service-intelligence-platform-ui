@@ -7822,3 +7822,125 @@ textarea.cmdb-input { resize: vertical; }
     border-top: 1px dashed var(--border-color);
 }
 .cmdb-link .cmdb-field:last-of-type { margin-bottom: 6px; }
+
+/* ====== Ticket 详情（ticket-*）====== */
+/* 行可点：整行打开详情。cursor + hover 是唯一的可点提示，
+   否则用户不会知道这一行跟那行有什么区别。 */
+.ticket-row { cursor: pointer; }
+.ticket-row:hover td { background: var(--bg-body); }
+.ticket-row.active td { background: var(--accent-purple-light); }
+
+.ticket-detail-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+.ticket-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border-color);
+}
+.ticket-detail-meta b {
+    color: var(--text-tertiary);
+    font-weight: 600;
+    margin-right: 4px;
+}
+
+/* 诊断窗口单独强调：它是整条链上最容易错、且错了不报错的一环 */
+.ticket-detail-window {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-primary);
+    background: var(--bg-body);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px 10px;
+}
+.ticket-detail-arrow { color: var(--text-tertiary); margin: 0 6px; }
+
+.ticket-detail-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 6px;
+    line-height: 1.6;
+}
+
+.ticket-detail-json {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    background: var(--bg-body);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0;
+    max-height: 200px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-secondary);
+}
+
+/* 运行列表：每条 run 一行卡片，整块可点进 Run 详情 */
+.ticket-run-list { display: flex; flex-direction: column; gap: 8px; }
+.ticket-run {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color .12s;
+}
+.ticket-run:hover { border-color: var(--accent-purple); }
+
+.ticket-run-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+.ticket-run-wf { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.ticket-run-id {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    margin-left: auto;
+}
+.ticket-run-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.ticket-run-node { font-family: var(--font-mono); }
+.ticket-run-node b { color: var(--text-primary); }
+.ticket-run-dur { color: var(--text-tertiary); }
+.ticket-run-pending { color: var(--accent-orange); font-weight: 600; }
+
+/* Run / 节点状态徽章：后端实际会返回、但既有表里没有的几个。
+   配色沿用 .alert-tag 那套（绿=成功、蓝=进行中、琥珀=待审批、红=失败、灰=取消）。
+   后端只把 done→success 做映射，其余原样透传，所以这几个都得有。 */
+.alert-tag.status-success          { background: #ecfdf5; color: #059669; }
+.alert-tag.status-failed           { background: #fef2f2; color: #dc2626; }
+.alert-tag.status-canceled         { background: #f3f4f6; color: #6b7280; }
+.alert-tag.status-waiting_approval { background: #fffbeb; color: #d97706; }
+
+/* 时间窗缺时区偏移的告警：比普通 hint 更重，因为它会导致**静默空结果** */
+.ticket-detail-warn {
+    font-size: 11px;
+    line-height: 1.6;
+    margin-top: 6px;
+    padding: 6px 9px;
+    border-radius: 5px;
+    background: #fffbeb;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}

@@ -24,6 +24,17 @@ const {
   load,
   create,
   startRun,
+  detail,
+  detailRuns,
+  detailLoading,
+  detailError,
+  openDetail,
+  closeDetail,
+  rerunFromDetail,
+  nodeBreakdown,
+  activeNodeCount,
+  formatDuration,
+  windowWarning,
 } = useTickets()
 
 const showNew = ref(false)
@@ -52,6 +63,17 @@ async function diagnose(ticket) {
 function openRun(ticket) {
   const runId = ticket.run_ids?.[ticket.run_ids.length - 1]
   if (runId) router.push({ name: 'run-detail', params: { runId } })
+}
+
+function goRun(runId) {
+  closeDetail()
+  router.push({ name: 'run-detail', params: { runId } })
+}
+
+/** 详情里再发起一次，然后直接去 Run 详情看过程 */
+async function diagnoseFromDetail() {
+  const out = await rerunFromDetail()
+  if (out?.run_id) goRun(out.run_id)
 }
 
 onMounted(load)
@@ -150,7 +172,15 @@ onActivated(load)
           </tr>
         </thead>
         <tbody>
-          <tr v-for="t in visible" :key="t.id">
+          <!-- 整行可点：查看工单内容与它跑过的 run。行内按钮一律 @click.stop，
+               否则点「发起诊断」会连带把详情也打开 -->
+          <tr
+            v-for="t in visible"
+            :key="t.id"
+            class="ticket-row"
+            :class="{ active: detail?.id === t.id }"
+            @click="openDetail(t)"
+          >
             <td class="col-title">{{ t.number || t.id }}</td>
             <td class="col-summary" :title="t.title">{{ t.title }}</td>
             <td>{{ t.service || '-' }}</td>
@@ -162,7 +192,11 @@ onActivated(load)
             </td>
             <td><span class="alert-tag" :class="'status-' + t.status">{{ t.status }}</span></td>
             <td>
-              <button v-if="t.run_ids && t.run_ids.length" class="btn btn-sm" @click="openRun(t)">
+              <button
+                v-if="t.run_ids && t.run_ids.length"
+                class="btn btn-sm"
+                @click.stop="openRun(t)"
+              >
                 {{ t.run_ids.length }} run{{ t.run_ids.length > 1 ? 's' : '' }}
               </button>
               <span v-else style="color: var(--text-tertiary)">—</span>
@@ -172,7 +206,7 @@ onActivated(load)
               <button
                 class="btn btn-yellow btn-sm"
                 :disabled="runningId === t.id"
-                @click="diagnose(t)"
+                @click.stop="diagnose(t)"
               >
                 {{ runningId === t.id ? '发起中…' : '发起诊断' }}
               </button>
@@ -185,6 +219,115 @@ onActivated(load)
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- 工单详情：内容 + 运行情况 -->
+    <div class="ap-modal-overlay" :class="{ open: !!detail }" @click.self="closeDetail">
+      <div v-if="detail" class="ap-modal" style="max-width: 760px">
+        <div class="ap-modal-header">
+          <h3>
+            {{ detail.number || detail.id }}
+            <span class="alert-tag" :class="'status-' + detail.status">{{ detail.status }}</span>
+          </h3>
+          <button class="ap-modal-close" @click="closeDetail">&times;</button>
+        </div>
+
+        <div class="ap-modal-body">
+          <div class="ticket-detail-title">{{ detail.title }}</div>
+
+          <div class="ticket-detail-meta">
+            <span><b>服务</b> {{ detail.service || '—' }}</span>
+            <span><b>namespace</b> {{ detail.namespace || '—' }}</span>
+            <span>
+              <b>severity</b>
+              <span v-if="detail.severity" class="alert-tag" :class="'severity-' + detail.severity">
+                {{ String(detail.severity).toUpperCase() }}
+              </span>
+              <span v-else>—</span>
+            </span>
+            <span><b>创建</b> {{ formatTimeAgo(detail.created_at) }}</span>
+          </div>
+
+          <!-- 诊断窗口：这是最容易出错、也最该被看见的一行 -->
+          <div class="apm-field">
+            <label>诊断窗口</label>
+            <div class="ticket-detail-window">
+              {{ detail.inputs?.window_start || '—' }}
+              <span class="ticket-detail-arrow">→</span>
+              {{ detail.inputs?.window_end || '—' }}
+            </div>
+            <p v-if="windowWarning(detail)" class="ticket-detail-warn">
+              ⚠ {{ windowWarning(detail) }} —— 不带偏移的时间会被按 <b>UTC</b> 解释，
+              窗口整体错 8 小时，查询**静默返回空**。修复前建的工单会有这个问题。
+            </p>
+            <p v-else class="ticket-detail-hint">
+              窗口由建单时下发，平台不替你猜 —— 窗口错了，取回的数据就没有意义。
+            </p>
+          </div>
+
+          <div class="apm-field">
+            <label>工单内容（诊断的输入 <code>bug_report</code>）</label>
+            <pre class="ticket-detail-json">{{ JSON.stringify(detail.inputs?.bug_report ?? {}, null, 2) }}</pre>
+          </div>
+
+          <!-- 运行情况 -->
+          <div class="apm-field">
+            <label>
+              运行情况
+              <span style="color: var(--text-tertiary)">
+                （{{ detailRuns.length }} 个 run<template v-if="detailLoading"> · 加载中…</template>）
+              </span>
+            </label>
+
+            <div v-if="detailError" class="si-error-msg" style="margin-bottom: 8px">
+              <span class="si-error-icon">!</span><span>{{ detailError }}</span>
+            </div>
+
+            <div v-if="detailRuns.length" class="ticket-run-list">
+              <div
+                v-for="r in detailRuns"
+                :key="r.run_id"
+                class="ticket-run"
+                @click="goRun(r.run_id)"
+              >
+                <div class="ticket-run-head">
+                  <span class="ticket-run-wf">{{ r.workflow || '—' }}</span>
+                  <span class="alert-tag" :class="'status-' + r.status">{{ r.status }}</span>
+                  <span v-if="activeNodeCount(r)" class="alert-tag status-waiting_approval">
+                    {{ activeNodeCount(r) }} 个节点进行中
+                  </span>
+                  <span class="ticket-run-id">{{ r.run_id }}</span>
+                </div>
+                <div class="ticket-run-meta">
+                  <span v-for="[s, n] in nodeBreakdown(r)" :key="s" class="ticket-run-node">
+                    {{ s }} <b>{{ n }}</b>
+                  </span>
+                  <span v-if="formatDuration(r.created_at, r.updated_at)" class="ticket-run-dur">
+                    耗时 {{ formatDuration(r.created_at, r.updated_at) }}
+                  </span>
+                  <span v-if="r.pending_approvals?.length" class="ticket-run-pending">
+                    待审批 {{ r.pending_approvals.length }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div v-else-if="!detailLoading" class="ticket-detail-hint">
+              这条工单还没跑过。点右下角「发起诊断」开始。
+            </div>
+          </div>
+        </div>
+
+        <div class="ap-modal-footer" style="display: flex; justify-content: space-between; gap: 8px; padding: 12px 16px">
+          <button
+            class="btn btn-yellow btn-sm"
+            :disabled="runningId === detail.id"
+            @click="diagnoseFromDetail"
+          >
+            {{ runningId === detail.id ? '发起中…' : (detailRuns.length ? '再跑一次' : '发起诊断') }}
+          </button>
+          <button class="btn btn-sm" @click="closeDetail">关闭</button>
+        </div>
+      </div>
     </div>
 
     <!-- New ticket 模态 -->

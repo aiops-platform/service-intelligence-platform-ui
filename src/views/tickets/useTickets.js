@@ -5,7 +5,16 @@
  * 诊断/修复/审批的全过程。数据源是 agentflow 的 `/tickets`（B2 新增）。
  */
 import { ref, computed } from 'vue'
-import { ticketApi } from '@/api/agentflow'
+import { ticketApi, runApi } from '@/api/agentflow'
+
+/**
+ * 还在跑的节点状态。
+ *
+ * ⚠️ 这张表只用来**标注**"进行中"，不用来判"已了结"——后端返回的任何未知状态
+ * 都会落到"其它"里如实展示，而不是被悄悄算成跑完。判据单边定义，错也只错在
+ * 少标一个"运行中"，不会把没跑完的说成跑完了。
+ */
+const ACTIVE_NODE_STATUSES = new Set(['running', 'pending', 'waiting_approval'])
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
@@ -183,6 +192,123 @@ export function useTickets() {
     }
   }
 
+  /**
+   * 节点状态分布：`[[状态, 个数], …]`，按个数降序。
+   *
+   * **如实分组、不做解释性归类**——后端在用的取值有 done / skipped / rejected /
+   * rejected-canceled，将来还会加。把它们硬映射成"成功/失败/其它"会在加新状态时
+   * 变成一句谎话；直接列出来则永远是准的。
+   */
+  function nodeBreakdown(run) {
+    const counts = {}
+    for (const n of Object.values(run?.nodes || {})) {
+      const s = n.status || 'unknown'
+      counts[s] = (counts[s] || 0) + 1
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])
+  }
+
+  /**
+   * 判断一个时间串**是否自描述**（带 `Z` 或 `±HH:MM` 偏移）。
+   *
+   * 为什么值得单独判一次：不带偏移的串会被 MCP server 按 **UTC** 解释，
+   * 而人填的是本地时间 → 窗口整体错 8 小时，**查询静默返回空**。
+   * 这是本模块文件头用整段注释记录的那个坑（`toIsoWithOffset`），建单侧已修，
+   * 但**修复之前建的工单仍然躺在库里**。详情页把它标出来，比事后翻库强。
+   */
+  function isWindowSelfDescribing(value) {
+    if (!value || typeof value !== 'string') return true // 空值不报"格式错"，另有缺失提示
+    return /(Z|[+-]\d{2}:?\d{2})$/.test(value.trim())
+  }
+
+  /** 该工单的诊断窗口是否有问题（缺偏移 → 会被按 UTC 解释） */
+  function windowWarning(ticket) {
+    const s = ticket?.inputs?.window_start
+    const e = ticket?.inputs?.window_end
+    const bad = []
+    if (s && !isWindowSelfDescribing(s)) bad.push('window_start')
+    if (e && !isWindowSelfDescribing(e)) bad.push('window_end')
+    if (!s || !e) return '这条工单没有诊断窗口'
+    return bad.length ? `${bad.join(' / ')} 不带时区偏移` : ''
+  }
+
+  /** 还在跑的节点数（判据见 ACTIVE_NODE_STATUSES） */
+  function activeNodeCount(run) {
+    return Object.values(run?.nodes || {}).filter((n) =>
+      ACTIVE_NODE_STATUSES.has(n.status),
+    ).length
+  }
+
+  /**
+   * 起止 → 人类可读耗时。
+   *
+   * 注意 ``run.created_at``/``updated_at`` 是**带时区**的 ISO 串（后端自己带的），
+   * 与工单时间窗那种"故意不带时区"的字段不是一回事——这里只做差，不做时区换算。
+   */
+  function formatDuration(from, to) {
+    if (!from || !to) return ''
+    const ms = new Date(to).getTime() - new Date(from).getTime()
+    if (!Number.isFinite(ms) || ms < 0) return ''
+    const s = Math.round(ms / 1000)
+    if (s < 60) return `${s}s`
+    const m = Math.floor(s / 60)
+    if (m < 60) return `${m}m ${s % 60}s`
+    return `${Math.floor(m / 60)}h ${m % 60}m`
+  }
+
+  // ---------------------------------------------------------------------
+  // 详情：点列表里的一条，看工单内容 + 运行情况
+  // ---------------------------------------------------------------------
+  /** 当前查看的工单。打开时**现取**一次，状态才是新的（列表可能已经放了很久） */
+  const detail = ref(null)
+  /** 它的 run 快照（`run_ids` 逐条取；跨租户/已删的取不到就跳过） */
+  const detailRuns = ref([])
+  const detailLoading = ref(false)
+  const detailError = ref('')
+
+  /**
+   * 打开详情。
+   *
+   * 先用**行数据打底**再拉全量：列表里的对象本就有 title/service/inputs，
+   * 弹窗能立刻有内容，而不是先空一下。拉回来若发现看的是同一条才替换——
+   * 中途点了别的工单就丢弃这次结果，免得把 A 的详情贴到 B 上。
+   */
+  async function openDetail(ticket) {
+    detail.value = ticket
+    detailRuns.value = []
+    detailError.value = ''
+    detailLoading.value = true
+    const wanted = ticket.id
+    try {
+      const fresh = await ticketApi.detail(wanted)
+      const ids = fresh?.run_ids || []
+      // 逐条取；单条失败（比如 run 被清理了）不该让整个详情打不开
+      const runs = await Promise.all(ids.map((id) => runApi.get(id).catch(() => null)))
+      if (detail.value?.id !== wanted) return // 期间切了别的工单
+      detail.value = fresh
+      detailRuns.value = runs.filter(Boolean)
+    } catch (err) {
+      if (detail.value?.id === wanted) detailError.value = err?.message || '加载详情失败'
+    } finally {
+      if (detail.value?.id === wanted) detailLoading.value = false
+    }
+  }
+
+  function closeDetail() {
+    detail.value = null
+    detailRuns.value = []
+    detailError.value = ''
+    detailLoading.value = false
+  }
+
+  /** 从详情里再发起一次诊断（工单已 resolved/failed 时想重跑） */
+  async function rerunFromDetail() {
+    if (!detail.value) return null
+    const out = await startRun(detail.value)
+    if (out) await openDetail(detail.value)
+    return out
+  }
+
   return {
     STATUS_FILTERS,
     tickets,
@@ -197,5 +323,16 @@ export function useTickets() {
     load,
     create,
     startRun,
+    detail,
+    detailRuns,
+    detailLoading,
+    detailError,
+    openDetail,
+    closeDetail,
+    rerunFromDetail,
+    nodeBreakdown,
+    activeNodeCount,
+    formatDuration,
+    windowWarning,
   }
 }
