@@ -20,8 +20,9 @@ npm run preview   # 预览构建产物，默认 :4173
 
 浏览器访问 `http://localhost:5173`。
 
-> **端口注意**：开发时前端在 `:5173`，经 Vite proxy 转发到后端（sip-aiops `:8080`、
-> agentflow `:8000`）。**不要**把前端起在 `8080` —— 那是 sip-aiops 的端口。
+> **端口注意**：开发时前端在 `:5173`，经 Vite proxy 转发到三个后端
+> （sip-aiops `:8080`、agentflow `:8000`、aiops-datasource-mcp-server `:8300`）。
+> **不要**把前端起在 `8080` —— 那是 sip-aiops 的端口。
 
 ## 架构：双世界（v2.0.0）
 
@@ -33,7 +34,13 @@ npm run preview   # 预览构建产物，默认 :4173
 | 拥有的 DOM | 外壳（header/sidebar/footer）+ **已迁移视图** | **未迁移的 15 个视图** + 12 个共享模态 + drawer |
 | 样式 | 共用 `css/styles.css`（7099 行，全局引入，**一字未改**） | 同左 |
 
-**已迁移视图**（`src/router/nav.js` 的 `MIGRATED` 集合）：`log-analysis`、`bug-solve`。
+**已迁移视图**（`src/router/nav.js` 的 `MIGRATED` 集合）：`log-analysis`、`bug-solve`、
+`tickets`、`agent-registry`。
+
+> **不属于任何域的页面走 `EXTRA_ROUTES`**（`src/router/index.js`），不走 `MIGRATED` /
+> `VIEW_COMPONENTS` 那一套——后者是给**侧边栏叶子**用的（会经 `flattenItems()` 产出路由）。
+> 现有两条：`/runs/:runId`（Run 详情）与 `/cmdb`（CMDB 编辑器，入口在头部右上的用户菜单里）。
+> 加这类页只需要在 `EXTRA_ROUTES` 里登记一次，并给出自己的入口。
 
 ### 接缝（`js/app.js` 里的 `window.__SIP_*`）
 
@@ -63,7 +70,8 @@ npm run preview   # 预览构建产物，默认 :4173
 **`src/` 下永不出现 `http://localhost:*`，只出现 `/` 开头的相对路径。**
 
 - 开发：`vite.config.js` 的 `server.proxy`（`/api/sip-aiops`→`:8080`；`/agentflow`→`:8000`，
-  后者需 `rewrite` 剥前缀，因 agentflow 路由挂根路径）。浏览器视角同源，**无 CORS 无预检**。
+  后者需 `rewrite` 剥前缀，因 agentflow 路由挂根路径；`/api/cmdb`→`:8300`，
+  同样 `rewrite` 成 `/admin/cmdb`）。浏览器视角同源，**无 CORS 无预检**。
 - 生产：dist 静态托管 + 同源 nginx 反代（片段见 README）。
 
 `src/api/config.js` 的 base 三级回退：**localStorage > `VITE_*` > 相对路径默认**。

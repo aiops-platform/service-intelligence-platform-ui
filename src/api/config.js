@@ -14,6 +14,8 @@
 const DEFAULTS = {
   sipAiops: '/api/sip-aiops',
   agentflow: '/agentflow',
+  // CMDB 编辑面：datasource MCP server 的 /admin/cmdb（dev proxy 会把前缀 rewrite 掉）
+  cmdb: '/api/cmdb',
 }
 
 /**
@@ -23,11 +25,13 @@ const DEFAULTS = {
 const LS_KEYS = {
   sipAiops: ['sipAiopsBaseUrl'],
   agentflow: ['bugSolveBaseUrl', 'workflowBaseUrl', 'agentsBaseUrl', 'mcpBaseUrl', 'agentConfigBaseUrl'],
+  cmdb: ['cmdbBaseUrl'],
 }
 
 const ENV = {
   sipAiops: import.meta.env.VITE_SIP_AIOPS_BASE,
   agentflow: import.meta.env.VITE_AGENTFLOW_BASE,
+  cmdb: import.meta.env.VITE_CMDB_BASE,
 }
 
 function readLS(name) {

@@ -22,13 +22,29 @@ const VIEW_COMPONENTS = {
   'agent-registry': () => import('@/views/agents/AgentsView.vue'),
 }
 
-/** 不在侧边栏里的 Vue 原生页（动态路由 / 详情页） */
+/**
+ * 不在侧边栏里的 Vue 原生页（动态路由 / 详情页 / 工具页）。
+ *
+ * `/cmdb` 是 CMDB 实体图谱的浏览与编辑页 —— 它是本仓**第一个会写数据**的页面
+ * （其余都是查询）。数据源不是 agentflow / sip-aiops，而是 aiops-datasource-mcp-server
+ * 的实体文件，走那台服务新增的 `/admin/cmdb/**` 端点。见 `src/views/cmdb/`。
+ *
+ * **它刻意不属于任何域**：这是一张给少数人用的运维工具表，不是产品叙事的一部分，
+ * 所以不进顶栏的 9 个域、也不进任何侧边栏。入口在头部右上的用户菜单里
+ * （点姓名 → 编辑 CMDB）。放进某个域会让它出现在演示动线的导航里。
+ */
 const EXTRA_ROUTES = [
   {
     path: '/runs/:runId',
     name: 'run-detail',
     component: () => import('@/views/runs/RunDetailView.vue'),
     meta: { label: 'Run 详情', legacy: false },
+  },
+  {
+    path: '/cmdb',
+    name: 'cmdb',
+    component: () => import('@/views/cmdb/CmdbView.vue'),
+    meta: { label: 'CMDB', legacy: false },
   },
 ]
 

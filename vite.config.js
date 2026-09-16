@@ -99,6 +99,13 @@ const proxy = {
     changeOrigin: true,
     rewrite: (p) => p.replace(/^\/agentflow/, ''),
   },
+  // CMDB 编辑面在 datasource MCP server 上，路径是 /admin/cmdb/**。
+  // 用 /api/cmdb 这个更贴合前端习惯的前缀，rewrite 回真实路径。
+  '/api/cmdb': {
+    target: 'http://localhost:8300',
+    changeOrigin: true,
+    rewrite: (p) => p.replace(/^\/api\/cmdb/, '/admin/cmdb'),
+  },
 }
 
 export default defineConfig({

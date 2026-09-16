@@ -18,6 +18,7 @@ npm run dev        # http://localhost:5173
 |---|---|---|
 | `/api/sip-aiops/*` | `http://localhost:8080` | 同名前缀直通，不 rewrite |
 | `/agentflow/*` | `http://localhost:8000` | agentflow 路由挂在根路径，需剥掉 `/agentflow` 前缀 |
+| `/api/cmdb/*` | `http://localhost:8300` | CMDB 管理端点；后端真实路径是 `/admin/cmdb`，需 rewrite |
 
 浏览器视角**同源**，因此没有 CORS、没有预检。若后端在别处，用环境变量覆盖
 （见 `.env.example`），或 dev 下临时改：
@@ -54,6 +55,7 @@ server {
 
     location /api/sip-aiops/ { proxy_pass http://sip-aiops:8080; proxy_set_header Host $host; }
     location /agentflow/     { proxy_pass http://agentflow:8000/; }   # 末尾斜杠 = 剥前缀
+    location /api/cmdb/      { proxy_pass http://datasource:8300/admin/cmdb/; }
 }
 ```
 

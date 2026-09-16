@@ -7509,3 +7509,316 @@ svg { fill: currentColor; }
 @keyframes cs-embed-spin {
     to { transform: rotate(360deg); }
 }
+
+/* ====== CMDB 实体图谱编辑器（cmdb-*）====== */
+/* 承载页：Architecture 域（/architecture）。布局是「左清单 + 右 Inspector」，
+   与 Agent 目录同构，但 Inspector 是**表单**不是只读详情。 */
+.cmdb-body {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 16px;
+    align-items: start;
+    padding: 0 20px 28px;
+}
+
+/* --- 左：类型 + 节点清单 --- */
+.cmdb-list {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: calc(100vh - 220px);
+}
+.cmdb-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.cmdb-type-chip {
+    border: 1px solid var(--border-color);
+    background: var(--bg-white);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-size: 11px;
+    cursor: pointer;
+}
+.cmdb-type-chip:hover { border-color: var(--text-tertiary); }
+.cmdb-type-chip.active {
+    background: var(--accent-purple-light);
+    border-color: var(--accent-purple);
+    color: var(--accent-purple);
+    font-weight: 600;
+}
+.cmdb-type-count { font-family: var(--font-mono); opacity: .75; margin-left: 2px; }
+
+.cmdb-nodes { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.cmdb-node {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    text-align: left;
+    border: 0;
+    border-left: 2px solid transparent;
+    background: transparent;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.cmdb-node:hover { background: var(--bg-tertiary); }
+.cmdb-node.active { background: var(--accent-purple-light); border-left-color: var(--accent-purple); }
+.cmdb-node-name { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+.cmdb-node-id {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cmdb-node-tags { font-size: 10px; color: var(--accent-orange); }
+
+/* --- 右：Inspector --- */
+.cmdb-inspector {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px 18px 20px;
+    max-height: calc(100vh - 220px);
+    overflow-y: auto;
+}
+.cmdb-insp-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.cmdb-insp-id { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); font-weight: 400; }
+
+.cmdb-field { display: block; margin-bottom: 14px; }
+.cmdb-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 4px;
+}
+.cmdb-req { color: var(--accent-red); font-size: 10px; }
+.cmdb-ro { color: var(--text-tertiary); font-size: 10px; font-weight: 400; }
+.cmdb-hint { display: block; font-size: 11px; color: var(--text-tertiary); margin-top: 4px; line-height: 1.5; }
+.cmdb-hint code, .cmdb-path {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--bg-tertiary);
+    padding: 0 3px;
+    border-radius: 3px;
+}
+
+.cmdb-input {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 9px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: var(--bg-white);
+}
+.cmdb-input:focus { outline: none; border-color: var(--accent-purple); }
+.cmdb-input[readonly] { background: var(--bg-tertiary); color: var(--text-secondary); }
+textarea.cmdb-input { resize: vertical; }
+.cmdb-json { font-family: var(--font-mono); font-size: 11px; }
+
+/* attributes 表单：字段名在上、控件在下，一列排开（值可能是 enum / bool / number / string） */
+.cmdb-attrs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px 14px;
+}
+.cmdb-attr { display: block; }
+.cmdb-attr-key {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-bottom: 3px;
+}
+
+.cmdb-tags { display: flex; flex-wrap: wrap; gap: 10px; }
+.cmdb-tag { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+
+/* --- 相关边 --- */
+.cmdb-edges { display: flex; flex-direction: column; gap: 3px; }
+.cmdb-edge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+}
+.cmdb-edge-type { color: var(--accent-blue); }
+.cmdb-edge-end { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmdb-edge-end.self { color: var(--text-primary); font-weight: 600; }
+.cmdb-edge-arrow { color: var(--text-tertiary); }
+
+/* --- 按钮与横幅 --- */
+.cmdb-btn {
+    border: 1px solid var(--border-color);
+    background: var(--bg-white);
+    color: var(--text-secondary);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.cmdb-btn:hover:not(:disabled) { border-color: var(--text-tertiary); color: var(--text-primary); }
+.cmdb-btn:disabled { opacity: .5; cursor: not-allowed; }
+.cmdb-btn-wide { width: 100%; }
+.cmdb-btn-primary {
+    background: var(--accent-purple);
+    border-color: var(--accent-purple);
+    color: #fff;
+}
+.cmdb-btn-primary:hover:not(:disabled) { color: #fff; opacity: .9; }
+.cmdb-btn-danger { color: var(--accent-red); border-color: var(--accent-red); }
+.cmdb-btn-danger:hover:not(:disabled) { background: var(--accent-red); color: #fff; }
+
+.cmdb-actions { display: flex; gap: 8px; margin: 4px 0 18px; }
+
+.cmdb-banner {
+    margin: 0 20px 12px;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12px;
+    border: 1px solid;
+}
+.cmdb-banner-error { background: #fef2f2; border-color: var(--accent-red); color: #991b1b; }
+.cmdb-banner-ok { background: var(--accent-green-bg); border-color: var(--accent-green); color: #065f46; }
+.cmdb-banner-title { font-weight: 600; margin-bottom: 4px; }
+/* 后端拒绝的原话要完整可见——它是"为什么没生效"的唯一来源，不能截断 */
+.cmdb-banner-body {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+.cmdb-empty { font-size: 12px; color: var(--text-tertiary); padding: 8px 2px; }
+.cmdb-insp-empty { text-align: center; padding: 60px 20px; color: var(--text-secondary); }
+.cmdb-insp-empty-title {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    letter-spacing: .08em;
+    color: var(--text-tertiary);
+    margin-bottom: 12px;
+}
+.cmdb-insp-empty p { font-size: 12px; line-height: 1.7; }
+
+/* ====== 头部用户菜单（user-menu-*）====== */
+/* 右上角点姓名展开。改造前那个位置是个静态 .status-pill，
+   所以这里只**追加**限定到 .user-menu-trigger 的规则，不改 .status-pill 本身。 */
+.user-menu {
+    position: relative;
+}
+
+/* 把 .status-pill 从 div 变成 button 后要做的复位——否则会带上浏览器默认的
+   按钮底色、边框与字体 */
+.user-menu-trigger {
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 5px;
+}
+.user-menu-trigger:hover,
+.user-menu-trigger.open {
+    background: var(--bg-tertiary);
+}
+.user-menu-caret {
+    font-size: 9px;
+    color: var(--text-tertiary);
+    margin-left: 1px;
+}
+
+/* 下拉面板：贴着触发按钮右下，向右对齐（它在屏幕右侧，左对齐会溢出） */
+.user-menu-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 190px;
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .12);
+    padding: 4px;
+    z-index: 120; /* 高于 header 的 100：它渲染在 header 内部，不能低于 header 自身 */
+}
+
+.user-menu-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    padding: 7px 9px;
+    border-radius: 5px;
+    cursor: pointer;
+    font: inherit;
+    color: var(--text-primary);
+}
+.user-menu-item:hover {
+    background: var(--bg-tertiary);
+}
+.user-menu-item.active {
+    background: var(--accent-purple-light);
+}
+.user-menu-item-label {
+    font-size: 12px;
+    font-weight: 600;
+}
+.user-menu-item.active .user-menu-item-label {
+    color: var(--accent-purple);
+}
+.user-menu-item-hint {
+    font-size: 10px;
+    color: var(--text-tertiary);
+}
+
+/* --- 相关边上的删除按钮 + 建边表单 --- */
+/* margin-left:auto 把 × 推到最右：边两端的长 id 会挤满整行，靠右才找得到 */
+.cmdb-edge-del {
+    margin-left: auto;
+    flex-shrink: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 2px;
+    cursor: pointer;
+    border-radius: 3px;
+}
+.cmdb-edge-del:hover:not(:disabled) {
+    background: var(--accent-red);
+    color: #fff;
+}
+.cmdb-edge-del:disabled { opacity: .4; cursor: not-allowed; }
+
+.cmdb-link {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-color);
+}
+.cmdb-link .cmdb-field:last-of-type { margin-bottom: 6px; }
