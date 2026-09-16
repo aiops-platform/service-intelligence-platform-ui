@@ -1792,13 +1792,24 @@ svg { fill: currentColor; }
     font-weight: 500;
     color: var(--accent-purple);
 }
-.si-service-type {
-    font-size: 10px;
-    color: var(--text-tertiary);
-    background: #f8fafc;
-    padding: 1px 8px;
-    border-radius: 10px;
+/* SI Squad Badge —— 与 .si-status 同款「浅底 + 同色系深字」。
+   刻意避开绿/橙/红/灰：那四个色相已被紧邻的 Status 列（Healthy/Warning/Critical/
+   Offline）占用，复用会暗示一种并不存在的关联。冷色区可用色相只剩约 180°~280°，
+   故三色取 青/蓝/紫。未列出的取值走 .unknown 中性灰 —— 后端不校验 squad 取值，
+   将来新增的 squad 不该显示成"没有值"。 */
+.si-squad {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
 }
+.si-squad.sales      { background: #eff6ff; color: #2563eb; }   /* 蓝 221° */
+.si-squad.aftersales { background: #f3e8ff; color: #7c3aed; }   /* 紫 262° */
+.si-squad.common     { background: #ecfeff; color: #0891b2; }   /* 青 192° */
+.si-squad.unknown    { background: #f8fafc; color: var(--text-tertiary); }
 
 /* SI Status Badge */
 .si-status {

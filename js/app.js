@@ -82,6 +82,16 @@
     // 原样保留生效（切页时仍会触发对应视图的刷新闭包）。
     window.__SIP_SHOW_PAGE = showPage;
 
+    // 详情抽屉是五个功能共用的（知识库 / Reflow / Agent / 工单 / Smart Inspection），
+    // 标题必须由打开方自己设 —— 否则会串成别人的标题（Smart Inspection 的详情曾长期
+    // 显示 "Knowledge Entry Detail"）。
+    // **必须定义在这一层**：各 init*() 是互不相通的闭包，放进去别处就调不到
+    // （曾因此让 Detail 按钮抛 ReferenceError）。
+    function setDrawerTitle(title) {
+        var el = document.getElementById('drawerTitle');
+        if (el) el.textContent = title;
+    }
+
     // 接缝 S9（计划稿写 8 处，实施时补的第 9 处）：
     // 5 个无侧边栏的「空壳」顶部域（Constellation / Architecture / FinOps /
     // Security Ops / Value Pool）在改造前走 initNavigation 的 else 分支 ——
@@ -1274,7 +1284,15 @@
 
     // ── Smart Inspection ───────────────────────────────────────
     function initSmartInspection() {
-        var API_URL = 'http://localhost:8080/api/sip-aiops/app-indicator';
+        // 后端基址：默认走**相对路径** /agentflow（Vite dev proxy 与生产 nginx 都已配好），
+        // 同源、无 CORS 预检。可用 localStorage 覆盖 —— 与已迁移页面
+        // （workflowBaseUrl / bugSolveBaseUrl 等）同一习惯。
+        // 注：这偏离了「未迁移视图保持硬编码绝对 URL」的约定，是有意的：该约定当初是为了
+        // 让遗留页面直连 sip-aiops(:8080)，而本页现在改由 agentflow(:8000) 供数。
+        var SI_BASE = localStorage.getItem('smartInspectionBaseUrl')
+                   || localStorage.getItem('workflowBaseUrl')
+                   || '/agentflow';
+        var API_URL = SI_BASE + '/app-indicators';
         var services = [];
         var currentFilter = 'all';
         var isLoading = false;
@@ -1306,6 +1324,17 @@
             return 'unknown';
         }
 
+        // Squad 徽章：与状态徽章同款样式。三色对应 sales / aftersales / common
+        // （取自前端既有色值，且避开 Status 已占用的绿/橙/红/灰，见 css/styles.css）。
+        // 后端不校验 squad 取值，未列出的走中性灰 —— 新 squad 不该显示成 "-"。
+        var SQUAD_KNOWN = ['sales', 'aftersales', 'common'];
+        function squadBadge(squad) {
+            if (!squad) return '<span class="si-squad unknown">-</span>';
+            var key = String(squad).toLowerCase();
+            var cls = SQUAD_KNOWN.indexOf(key) >= 0 ? key : 'unknown';
+            return '<span class="si-squad ' + cls + '">' + fmtText(squad) + '</span>';
+        }
+
         function statusBadge(status) {
             if (status === 'critical') return '<span class="si-status critical">Critical</span>';
             if (status === 'warning') return '<span class="si-status warning">Warning</span>';
@@ -1326,12 +1355,13 @@
             var s = {
                 id: item.serviceId,
                 name: item.serviceName,
-                agent: item.agentName,
+                // 不再映射 agentName —— Agent 列与详情里的 Agent 行已下线（2026-09-16）。
+                // 后端仍返回该字段，要恢复显示把 item.agentName 接回来即可。
                 type: item.serviceType,
                 cpu: item.cpuUsage,
                 cpuBaseline: 70,
                 mem: item.memoryUsage,
-                memBaseline: 80,
+                memBaseline: 70,   // 与后端 status 阈值、metricClass 的 70 对齐（原 80 是编造值）
                 disk: item.blockIO,
                 netIO: item.netIO,
                 netIn: item.netIn,
@@ -1339,6 +1369,9 @@
                 uptime: item.uptime,
                 restartCount: item.restartCount,
                 alertCount: item.alertCount,
+                // Log Anomalies 列：数据源已下线（日志异常改从「问题中心」看），恒为 null → 渲染 "-"。
+                // 保留该键是为了让列值有明确来源，而不是 undefined。
+                logErrorCount: null,
                 status: item.status,
                 owner: item.owner,
                 description: item.description,
@@ -1420,6 +1453,10 @@
         }
 
         // ── API Fetch ────────────────────────────────────────────
+        // 注：原先这里还有一个 refreshLogAnomalies()，单独请求 sip-aiops(:8080) 的
+        // `/log-alert?size=500` 给 "Log Anomalies" 列填数。该请求已下线（2026-09-16）——
+        // 日志异常改从「问题中心」查看，本页不再重复展示。列头保留占位，值恒为 "-"。
+
         function fetchServices(silent) {
             if (isLoading) return;
             isLoading = true;
@@ -1433,33 +1470,21 @@
                     return res.json();
                 })
                 .then(function (data) {
-                    if (data.success && data.data && data.data.content) {
-                        services = data.data.content.map(transformService);
-                        // Fetch log error counts per service
-                        return fetch('http://localhost:8080/api/sip-aiops/log-alert?size=500')
-                            .then(function (res) { return res.json(); })
-                            .then(function (logData) {
-                                var logCounts = {};
-                                if (logData.success && logData.data && logData.data.content) {
-                                    logData.data.content.forEach(function (a) {
-                                        var sn = a.serviceName;
-                                        logCounts[sn] = (logCounts[sn] || 0) + 1;
-                                    });
-                                }
-                                services.forEach(function (s) {
-                                    s.logErrorCount = logCounts[s.name] || 0;
-                                });
-                                updateSIStats();
-                                doSIFilter();
-                                hideLoading();
-                            });
-                    } else {
-                        throw new Error('Invalid response format');
-                    }
+                    if (!data.success) throw new Error(data.error || '后端返回 success=false');
+                    if (!data.data || !data.data.content) throw new Error('响应缺少 data.content');
+                    services = data.data.content.map(transformService);
+                    updateSIStats();
+                    doSIFilter();
+                    hideLoading();
                 })
                 .catch(function (err) {
-                    console.warn('Smart Inspection fetch error, falling back to mock data:', err.message);
-                    useMockData();
+                    console.warn('[Smart Inspection] 取数失败：', err.message);
+                    // **默认不再静默降级到 mock**：那会让「后端挂了」看起来像「一切正常」。
+                    // 需要看假数据时显式开启 —— console 里 localStorage.setItem('siMock','1')
+                    if (localStorage.getItem('siMock') === '1') { useMockData(); return; }
+                    showError(services.length === 0
+                        ? '应用指标加载失败：' + err.message
+                        : '刷新失败：' + err.message + '（保留上次数据）');
                 })
                 .finally(function () {
                     isLoading = false;
@@ -1493,19 +1518,15 @@
             var tbody = document.getElementById('siTableBody');
             if (!tbody) return;
             tbody.innerHTML = data.map(function (s) {
-                var logBadgeAttrs = '';
-                if ((s.logErrorCount || 0) > 0 && s.name) {
-                    logBadgeAttrs = ' style="cursor:pointer;" data-service="' + s.name.replace(/"/g, '&quot;') + '"';
-                }
                 return '<tr class="' + rowClass(s.status) + '" data-id="' + s.id + '">' +
                     '<td><div class="si-service-cell"><span class="si-service-name">' + fmtText(s.name) + '</span></div></td>' +
-                    '<td><span class="si-agent-name">' + fmtText(s.agent) + '</span></td>' +
-                    '<td><span class="si-service-type">' + fmtText(s.type) + '</span></td>' +
+                    '<td>' + squadBadge(s.type) + '</td>' +
                     '<td>' + renderMetricCell(s.cpu, s.cpuBaseline) + '</td>' +
                     '<td>' + renderMetricCell(s.mem, s.memBaseline) + '</td>' +
                     '<td><span class="si-metric-val" style="font-family:SF Mono,monospace;font-size:11px;white-space:nowrap;">' + fmtText(s.disk) + '</span></td>' +
                     '<td>' + alertBadge(s.alertCount, s.name) + '</td>' +
-                    '<td>' + alertBadge(s.logErrorCount || 0, s.name) + '</td>' +
+                    // Log Anomalies：数据源已下线（改从「问题中心」看），列头保留占位，恒为 "-"
+                    '<td>' + alertBadge(s.logErrorCount, s.name) + '</td>' +
                     '<td>' + statusBadge(s.status) + '</td>' +
                     '<td><button class="detail-btn" data-id="' + s.id + '">Detail</button></td>' +
                     '</tr>';
@@ -1548,7 +1569,6 @@
                 if (currentFilter !== 'all' && s.status !== currentFilter) return false;
                 if (search) {
                     return (s.name || '').toLowerCase().indexOf(search) !== -1 ||
-                        (s.agent || '').toLowerCase().indexOf(search) !== -1 ||
                         (s.type || '').toLowerCase().indexOf(search) !== -1;
                 }
                 return true;
@@ -1560,6 +1580,7 @@
         function openSIDetail(serviceId) {
             var s = services.find(function (item) { return item.id === serviceId; });
             if (!s) return;
+            setDrawerTitle('Service Detail');
 
             function metricColor(cls) {
                 if (cls === 'critical') return '#ef4444';
@@ -1573,8 +1594,7 @@
 
             var content = '<div class="detail-meta">' +
                 '<span class="meta-badge">' + fmtText(s.name) + '</span>' +
-                '<span class="meta-badge">' + fmtText(s.agent) + '</span>' +
-                '<span class="meta-badge">' + fmtText(s.type) + '</span>' +
+                squadBadge(s.type) +
                 '<span class="meta-badge">' + statusBadge(s.status) + '</span>' +
                 '<span class="meta-badge">Alerts: ' + fmtText(s.alertCount, '') + '</span>' +
                 '</div>' +
@@ -1589,9 +1609,10 @@
 
                 '<div class="detail-block"><label>Service Info</label>' +
                 '<div class="ticket-meta-grid">' +
-                '<div class="meta-item"><label>Service ID</label><span>' + s.id + '</span></div>' +
-                '<div class="meta-item"><label>Agent</label><span style="font-family:SF Mono,monospace;color:var(--accent-purple);">' + fmtText(s.agent) + '</span></div>' +
-                '<div class="meta-item"><label>Type</label><span>' + fmtText(s.type) + '</span></div>' +
+                // 原为 Service ID（sip-aiops 时代的数据库主键；现由服务名哈希而来，
+                // 无对外语义，故不再展示，改显示服务名本身）
+                '<div class="meta-item"><label>Service Name</label><span>' + fmtText(s.name) + '</span></div>' +
+                '<div class="meta-item"><label>Squad</label><span>' + fmtText(s.type) + '</span></div>' +
                 '<div class="meta-item"><label>Owner</label><span>' + fmtText(s.owner) + '</span></div>' +
                 '<div class="meta-item"><label>Enabled</label><span>' + (s.enabled ? 'Yes' : 'No') + '</span></div>' +
                 '<div class="meta-item"><label>Status</label><span>' + statusBadge(s.status) + '</span></div>' +
@@ -2162,7 +2183,7 @@
                 if (page && page.style.display !== 'none') {
                     fetchServices(true);
                 }
-            }, 1000);
+            }, 5000);
         }
 
         function stopPolling() {

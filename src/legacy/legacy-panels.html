@@ -791,7 +791,7 @@
                     Refresh
                 </button>
                 <div class="si-ml-badge">
-                    <span class="si-ml-dot"></span> ML Baseline Active &middot; 3s Interval
+                    <span class="si-ml-dot"></span> Prometheus &middot; 5s Interval
                 </div>
             </div>
         </div>
@@ -801,28 +801,28 @@
             <div class="kpi-card">
                 <div class="kpi-header"><span>Total Services</span></div>
                 <div>
-                    <div class="kpi-value" style="color:var(--accent-blue);" id="siTotal">7</div>
+                    <div class="kpi-value" style="color:var(--accent-blue);" id="siTotal">0</div>
                     <div class="kpi-sub">monitored applications</div>
                 </div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-header"><span>Healthy</span></div>
                 <div>
-                    <div class="kpi-value" style="color:#10b981;" id="siHealthy">5</div>
+                    <div class="kpi-value" style="color:#10b981;" id="siHealthy">0</div>
                     <div class="kpi-sub">within baseline</div>
                 </div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-header"><span>Warning</span></div>
                 <div>
-                    <div class="kpi-value" style="color:#f59e0b;" id="siWarning">1</div>
+                    <div class="kpi-value" style="color:#f59e0b;" id="siWarning">0</div>
                     <div class="kpi-sub">approaching baseline</div>
                 </div>
             </div>
             <div class="kpi-card">
                 <div class="kpi-header"><span>Critical</span></div>
                 <div>
-                    <div class="kpi-value" style="color:#ef4444;" id="siCritical">1</div>
+                    <div class="kpi-value" style="color:#ef4444;" id="siCritical">0</div>
                     <div class="kpi-sub">exceeded baseline</div>
                 </div>
             </div>
@@ -837,7 +837,7 @@
 
         <!-- Toolbar -->
         <div class="reflow-filter-bar">
-            <input type="text" placeholder="Search service name or type..." id="siSearch" style="flex:1;min-width:200px;">
+            <input type="text" placeholder="Search service name or squad..." id="siSearch" style="flex:1;min-width:200px;">
             <button class="filter-chip active si-filter" data-filter="all">All</button>
             <button class="filter-chip si-filter" data-filter="healthy"><span class="chip-dot" style="background:#10b981;"></span> Healthy</button>
             <button class="filter-chip si-filter" data-filter="warning"><span class="chip-dot" style="background:#f59e0b;"></span> Warning</button>
@@ -861,8 +861,7 @@
                 <thead>
                     <tr>
                         <th>Service Name</th>
-                        <th>Agent</th>
-                        <th>Type</th>
+                        <th>Squad</th>
                         <th>CPU %</th>
                         <th>Memory %</th>
                         <th>DISK I/O</th>
@@ -1869,7 +1868,9 @@
     <div class="drawer-overlay" id="drawerOverlay">
         <div class="drawer">
             <div class="drawer-header">
-                <h3>Knowledge Entry Detail</h3>
+                <!-- 标题由各 open*Detail() 经 setDrawerTitle() 设置；
+                     这里是默认值（知识库页面用它，其余页面各自覆盖）。 -->
+                <h3 id="drawerTitle">Knowledge Entry Detail</h3>
                 <button class="drawer-close-btn" id="drawerCloseBtn">&times;</button>
             </div>
             <div class="drawer-body" id="drawerContent"></div>
