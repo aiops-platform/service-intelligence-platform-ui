@@ -29,3 +29,5 @@ tools/constellation-export/data/
 #   public/business-ops/index.html + public/_next/    （Business Ops，路径不能改）
 # 它们是「克隆下来就能用」的关键，不是随手可弃的中间产物。
 # 重建：python3 tools/make-offline-page.py [--page business-ops]
+
+.vite/
