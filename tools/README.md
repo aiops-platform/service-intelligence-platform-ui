@@ -103,27 +103,85 @@ python3 make-offline-page.py              # 重建，自动注入
 
 ### 加一个租户
 
-把现有租户的 JSON 复制一份，改名另存为 `tenant-data/<新id>.json`，然后改两处：
+把现有租户的 JSON 复制一份，改名另存为 `tenant-data/<新id>.json`，然后改**一处必改 + 一处建议改**：
 
-- `tenant.id` —— 必须是 kebab-case（小写字母开头，只含 `a-z0-9-`），**且和文件名一致**
-- `snapshot.source.db` —— 随便一个标识字符串
+| 字段 | 性质 | 说明 |
+|---|---|---|
+| `tenant.id` | **必须改** | kebab-case（小写字母开头，只含 `a-z0-9-`），**且和文件名一致**。**它才是决定租户名的那一个。** |
+| `snapshot.source.db` | 建议改（**不改也能跑**） | **出处标记**：这份快照是从哪个数据源生成的（`synthetic:<租户>@42` = 合成数据，`design:<租户>@N` = 设计的手工数据）。<br>⚠️ 它**运行时不被任何代码读**（精确搜 `source.db` → 零引用）；但 **zod 里是必填**（`z.string()`，不能为 null）——**删不得，值随便**。<br>改了是**卫生动作**：复制来的数据若保留 `design:mb-retail@1`，出处就在说谎。 |
 
-其余字段照抄即可（这样能保证过 zod 校验）。然后：
+其余字段照抄即可（这样能保证过 zod 校验）。`snapshot.source.asOf` **会显示在页面上**（底栏日期），复制时按需调整。
+
+然后：
 
 ```bash
 python3 tenant_data.py check        # 会告诉你缺什么
 python3 make-offline-page.py        # 构建时会提示「新增租户：xxx」
 ```
 
-**切换租户不用改代码**，站点自带机制：
+**切换租户不用改代码**，站点自带机制（解析顺序，先命中先返回）：
 
 ```
-?tenant=<id>  →  localStorage["sip-active-tenant"]  →  兜底 "retail"
+?tenant=<id>                       → 写入 localStorage 后返回
+localStorage["sip-active-tenant"]  → 返回
+兜底                                → "otr"        ← 2026-09-16 起，此前是 "retail"
 ```
 
-所以加完直接开 `http://localhost:8777/constellation-app.html?tenant=myco`。
+> **本项目统一用 `otr` 这个租户**（与 agentflow 侧 `X-Tenant-ID` / `--tenant otr` 一致），
+> 且它已是**默认租户**——不传任何参数、localStorage 里也没有值时，打开就是 OTR。
 
-现成的 10 个租户也可以这么切，比如 <http://localhost:8777/constellation-app.html?tenant=qantas>。
+### ⚠️ `?tenant=` 必须加在 **iframe 自己的 URL** 上
+
+```
+http://localhost:5173/constellation-app.html?tenant=qantas   ✅ 有效
+http://localhost:5173/constellation?tenant=qantas            ❌ 无效
+```
+
+SIP 应用里的 Constellation 页是**内嵌 iframe**（`src/views/constellation/ConstellationView.vue`
+→ `<NextEmbed src="/constellation-app.html">`），而 `src/components/NextEmbed.vue` 把 `src`
+当普通字符串直接绑到 iframe，**不转发父页面的查询串**；iframe 只读它自己的
+`window.location.search`。所以加在父页面上的 `?tenant=` 会**静默失效**（页面照常渲染，
+只是租户没换）。
+
+> 这是已知行为，**暂不修**。要用参数切换就开 iframe 自己的 URL（见上），或用下面的 DevTools 方法。
+
+### 用 Chrome DevTools 改 localStorage 切租户（推荐，最省事）
+
+localStorage 是**按 origin 隔离**的，而 iframe 与父页面同源（都是 `localhost:5173`），
+所以**在父页面的控制台里改，iframe 也会读到**。
+
+1. 在 SIP 应用页面（`http://localhost:5173/`，任意页面都行）按 **F12** 打开 DevTools
+2. 切到 **Application**（中文界面：**应用**）标签页
+   - 或直接在 **Console** 里执行第 3 步的命令，两种都行
+3. 左侧树：**Storage → Local Storage → `http://localhost:5173`**，
+   找到键 **`sip-active-tenant`**，双击它的值改成目标租户 id（如 `otr`、`qantas`）
+4. **刷新页面**（F5）——iframe 重新加载时读到的就是新值
+
+也可以在 Console 里一行搞定：
+
+```js
+localStorage.setItem('sip-active-tenant', 'otr'); location.reload()
+```
+
+> **为什么改了要刷新**：激活判定在 chunk **模块初始化时**跑一次（`tb = function(){…}()`），
+> 不是响应式的。不刷新不会生效。
+
+### 图内切换器（不用开 DevTools）
+
+页面里还有自带的租户切换器，三种触发方式等价：
+
+```
+三击页头的  >accenture     或     Shift+S     或     window.openSipSwitcher()
+```
+
+下拉里列出全部租户，选中即切（同样会持久化到 localStorage）。
+
+### 当前租户（12 个）
+
+`banking` · `best-buy-reference` · `bunnings` · `consumer-goods` · `healthcare` · `insurance` ·
+`life-sciences` · `mb-retail` · **`otr`**（默认） · `qantas` · `retail` · `telecom`
+
+完整清单与规模随时可查：`python3 tenant_data.py list`
 
 ### 加租户必须过的校验
 
