@@ -39,6 +39,27 @@ const footerPanel = computed(() => NAV.find((n) => n.key === activeKey.value)?.p
 const isLegacyRoute = computed(() => route.meta.legacy !== false)
 
 /**
+ * 侧边栏收起：仅 Service Ops 域（nav.js 该域的 collapsible 字段），且默认收起。
+ * 状态只活在本组件实例里 —— App 全局只挂载一次（main.js），router.push 不重挂，
+ * 所以 SPA 内切页天然保留、刷新页面自然回到默认收起，不需要 localStorage。
+ */
+const collapsed = ref(true)
+
+/**
+ * 域判定用 navKeyOf(activeSlug) 而**不是** activeKey：后者带 `?? 'service-ops'` 兜底，
+ * 会让域外路由误命中 Service Ops —— 典型是 /runs/:runId（router/index.js 的 EXTRA_ROUTES），
+ * 它的 activeSlug 是字面量 `runs/<id>`，navKeyOf 返回 null，正好把把手挡在域外。
+ * 而 navKeyOf 对 /service-ops 本身返回 'service-ops'（nav.js 里 DEFAULT_SLUG 的特殊分支）。
+ */
+const slugDomainKey = computed(() => navKeyOf(activeSlug.value))
+const sidebarCollapsible = computed(
+  () => !!activeSidebar.value && !!NAV.find((n) => n.key === slugDomainKey.value)?.collapsible,
+)
+const showSidebar = computed(
+  () => !!activeSidebar.value && !(sidebarCollapsible.value && collapsed.value),
+)
+
+/**
  * 空壳域会把 service-ops 概览页的标题改成域名（接缝 S9）。
  * 那三个节点归 legacy 所有，这里只负责在路由变化时驱动它，并在离开空壳域时**还原**，
  * 否则标题会一直停在最后一次点过的域名上。
@@ -111,7 +132,24 @@ function onLegacyBooted() {
   <AppHeader :active-key="activeKey" @select="selectDomain" />
 
   <div class="app-body">
-    <AppSidebar :sidebar="activeSidebar" :active-slug="activeSlug" />
+    <AppSidebar v-if="showSidebar" :sidebar="activeSidebar" :active-slug="activeSlug" />
+
+    <!--
+      Service Ops 域的折叠把手。放在这里而不是 AppSidebar 内部：收起时那个组件整个
+      被卸载，把手必须留在外面才存在得了。
+      用真 <button> 而非 div[role=button]：默认收起意味着键盘用户若够不到它，
+      就完全没有任何路径打开该域的导航。
+    -->
+    <button
+      v-if="sidebarCollapsible"
+      type="button"
+      class="sidebar-grip"
+      :class="{ expanded: !collapsed }"
+      :aria-expanded="String(!collapsed)"
+      :aria-controls="activeSidebar.id"
+      :title="collapsed ? '展开导航' : '收起导航'"
+      @click="collapsed = !collapsed"
+    ></button>
 
     <main id="main-content">
       <!-- 持久容器：只切显隐，绝不卸载（否则 app.js 的监听器与定时器会丢） -->

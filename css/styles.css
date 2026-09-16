@@ -37,6 +37,30 @@ body {
     overflow: hidden;
 }
 
+/*
+  外壳布局链的关键一环 —— 少了它整条链是断的。
+
+  改造前 .app-body 是 <body> 的直接 flex 子项，flex:1 生效；Vue 在中间插入了 #app
+  却一直没给它任何规则（本文件里除了这条注释外 #app 零命中），于是：
+  #app 是 display:block + 自动高度，.app-body 的 flex:1 悬空，
+  main 的 flex:1 + overflow-y:auto 随之失去意义（高度永远等于内容高，等于不滚），
+  最后 body 的 overflow:hidden 把超出视口的内容直接裁掉 —— 表现为"页面底部被截断
+  且无法滚动"。注意 body 的 overflow 会按规范传播到视口，所以连滚动条都没有。
+
+  min-height:0 不可省：flex 子项的 min-height 默认是 auto（即内容高），
+  不给 0 的话 #app 依然会被长内容撑开、拒绝收缩到 100vh，等于没修。
+
+  #app 的 5 个直接子元素里只有 .app-body 在流内，其余（header / footer /
+  .ap-modal-overlay / .toast-container）都是 position:fixed，不受 flex 化影响。
+*/
+#app {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
 html { height: 100%; }
 
 /* Utilities */
@@ -340,6 +364,57 @@ header {
 
 .sidebar-children .sidebar-children .sidebar-item {
     padding-left: 56px;
+}
+
+/*
+  侧边栏折叠把手：仅 Service Ops 域（见 nav.js 该域的 collapsible 字段）。
+
+  收起时 <aside class="sidebar"> 整个不在 DOM 里（App.vue 用 v-if 卸载），
+  这条 12px 的竖直白条就是左边缘唯一的抓手。展开时它紧贴 .sidebar 的 border-right
+  （styles.css 的 .sidebar 一节），所以这里**不能**再加 border，否则会出现双线。
+
+  三角形与 .sidebar-arrow::before 同构，只是转成朝右。
+  .app-body 是 flex 行、默认 align-items:stretch，所以它自动与 .sidebar 等高。
+*/
+.sidebar-grip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    min-width: 12px;
+    flex-shrink: 0;
+    /* <button> 的 UA 默认样式重置 */
+    border: 0;
+    padding: 0;
+    background: var(--bg-white);
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.sidebar-grip:hover {
+    background-color: #f3f4f6;
+}
+
+.sidebar-grip:focus-visible {
+    outline: 2px solid var(--accent-purple);
+    outline-offset: -2px;
+}
+
+/* 朝右 —— 收起态，点击展开 */
+.sidebar-grip::before {
+    content: '';
+    display: block;
+    width: 0;
+    height: 0;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 5px solid var(--text-tertiary);
+}
+
+/* 展开后翻转朝左 —— 点击收起 */
+.sidebar-grip.expanded::before {
+    border-left: 0;
+    border-right: 5px solid var(--text-tertiary);
 }
 
 /* Main Container */

@@ -85,6 +85,8 @@ export const NAV = [
     key: 'service-ops',
     label: 'Service Ops',
     landing: 'service-ops',
+    /** 该域的侧边栏可收起、且默认收起。消费方见 src/App.vue 的 sidebarCollapsible。 */
+    collapsible: true,
     dot: '#10b981',
     panel: '3/9 · SERVICE OPS',
     title: '',
