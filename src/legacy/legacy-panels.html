@@ -1,3 +1,13 @@
+    <!--
+      ⚠️ 这个面板**不要删** —— 它已经不是 Service Ops 域的落地页了
+      （那个现在是内嵌的 src/views/service-ops/ServiceOpsView.vue），
+      但仍有 4 条路由靠它渲染：architecture / finops / security-ops / value-pool
+      这些空壳域经 router/index.js 的 emptyDomainRoutes 拿到
+      `panelId: PANEL_ID[DEFAULT_SLUG]`，全部指向 `page-service-ops`。
+
+      CLAUDE.md「迁移一个新视图的步骤」第 5 条是「从本文件删掉该面板」——
+      照做会**静默**弄坏那 4 条路由（页面空白，无报错）。
+    -->
     <div id="page-service-ops" class="page-panel">
     <div class="flex justify-between items-start page-header">
         <div>

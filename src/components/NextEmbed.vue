@@ -10,7 +10,8 @@
 
       public/constellation-app.html     入口
       public/business-ops/index.html    入口（这个路径不能改，见 BusinessOpsView.vue）
-      public/_next/**                   chunk / css / 字体（两页共用）
+      public/service-ops/index.html     入口（同上，见 ServiceOpsView.vue）
+      public/_next/**                   chunk / css / 字体（三页共用）
 
   Vite 的 `public/` 是**按根伺服**的，所以内层的 `/_next/…`（turbopack 硬编码的根绝对
   路径）在 dev 和 build 下都对得上，不需要任何 Vite 插件。`src/` 里也不出现
@@ -22,12 +23,16 @@
   构建脚本往内层注入了一段 `<style id="sip-embed-shell-strip">` 把那两条剥掉，
   并把 `main` 的高度从 `calc(100vh - 92px)` 还原成 `100vh`。
 
-  ## 高度为什么写在 css 里
+  ## 定位为什么写在 css 里
 
-  `#app` 在 styles.css 里**没有任何规则**，是 `display:block` + 自动高度，高度链断在
-  那里（实测只有 112px）。旧视图是在流内的真实内容把 `#app` 撑开的，而这里 iframe
-  外层是绝对定位、不贡献高度，链一断就塌成 20px。详见 `css/styles.css` 的
-  `/* Next.js Embed */` 一节。
+  外壳的高度链曾经是断的（`#app` 没有任何规则、`main` 只有 60px 高且会裁切），
+  那时 `.cs-embed` 只能靠 `position: fixed` 相对视口定位来绕开。
+  **`#app` 的规则后来补上了**（见 `css/styles.css` body 之后那一节），高度链已通，
+  所以 `.cs-embed` 现在改成相对 `main` 的绝对定位 —— 这样它才会给侧边栏让位。
+  详见 `css/styles.css` 的 `/* Next.js Embed */` 一节。
+
+  ⚠️ 注意：用 `fixed` 时它是**无视 .app-body 的 flex 布局**的，会盖住左侧的
+  `.sidebar` / `.sidebar-grip`。Service Ops 域有侧边栏，不能再用那个写法。
 
   ## 为什么加载检测有三层
 

@@ -50,15 +50,32 @@ function sipLegacyBuildCopy() {
  * 这里只为补齐 dev 与 preview —— preview 不继承 server 的中间件，所以要各配一次。
  *
  * 为什么不能换个路径绕开：内层页面用 `usePathname()` 查面板表决定 h1，路径必须精确是
- * `/business-ops`。详见 src/views/business-ops/BusinessOpsView.vue。
+ * `/business-ops` / `/service-ops`。详见 src/views/business-ops/BusinessOpsView.vue。
+ *
+ * ## 只拦「带尾斜杠」的请求（`/service-ops` 必须留给 SPA）
+ *
+ * Business Ops 那边 Vue 路由叫 `/biz-ops`、内嵌页在 `/business-ops/`，**两边不同名**，
+ * 所以怎么拦都不打架。Service Ops 两边**同名**：一旦把 `/service-ops` 也拦下来，
+ * 直接访问或刷新 `/service-ops`（书签、外链、F5）拿到的是那个裸的内嵌页 ——
+ * 没有 AppHeader / AppFooter / 侧边栏，Vue 应用根本不启动，用户卡在没有导航的页面上。
+ *
+ * 所以只拦尾斜杠结尾的请求：iframe 的 src 本来就写 `/service-ops/`，
+ * 而 `/service-ops` 落到 SPA 兜底，Vue 应用照常启动。
+ *
+ * ⚠️ 生产端要同步：通用 `try_files $uri $uri/ /index.html` 会把 `/service-ops`
+ * 经 `$uri/` 解成目录索引，同样吐内嵌页 —— nginx 需在通用规则**之前**补一条
+ * `location = /service-ops { try_files /index.html =404; }`。见 README 的 nginx 片段。
  */
-const EMBED_PAGES = ['/business-ops']
+const EMBED_PAGES = ['/business-ops', '/service-ops']
 
 function sipEmbedPageIndex() {
   // dev 读源目录 public/，preview 读产物 dist/ —— configResolved 里才拿得到这两个值
   const dirs = {}
   const handler = (which) => (req, res, next) => {
-    const path = (req.url || '/').split('?')[0].replace(/\/+$/, '') || '/'
+    const raw = (req.url || '/').split('?')[0]
+    // 只认目录请求。少了这一句，`/service-ops` 会被内嵌页抢走（见上面那段说明）。
+    if (!raw.endsWith('/')) return next()
+    const path = raw.replace(/\/+$/, '') || '/'
     if (!EMBED_PAGES.includes(path) || !dirs[which]) return next()
     const file = resolve(dirs[which], `.${path}`, 'index.html')
     let body

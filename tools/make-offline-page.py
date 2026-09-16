@@ -127,7 +127,7 @@ main.flex.w-full.flex-col.overflow-hidden { height: 100vh !important; }
 </style>
 """
 
-# 两个页面。产出都进 public/ —— Vite 按根伺服，内层 chunk 走的
+# 三个页面。产出都进 public/ —— Vite 按根伺服，内层 chunk 走的
 # `/_next/…`（turbopack 硬编码的**根绝对路径**）dev 与 build 才对得上。
 PAGES = {
     "constellation": {
@@ -143,6 +143,14 @@ PAGES = {
         # ⚠️ 名字**不能随意** —— 必须是 /business-ops/index.html，见文件头说明。
         "out": ("business-ops", "index.html"),
         "vendor_sub": "business-ops",
+        "shared_chunks": True,
+    },
+    "service-ops": {
+        "site_path": "/service-ops/",
+        # ⚠️ 同样不能随意，理由同上：panelByRoute 只剥一个尾斜杠、不认 index.html，
+        # 路径对不上时内层 h1 会**静默**变成 "SIP"（不报错、不白屏）。
+        "out": ("service-ops", "index.html"),
+        "vendor_sub": "service-ops",
         "shared_chunks": True,
     },
 }
@@ -185,12 +193,26 @@ def refresh_vendor(page: dict, vendor_root: Path, shared_dir=None):
     (page_dir / "server.html").write_text(html, encoding="utf-8")
     print(f"    {page['vendor_sub'] or '.'}/server.html  {len(html):,} 字节")
 
-    # 页面独有的 chunk：跳过分享池里已有的
+    # 页面独有的 chunk：跳过**已经存在于本仓**的同名文件。
+    #
+    # 「已知」有两处，缺一不可：
+    #   1. 分享池（Chrome 保存的 _files/）—— 绝大多数 chunk 在这
+    #   2. **其它页面**的 vendor/<页>/chunks/ —— 少了这条，一个被两个页面
+    #      共用的 chunk 会被下载两遍、在仓库里存两份
+    #      （实测：100pim9o6kpoy.js 161KB 就这样重复过一次）
     known = set()
     if shared_dir and shared_dir.is_dir():
         known = {p.name for p in shared_dir.iterdir() if p.is_file()}
+    for other in vendor_root.iterdir() if vendor_root.is_dir() else []:
+        d = other / "chunks"
+        if d.is_dir():
+            known |= {p.name for p in d.iterdir() if p.is_file()}
 
-    names = sorted(set(re.findall(r"/_next/static/chunks/([A-Za-z0-9._~\-]+\.js)", html)))
+    # ⚠️ 必须连 .css 一起抓。本仓已存在**按路由拆分的样式表**
+    # （`0yiy_grop9liv.css` 是 constellation 独有的），而这里原来只匹配 `.js` ——
+    # 下一个带自己样式表的页面会静默漏掉它，构建正常、不报错，
+    # 打开才发现内嵌页没有样式。
+    names = sorted(set(re.findall(r"/_next/static/chunks/([A-Za-z0-9._~\-]+\.(?:js|css))", html)))
     fresh = [n for n in names if n not in known]
     if fresh:
         (page_dir / "chunks").mkdir(exist_ok=True)
@@ -295,12 +317,17 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
             extra = tenant_copy.patch_switcher(chunks_dir, all_tenants)
             if extra:
                 print(f"  切换面板补入租户：{', '.join(extra)}")
-            # journey 表的行数写死成 6 —— 租户不足 6 条 journey 会渲染空占位
-            if tenant_copy.patch_journey_slots(chunks_dir):
-                print("  journey 表行数：6（写死）→ 按 snapshot.journeys 自适应")
+            # journey 槽位写死成 6 —— 租户不足 6 条时多出来的槽位渲染成空占位。
+            # 两处：Business Ops 的 journey 表、服务概览页顶部筛选框。
+            for where in tenant_copy.patch_journey_slots(chunks_dir):
+                print(f"  journey 槽位：6（写死）→ 按 snapshot.journeys 自适应 · {where}")
             # Cross-Journey 兜底桶没有内容时不该显示
             if tenant_copy.patch_cross_journey(chunks_dir):
                 print("  Cross-Journey 选项：常显 → 仅当桶里有组合时显示")
+            # 服务概览页底部热力图：去掉红色档，「几乎全绿 + 1~2 个黄」
+            # （相对刻度导致最大值那格永远是最高档，所以只能改阈值，不能改数据）
+            if tenant_copy.patch_heatmap_palette(chunks_dir):
+                print("  热力图配色：三档（绿/黄/红）→ 两档（绿/黄），去掉红色")
             # Business Ops 末尾的 Ask SIP 卡片 —— 按需求隐藏
             if tenant_copy.patch_ask_sip(chunks_dir):
                 print("  Ask SIP 卡片：已隐藏（Business Ops 面板末尾）")
@@ -325,9 +352,21 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
     out_file = out_dir.joinpath(*page["out"])
     out_file.parent.mkdir(parents=True, exist_ok=True)
     out_file.write_text(html, encoding="utf-8")
+
+    # 6. 产出校验：HTML 里引用的每个 /_next/… 都必须在输出目录下真实存在。
+    #
+    # 为什么必须有这一步：每次构建都先 rmtree 掉 <out>/_next 再从 vendor 重铺，
+    # 所以 vendor 少一个文件的表现是**内嵌页静默 404、白屏、零报错** ——
+    # 看着像后端或数据问题。与 load_vendor 自己的原则一致：
+    # 「缺东西就报清楚缺什么，而不是默默去联网」。
+    refs = sorted(set(re.findall(
+        r"/_next/([A-Za-z0-9._~\-/]+\.(?:js|css|woff2))", html)))
+    missing = [r for r in refs if not (out_dir / "_next" / r).is_file()]
+
     return {"moved": moved, "fonts": copied, "rewritten": n_ref, "navs": n_nav,
             "size": len(html), "overrides": overrides, "stripped": embed_strip,
-            "out_file": out_file, "copy": n_copy}
+            "out_file": out_file, "copy": n_copy,
+            "refs": len(refs), "missing": missing}
 
 
 def main():
@@ -422,6 +461,18 @@ def main():
     print("\n  ⚠ 不要双击 html 用 file:// 打开，也不要拿 Chrome 保存的那份 html 当入口：")
     print("     前者 turbopack 会去找文件系统根的 /_next/，后者 React 根本不会启动。")
     print(f"  ℹ 铺进共用的 public/_next/ 的来源：{len(chunk_srcs)} 个（含其它页面的独有 chunk）。")
+
+    # 产出校验（build 步骤 6）。缺资源时构建本身一切正常，只有打开页面才会发现，
+    # 所以这里必须响、且必须非零退出。
+    if r["missing"]:
+        print(f"\n✗ {len(r['missing'])}/{r['refs']} 个资源引用在输出目录里不存在：")
+        for m in r["missing"]:
+            print(f"    _next/{m}")
+        print("\n  这个页面打开后会 404、白屏，且浏览器不一定报错。")
+        print("  多半是 vendor 缓存里缺文件 —— 联网刷新一次：")
+        print(f"      python3 make-offline-page.py --page {args.page} --refresh")
+        return 1
+    print(f"  ✓ 产出校验：{r['refs']} 个 /_next/ 引用全部存在")
     return 0
 
 

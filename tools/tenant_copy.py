@@ -206,36 +206,57 @@ def _array_span(t: str, start: int) -> int:
     return -1
 
 
-# 页面把 journey 槽位写死成 6 个 —— 见 patch_journey_slots()
-JOURNEY_SLOTS_FILE = "0pfw3-ib1qee0.js"
-JOURNEY_SLOTS_FIND = "let h=[1,2,3,4,5,6].map("
-JOURNEY_SLOTS_REPL = "let h=e.snapshot.journeys.map((_,i)=>i+1).map("
+# journey 槽位写死成 6 个 —— 见 patch_journey_slots()
+#
+# 同一根因在本仓出现过**两处**，症状不同、文件不同，所以做成表驱动而不是两个函数：
+#   1. Business Ops 的 journey 表  → 多出 4 行空行
+#   2. 服务概览页顶部筛选框的 chip  → 多出 4 个 `JOURNEY 3…6 · 0`
+# 每一项是 (标签, 文件, 原串, 替换串)。
+JOURNEY_SLOTS = [
+    ("Business Ops journey 表", "0pfw3-ib1qee0.js",
+     "let h=[1,2,3,4,5,6].map(",
+     "let h=e.snapshot.journeys.map((_,i)=>i+1).map("),
+    ("服务概览页筛选框", "0t1fyt7wcotiz.js",
+     "let p=[1,2,3,4,5,6].map(e=>c(u(e)",
+     "let p=t.snapshot.journeys.map((_,i)=>i+1).map(e=>c(u(e)"),
+]
 
 
-def patch_journey_slots(chunks_dir) -> bool:
+def patch_journey_slots(chunks_dir) -> list:
     """
-    Business Ops 的 journey 表固定渲染 6 行：
+    页面把 journey 槽位写死成 6 个，两处都改成按 `snapshot.journeys` 自适应。
 
-        function u(t){ let n=e.snapshot.journeys.find(e=>e.id===`journey:${t}`); return n?.label??`Journey ${t}` }
-        let h=[1,2,3,4,5,6].map(t=>…)        // ← 写死
+    两处的代码形状完全一样（只是 minify 后的变量名不同）：
 
-    原有 10 个租户**恰好都是 6 条 journey**，所以从没暴露。租户少于此数时，
-    多出来的槽位查不到就退回字面量，渲染成 `Journey 3`…`Journey 6` 的空行（0 apps）。
+        function u(t){ let n=….snapshot.journeys.find(e=>e.id===`journey:${t}`); return n?.label??`Journey ${t}` }
+        let h=[1,2,3,4,5,6].map(t=>…)        // ← 写死 6 个槽位
+
+    原有 10 个租户**恰好都是 6 条 journey**，所以从没暴露。租户少于此数时，多出来的槽位
+    在 `snapshot.journeys` 里查不到，就退回字面量 `` `Journey ${n}` `` —— 于是：
+
+    - Business Ops 的 journey 表渲染出 4 行空的 `Journey 3`…`Journey 6`（各 0 apps）
+    - 服务概览页顶部筛选框渲染出 4 个 `JOURNEY 3 · 0` … `JOURNEY 6 · 0` 的 chip
 
     **不改数据去迁就硬编码** —— 编造 journey 会伪造客户的业务结构。
-    改成按 `snapshot.journeys.length` 自适应，对任何租户都成立。
+    改成按 `snapshot.journeys.length` 自适应，对任何租户都成立：租户有几条就渲染几条。
+
+    返回**已修补的标签列表**（空列表 = 都没打）。每一项都是幂等的：
+    已打过就跳过；站点改版导致原串不唯一也静默跳过，不会把页面改坏。
     """
-    f = chunks_dir / JOURNEY_SLOTS_FILE
-    if not f.is_file():
-        return False
-    t = f.read_text(encoding="utf-8", errors="surrogateescape")
-    if JOURNEY_SLOTS_REPL in t:
-        return False                                # 已打过
-    if t.count(JOURNEY_SLOTS_FIND) != 1:
-        return False                                # 站点改版/已不是唯一 → 静默跳过
-    f.write_text(t.replace(JOURNEY_SLOTS_FIND, JOURNEY_SLOTS_REPL),
-                 encoding="utf-8", errors="surrogateescape")
-    return True
+    done = []
+    for label, name, find, repl in JOURNEY_SLOTS:
+        f = chunks_dir / name
+        if not f.is_file():
+            continue
+        t = f.read_text(encoding="utf-8", errors="surrogateescape")
+        if repl in t:
+            continue                                # 已打过
+        if t.count(find) != 1:
+            continue                                # 站点改版/已不是唯一 → 静默跳过
+        f.write_text(t.replace(find, repl),
+                     encoding="utf-8", errors="surrogateescape")
+        done.append(label)
+    return done
 
 
 # Business Ops / Constellation 的域选择器：Cross-Journey 兜底桶 —— 见 patch_cross_journey()
@@ -309,6 +330,73 @@ def patch_ask_sip(chunks_dir) -> bool:
     if t.count(AS_FIND) != 1:
         return False                                # 站点改版/不唯一 → 静默跳过
     f.write_text(t.replace(AS_FIND, AS_REPL),
+                 encoding="utf-8", errors="surrogateescape")
+    return True
+
+
+# 服务概览页底部 "Daily incident volume · last 30 days" 热力图的配色 —— 见 patch_heatmap_palette()
+HM_FILE = "100pim9o6kpoy.js"
+HM_FIND = (
+    'background:o<.3?"rgba(16,185,129,0.40)"'
+    ':o<.5?"rgba(16,185,129,0.65)"'
+    ':o<.7?"rgba(245,158,11,0.55)"'
+    ':o<.85?"rgba(245,158,11,0.85)"'
+    ':o<.95?"rgba(244,63,94,0.85)"'
+    ':"rgba(244,63,94,0.95)"'
+)
+HM_REPL = (
+    'background:o<.5?"rgba(16,185,129,0.40)"'
+    ':o<.9?"rgba(16,185,129,0.65)"'
+    ':o<.95?"rgba(245,158,11,0.55)"'
+    ':"rgba(245,158,11,0.85)"'
+)
+
+
+def patch_heatmap_palette(chunks_dir) -> bool:
+    """
+    把热力图的三档配色（绿 / 黄 / 红）改成**只有绿和黄**，让整行看上去是健康的。
+
+    ## 为什么不能只改数据
+
+    `Heatmap` 组件把 30 个值按**本序列自己的 min-max 归一化**再分档上色：
+
+        let c = Math.min(...e), l = Math.max(...e) - c || 1
+        … let o = (e - c) / l          // 每格的相对位置，0 = 最小值，1 = 最大值
+
+    所以**最大值那一格恒等于 1.0，永远是最高档**。原配色最高两档是红色，
+    于是无论数据怎么调，那一格都是红的 —— 光改数据永远去不掉红色。
+    （唯一的例外是 30 个值全相等：此时 `l = 0 || 1`，全部 `o = 0` → 全绿，但那也就没有黄了。）
+
+    要达到「几乎全绿 + 1~2 个黄 + 零红」，只能改**分档阈值**。
+
+    ## 改法
+
+        o < .5   → 绿（浅）
+        o < .9   → 绿（深）
+        o < .95  → 黄
+        else     → 黄（深）        ← 原来是红
+
+    阈值 0.9 是配合当前数据选的：实测那 30 个值的 `o` 里只有 2 个 ≥ 0.9
+    （1.000 与 0.970），于是正好 2 格黄、28 格绿、0 格红。
+    注意这是**相对**刻度，换租户后数据分布变了，黄的格数会在 1~3 之间浮动 ——
+    但最大值那格恒为黄，所以**永远不会再出现红色**。
+
+    ## 影响范围
+
+    组件定义在共享 chunk `100pim9o6kpoy.js` 里，但**只有服务概览页引用它**
+    （实测：`0t1fyt7wcotiz.js` 引用 1 次，Business Ops 的 `00tsl~72wvlrr.js`
+    与 Constellation 的分享池都零引用；两页的 DOM 里也都没有第二处这种网格）。
+    所以这个替换实际上只作用于服务概览页。
+    """
+    f = chunks_dir / HM_FILE
+    if not f.is_file():
+        return False
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if HM_REPL in t:
+        return False                                # 已打过
+    if t.count(HM_FIND) != 1:
+        return False                                # 站点改版/不唯一 → 静默跳过
+    f.write_text(t.replace(HM_FIND, HM_REPL),
                  encoding="utf-8", errors="surrogateescape")
     return True
 

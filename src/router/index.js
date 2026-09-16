@@ -48,7 +48,15 @@ const EXTRA_ROUTES = [
   },
 ]
 
-/** 取某 slug 的路由路径与别名 */
+/**
+ * 取某 slug 的路由路径与别名。
+ *
+ * `item.component` 是给 STANDALONE_PAGES 用的第三条登记口（不是侧边栏叶子、也不是空壳域）。
+ * ⚠️ **它必须和 `legacy: false` 成对出现** —— 上面 VIEW_COMPONENTS 那条注释说的
+ * 「组件渲染了但 legacy 面板没隐藏」在这里同样成立：`App.vue` 的
+ * `<LegacyPanels v-show="isLegacyRoute">` 与 `<RouterView v-if="!isLegacyRoute">` 是兄弟节点，
+ * `meta.legacy` 判错就会两个内容挤在同一个槽位里。
+ */
 function routeFor(item) {
   const aliases = Object.entries(SLUG_ALIASES)
     .filter(([, canonical]) => canonical === item.slug)
@@ -57,11 +65,11 @@ function routeFor(item) {
     path: `/${item.slug}`,
     name: item.slug,
     alias: aliases,
-    component: VIEW_COMPONENTS[item.slug] || LegacyPanelHost,
+    component: item.component || VIEW_COMPONENTS[item.slug] || LegacyPanelHost,
     meta: {
       label: item.label,
       panelId: PANEL_ID[item.slug],
-      legacy: !MIGRATED.has(item.slug),
+      legacy: item.component ? false : !MIGRATED.has(item.slug),
     },
   }
 }
@@ -86,8 +94,23 @@ const LANDING_PATH = '/constellation'
  * `service-ops`（域概览页）**只**能由默认值和顶部导航落过来，侧边栏里没有它 ——
  * 所以 flattenItems() 不会产出它。早期版本漏了这条，导致 `/service-ops` 匹配不到路由、
  * 落到 catch-all 再重定向回 `/service-ops` → **无限重定向（Maximum call stack size exceeded）**。
+ *
+ * `component` 是上面 routeFor() 说的第三条登记口：Service Ops 概览页现在是内嵌的
+ * Next.js 页面（`ServiceOpsView.vue`），既不是侧边栏叶子（不进 MIGRATED/VIEW_COMPONENTS），
+ * 也不是空壳域（它有侧边栏，不进 DOMAIN_COMPONENTS）。
+ *
+ * ⚠️ 不要为了「让它像 biz-ops 那样」而把该域的 sidebar 设成 null ——
+ * flattenItems() 只遍历有侧边栏的域，那会一次性干掉域内 9 条叶子路由，
+ * 而且 service-ops 会落进 EMPTY_DOMAINS，emptyDomainRoutes 再产出一条 `/service-ops`
+ * 覆盖掉本页（且只有一个 console 警告）。
  */
-const STANDALONE_PAGES = [{ slug: DEFAULT_SLUG, label: 'Service Ops' }]
+const STANDALONE_PAGES = [
+  {
+    slug: DEFAULT_SLUG,
+    label: 'Service Ops',
+    component: () => import('@/views/service-ops/ServiceOpsView.vue'),
+  },
+]
 
 /**
  * 空壳域里**已经接了真实组件**的。

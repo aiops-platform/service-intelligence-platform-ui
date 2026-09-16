@@ -7432,44 +7432,49 @@ svg { fill: currentColor; }
 /* Next.js Embed */
 
 /*
-  Constellation 与 Business Ops 两个域内嵌部署站的页面，共用这一套规则
+  Constellation / Business Ops / Service Ops 三个域内嵌部署站的页面，共用这一套规则
   （src/components/NextEmbed.vue）。内层是另一套 Next.js 应用，产物在 public/，
   由 Vite 按根伺服。
 
   ⚠️ 类名保留 `cs-` 前缀（cs = Constellation，最早只服务它）。**不要为了改名而改名** ——
   样式表也是类名的消费方，改一处漏一处就是静默掉样式（本仓在 `#bsZoomFit` 上踩过同一个坑）。
 
-  ## 为什么是 position: fixed
+  ## 为什么是 position: absolute（相对 main）
 
-  整个高度链是断的，只能绕开它：
+  这里**曾经**是 `position: fixed; top: 52px; left: 0; right: 0`，相对视口定位。
+  当年那么写是因为整条高度链是断的：`#app` 在样式表里没有任何规则，`.app-body` 的
+  `flex:1` 悬空，`main` 只有 60px 高且 `overflow-y:auto` —— 把 iframe 写成 absolute
+  会被 main 裁掉，只露出顶部一小条，看着像"一层白布盖住页面"。`fixed` 能跳出发明的高度链。
 
-    body(100vh, flex column)
-      └ #app          ← styles.css 里**没有任何规则**，display:block + 自动高度，
-      │                 作为 flex 子项也不拉伸。实测只有 112px
-      └ .app-body     flex:1 —— 但父级没高度，撑不开
-      └ main          flex:1 + overflow-y:auto —— 同样只有 60px
+  **那个前提已经被修掉了**：`#app` 现在有完整规则（见本文件 body 之后那一段），
+  `main` 拿到确定高度（= 视口高 - 52px），绝对定位子元素不再溢出、不再被裁。
+  所以这里收回当年的绕行，改成相对 `main` 定位。
 
-  旧视图没暴露这个问题，是因为它们是**在流内的真实内容**，把 #app 撑开了。
-  而这里的 iframe 是绝对/固定定位、不贡献高度，链一断就全塌。
+  ## 为什么必须跟着 main 而不是视口
 
-  ⚠️ 光给高度是不够的（踩过）：把 .cs-embed 写成 absolute + height: calc(100vh-92px)，
-  它确实有 821px，但 **main 只有 60px 且 overflow-y:auto —— 它会把溢出的部分裁掉**，
-  结果只露出内层顶部 60px，看着像"一层白布盖住页面"。
+  视口定位会**无视 .app-body 的 flex 布局**，永远从 x=0 铺到右边缘。
+  `.sidebar`（220px）和 `.sidebar-grip`（12px）都是**未定位**元素，
+  而 `main` 是 `position:relative; z-index:1` —— 于是 main 的子树盖在它们之上。
+  内嵌页在 Service Ops 域时侧边栏是存在的，`left:0` 会把侧边栏连同那个 12px 把手一起盖住；
+  而侧边栏**默认是收起的**，把手是打开该域 9 条导航的**唯一入口**，盖住就等于导航全废。
 
-  **`position: fixed` 相对视口定位，直接跳出发明的高度链和 main 的裁剪。**
-  这也是本组件唯一需要关心的东西，不影响任何其它路由。
+  改成相对 main 之后：main 的左边缘天然在侧边栏右侧，iframe 自动让位 ——
+  **不需要把 220px 抄到这里**（样式表是宽度的唯一真源）。没有侧边栏的域
+  （Constellation / Business Ops）main 左边缘就是 0，行为与改动前逐像素一致。
 
   ## 数字怎么来的
 
-  - `52px` = header 高度（见 Header 一节，position: fixed）
+  - `0` = main 的 padding box 上沿。main 在 .app-body 的 padding-top:52px 之内，
+    所以它天然就是 header 的下边缘，不必再写 52px
   - `40px` = 给 fixed footer 让的位，与 main 的 padding-bottom 一致（见 Main Container）
-  - `z-index: 1` = 与 main 同级；header(100) 和 footer(30) 都在它之上，不会被盖
+  - `z-index: 1` = 在 main 的层叠上下文内；header(100) 和 footer(30) 都在它之上，不会被盖
 
-  实测：帧 1600x821 @top52、底 873；footer 顶 880 → 不重叠。
+  注意 main 的 padding 对绝对定位子元素不生效（绝对定位包含块是 padding box），
+  所以 iframe 是贴着 main 的四边铺的，不受那 20px/24px 内边距影响 —— 与改动前一致。
 */
 .cs-embed {
-    position: fixed;
-    top: 52px;
+    position: absolute;
+    top: 0;
     right: 0;
     bottom: 40px;
     left: 0;

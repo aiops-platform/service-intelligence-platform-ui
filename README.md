@@ -49,6 +49,16 @@ server {
     listen 80;
     root /var/www/sip;                       # dist/ 的内容
 
+    # ⚠️ 必须放在 location / 之前（nginx 的 `=` 精确匹配优先级最高，位置其实不影响，
+    #    但写在这里更醒目）。
+    #
+    # 内嵌页产物里有 dist/service-ops/index.html，于是通用规则会把 /service-ops
+    # 经 `$uri/` 解成那个目录索引，**吐出裸的内嵌页**（没有 AppHeader / 侧边栏，
+    # Vue 应用根本不启动）。这条把无斜杠路径强制指回 SPA；
+    # 带斜杠的 `/service-ops/` 继续走通用规则解析目录索引，正是 iframe 需要的那个。
+    # 详见 src/views/service-ops/ServiceOpsView.vue 与 vite.config.js。
+    location = /service-ops { try_files /index.html =404; }
+
     location / {
         try_files $uri $uri/ /index.html;    # history 模式回退，直达 URL 刷新才不 404
     }
