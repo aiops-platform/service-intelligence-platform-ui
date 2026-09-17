@@ -96,6 +96,11 @@
     // 5 个无侧边栏的「空壳」顶部域（Constellation / Architecture / FinOps /
     // Security Ops / Value Pool）在改造前走 initNavigation 的 else 分支 ——
     // 隐藏所有侧边栏 → showPage('page-service-ops') → 把该页标题改成域名、清空描述。
+    //
+    // ⚠️ 这份名单归**旧单页世界**所有（独立打开 index.html 时才走到），
+    // 与 Vue 侧 NAV 是两份互不同步的实现 —— 那边 Value Pool 已于 2026-09-17 摘除，
+    // 这边**保持 5 个不变**（旧入口里那个 nav-item 还在，点它仍走 else 分支）。
+    // 不要为了「对齐」来改这里。
     // 后两个节点在 #page-service-ops 内，归本文件所有，所以由本文件提供受控入口，
     // 而不是让 Vue 直接改 legacy DOM。
     // 顺带修掉一个潜伏 bug：改造前用的是 document.querySelector('.page-title')，

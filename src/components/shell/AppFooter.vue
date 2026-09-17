@@ -4,7 +4,7 @@
 -->
 <script setup>
 defineProps({
-  panel: { type: String, default: '3/9 · SERVICE OPS' },
+  panel: { type: String, default: '3/8 · SERVICE OPS' },
 })
 </script>
 

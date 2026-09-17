@@ -94,3 +94,73 @@ Observability › APM › Monitor Targets 页面曾提供 **Manual Run**（手�
 
 > 注：上述"可重新加回"的路径写在 v2.0.0 之前。该页面的 DOM 与脚本现在位于
 > `src/legacy/legacy-panels.html` 与 `js/app.js`，恢复方式不变。
+
+## Ticket Workspace — Approval Center / L1 Automation（已隐藏）
+
+Service Ops 域侧边栏 `Ticket Workspace` 分组下的 **Approval Center** 与 **L1 Automation**
+两个入口已按要求隐藏（2026-09-17），该分组现只剩 `Ticket Inbox` 一项。
+
+做法与上面 Business Ops 那次摘侧边栏同理 —— **只摘导航，不删页面**：
+`src/router/nav.js` 的 `ticket-workspace-svc` 分组里去掉两个叶子。侧边栏由 `NAV` 直接渲染，
+所以菜单立刻少两项；而 `flattenItems()` 是路由表的唯一来源（`src/router/index.js:161`），
+叶子没了路由也就没了，因此直接输 `/approval-center` / `/l1-automation` 会落进
+catch-all 重定向回 `/service-ops` —— 这是有意的，留着可直达的 URL 等于没隐藏。
+
+**一个字节都没动的东西**（恢复时不用碰）：
+
+| 位置 | 内容 |
+|---|---|
+| `src/legacy/legacy-panels.html` | `#page-l1-automation`（:626）、`#page-approval-center`（:700）两个面板 |
+| `js/app.js` | `initNavigation` 里 `l1-automation` / `approval-center` 两个分支（:142-145、:644-645） |
+| `src/router/nav.js` | `PANEL_ID` 的两条映射（:25-26） |
+
+**恢复方式**：把这两行放回 `nav.js` 的 `ticket-workspace-svc.items` 即可：
+
+```js
+{ slug: 'approval-center', label: 'Approval Center' },
+{ slug: 'l1-automation', label: 'L1 Automation' },
+```
+
+> 注：`js/app.js` 那两个分支只在**独立打开旧 `index.html`** 时才会走到 ——
+> 嵌入模式下 `initNavigation` 整个被跳过（见 CLAUDE.md「接缝」一节），导航完全由
+> Vue 侧边栏接管。所以留着它们不影响本次隐藏，删掉反而会弄坏旧单页入口。
+
+## Value Pool 域（已隐藏）
+
+顶栏第 9 个域 **Value Pool** 已按要求隐藏（2026-09-17），顶栏从 9 个域变 **8 个**。
+
+它与上面那次**不同**：上次只是 Service Ops 里摘两个侧边栏叶子、域还在；这次是
+**整个域都不在了**。做法还是同一条 —— 从 `src/router/nav.js` 的 `NAV` 摘掉那一项，
+其余全是自动的：
+
+| 连带效果 | 机制 |
+|---|---|
+| 顶栏少一项 | `AppHeader.vue:96` 直接渲染 `NAV` |
+| `/value-pool` 路由消失 | `EMPTY_DOMAINS = NAV.filter(n => !n.sidebar)` → 空壳域 6 → 5，`emptyDomainRoutes` 由它派生 |
+| 输 `/value-pool` 落回 `/service-ops` | catch-all `/:pathMatch(.*)*` |
+
+**footer 的 PANEL 编号同步从 `x/9` 改成了 `x/8`**（8 处 `panel` 字符串 + `AppFooter.vue`
+的 prop 默认值）。分母是**域的总数**，域少了一个分母就得跟着改，否则 footer 会出现
+「8/9」这种顶栏没有第 9 项的对不上。这是纯展示文案，没有逻辑消费方
+（`data-panel` 属性只在独立打开旧 `index.html` 时被 `initNavigation` 读）。
+
+**恢复方式**：把下面这段放回 `NAV` 末尾，并把 8 处 `panel` 改回 `x/9`：
+
+```js
+{
+  key: 'value-pool',
+  label: 'Value Pool',
+  dot: '#10b981',
+  panel: '9/9 · VALUE POOL',
+  title: 'Value realization · ROI tracking',
+  sidebar: null,
+},
+```
+
+> ⚠️ `js/app.js` 里还有**一份独立的**空壳域名单（`initNavigation` 的 else 分支），
+> 只服务独立打开旧 `index.html` 的场景。它**不会**跟着 `NAV` 自动同步 ——
+> 那边仍然认 Value Pool（旧单页入口里它还在，这是对的，不用改）。
+>
+> 另注：**没有**为此新增 `hidden` 标志位。加标志位等于给「可见性」引入第三套语义
+> （`NAV` 的成员资格 + `EMPTY_DOMAINS` 的派生 + 渲染时的过滤），而「从 `NAV` 摘掉」
+> 本身已经同时表达了全部三者。

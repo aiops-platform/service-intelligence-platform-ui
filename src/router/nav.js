@@ -44,9 +44,10 @@ export const SLUG_ALIASES = {
 }
 
 /**
- * 顶部 9 个域 + 各自侧边栏。
+ * 顶部 8 个域 + 各自侧边栏（原 9 个，Value Pool 已摘，见数组末尾的说明）。
  *
- * sidebar 为 null 的 5 个是**空壳**：改造前 `initNavigation` 的 else 分支直接
+ * sidebar 为 null 的 5 个（constellation / biz-ops / architecture / finops /
+ * security-ops）是**空壳**：改造前 `initNavigation` 的 else 分支直接
  * 落到 `page-service-ops` 并把 footer 文案改成域名，这里保持同样语义。
  *
  * 分组可嵌套（只有 Service Ops › Observability › APM 这一处）：子分组渲染在
@@ -57,7 +58,7 @@ export const NAV = [
     key: 'constellation',
     label: 'Constellation',
     dot: '#8b5cf6',
-    panel: '1/9 · CONSTELLATION',
+    panel: '1/8 · CONSTELLATION',
     title: '893 apps · 22 portfolios · 6 journeys · 173 teams',
     sidebar: null,
   },
@@ -77,7 +78,7 @@ export const NAV = [
     key: 'biz-ops',
     label: 'Business Ops',
     dot: '#ec4899',
-    panel: '2/9 · BUSINESS OPS',
+    panel: '2/8 · BUSINESS OPS',
     title: 'XLA dashboard · journey health · freeze readiness',
     sidebar: null,
   },
@@ -88,20 +89,29 @@ export const NAV = [
     /** 该域的侧边栏可收起、且默认收起。消费方见 src/App.vue 的 sidebarCollapsible。 */
     collapsible: true,
     dot: '#10b981',
-    panel: '3/9 · SERVICE OPS',
+    panel: '3/8 · SERVICE OPS',
     title: '',
     sidebar: {
       id: 'sidebar-service-ops',
       title: 'Service Ops',
       groups: [
         {
+          /*
+           * 原先这里还有 Approval Center 与 L1 Automation 两个叶子。按用户要求
+           * 「隐藏掉」，已于 2026-09-17 从本数组摘除。
+           *
+           * 与上面 Business Ops 那次摘侧边栏同理：**只摘导航，不删页面**。
+           * 两个 legacy 面板仍在 js/app.js 与 legacy-panels.html 里，PANEL_ID 的两条
+           * 映射也没动 —— 但 flattenItems() 是路由表的唯一来源，不产出就没有路由，
+           * 于是侧边栏点不到、直接输 URL 也落进 catch-all 回到 service-ops。
+           *
+           * 要恢复就把这两行放回来（其余文件一个都不用碰）：
+           *   { slug: 'approval-center', label: 'Approval Center' },
+           *   { slug: 'l1-automation', label: 'L1 Automation' },
+           */
           key: 'ticket-workspace-svc',
           label: 'Ticket Workspace',
-          items: [
-            { slug: 'tickets', label: 'Ticket Inbox' },
-            { slug: 'approval-center', label: 'Approval Center' },
-            { slug: 'l1-automation', label: 'L1 Automation' },
-          ],
+          items: [{ slug: 'tickets', label: 'Ticket Inbox' }],
         },
         {
           key: 'observability',
@@ -131,7 +141,7 @@ export const NAV = [
     label: 'Engineering Ops',
     landing: 'knowledge-reflow-log',
     dot: '#3b82f6',
-    panel: '4/9 · ENGINEERING OPS',
+    panel: '4/8 · ENGINEERING OPS',
     title: 'Code velocity · change calendar · Claude Code workbench',
     sidebar: {
       id: 'sidebar-eng-ops',
@@ -152,7 +162,7 @@ export const NAV = [
     key: 'architecture',
     label: 'Architecture',
     dot: '#14b8a6',
-    panel: '5/9 · ARCHITECTURE',
+    panel: '5/8 · ARCHITECTURE',
     title: '6R classification · modernization queues',
     sidebar: null,
   },
@@ -160,7 +170,7 @@ export const NAV = [
     key: 'finops',
     label: 'FinOps',
     dot: '#f59e0b',
-    panel: '6/9 · FINOPS',
+    panel: '6/8 · FINOPS',
     title: 'Cloud trajectory · vendor consolidation · untagged spend',
     sidebar: null,
   },
@@ -168,7 +178,7 @@ export const NAV = [
     key: 'security-ops',
     label: 'Security Ops',
     dot: '#f97316',
-    panel: '7/9 · SECURITY OPS',
+    panel: '7/8 · SECURITY OPS',
     title: 'Vulnerability heatmap · attack surface · freeze risk',
     sidebar: null,
   },
@@ -177,7 +187,7 @@ export const NAV = [
     label: 'Agents',
     landing: 'agent-registry',
     dot: '#6366f1',
-    panel: '8/9 · AGENTS',
+    panel: '8/8 · AGENTS',
     title: 'AI agent registry · performance · usage',
     sidebar: {
       id: 'sidebar-agents',
@@ -197,14 +207,25 @@ export const NAV = [
       ],
     },
   },
-  {
-    key: 'value-pool',
-    label: 'Value Pool',
-    dot: '#10b981',
-    panel: '9/9 · VALUE POOL',
-    title: 'Value realization · ROI tracking',
-    sidebar: null,
-  },
+  /*
+   * 原先这里还有第 9 个域 Value Pool（空壳域，panel '9/9 · VALUE POOL'，
+   * 原型自带、随 c4f3199 的代码导入进来）。按用户要求「隐藏掉」，
+   * 已于 2026-09-17 从 NAV 摘除。
+   *
+   * 与上面 Business Ops 那次**不同**：那次只摘侧边栏、域还在（仍是 9 个域）；
+   * 这次是整个域都不在了，所以是 8 个。
+   *
+   * 连带效果全是自动的，没有额外的代码要改：
+   *   - 顶栏（AppHeader）直接渲染 NAV → 少一个 nav-item
+   *   - EMPTY_DOMAINS = NAV.filter(n => !n.sidebar) → 空壳域 5 → 4
+   *   - emptyDomainRoutes 由 EMPTY_DOMAINS 派生（router/index.js）→ `/value-pool`
+   *     这条路由不再生成，直接输 URL 会落 catch-all 回到 /service-ops
+   *   - 其余 8 个域的 panel 文案同步 x/9 → x/8（分母是域的总数）
+   *
+   * 要恢复就把上面那段放回来，并把 8 处 panel 改回 `x/9` —— 没有别的东西要动。
+   * 注意 `js/app.js` 里那份空壳域名单（initNavigation 的 else 分支）**是独立的**
+   * 一份实现，只服务独立打开旧 index.html 的场景，两边不会自动同步。
+   */
 ]
 
 /** 默认落地页（改造前 `page-service-ops` 无 display:none，是唯一默认可见的面板） */
@@ -223,18 +244,27 @@ export const DEFAULT_SLUG = 'service-ops'
  */
 export const EMPTY_DOMAINS = NAV.filter((n) => !n.sidebar)
 
-/** 把分组树拍平成叶子列表（供路由表使用） */
+/**
+ * 把分组树拍平成叶子列表（供路由表使用）。
+ *
+ * ⚠️ 递归的是**分组**，不是 item —— `groups` 与 `items` 在分组对象上平级，
+ * 从来不是 item 的字段。早期版本把 `if (it.groups)` 写在遍历 items 的循环里，
+ * 那个分支永不成立，于是只有顶层分组被走到：APM 子分组（Observability › APM）
+ * 底下的两个叶子从未进入返回列表，`/monitor-targets` 与 `/domain-config`
+ * 两条路由根本没生成，点菜单落进 catch-all 被静默重定向回 service-ops
+ * （症状是「页面不见了」，但面板与 init 全都在）。
+ *
+ * 顺序与 SidebarGroup.vue 的递归渲染保持一致：先 items，后 groups。
+ */
 export function flattenItems(nav = NAV) {
   const out = []
-  const walk = (items) => {
-    for (const it of items) {
-      if (it.slug) out.push(it)
-      if (it.groups) for (const g of it.groups) walk(g.items)
-    }
+  const walkGroup = (g) => {
+    for (const it of g.items) if (it.slug) out.push(it)
+    for (const sub of g.groups || []) walkGroup(sub)
   }
   for (const top of nav) {
     if (!top.sidebar) continue
-    for (const g of top.sidebar.groups) walk(g.items)
+    for (const g of top.sidebar.groups) walkGroup(g)
   }
   return out
 }

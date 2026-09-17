@@ -125,7 +125,8 @@ const STANDALONE_PAGES = [
  * ⚠️ 这里跟的是**域的 key**，不是 slug —— 所以 Business Ops 是 `biz-ops`（它的 slug
  * 集合为空：摘掉侧边栏后没有任何叶子指向它），落在 `/biz-ops` 这个 URL 上。
  *
- * 其余 4 个空壳域（architecture / finops / security-ops / value-pool）仍是空壳。
+ * 其余 3 个空壳域（architecture / finops / security-ops）仍是空壳。
+ * （空壳域原有 5 个，Value Pool 已于 2026-09-17 从 NAV 摘除，见 nav.js 数组末尾。）
  */
 const DOMAIN_COMPONENTS = {
   constellation: () => import('@/views/constellation/ConstellationView.vue'),
