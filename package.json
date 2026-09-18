@@ -1,7 +1,7 @@
 {
   "name": "service-intelligence-platform-ui",
   "private": true,
-  "version": "2.2.1",
+  "version": "2.2.2",
   "type": "module",
   "description": "SIP 前端 —— 外壳与 2 个代表视图已 Vue 化，其余 15 个视图仍由 js/app.js 驱动（双世界共存，见 docs/v2.0.0-vue-rewrite-plan.md）",
   "scripts": {

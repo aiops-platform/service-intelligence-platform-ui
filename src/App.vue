@@ -42,6 +42,10 @@ const isLegacyRoute = computed(() => route.meta.legacy !== false)
  * 侧边栏收起：仅 Service Ops 域（nav.js 该域的 collapsible 字段），且默认收起。
  * 状态只活在本组件实例里 —— App 全局只挂载一次（main.js），router.push 不重挂，
  * 所以 SPA 内切页天然保留、刷新页面自然回到默认收起，不需要 localStorage。
+ *
+ * 唯一的例外是**点顶栏该域本身**：那一下把它复位回 `true`，语义是「回到该域的初始形态」。
+ * 复位点写在 selectDomain 里，不在这里 watch 路由 —— 域内切叶子（点侧边栏）必须保住展开态，
+ * 否则展开后一导航就自己收起来了。
  */
 const collapsed = ref(true)
 
@@ -113,10 +117,22 @@ provide('navigate', navigate)
 
 /**
  * 点顶部域。有侧边栏的域落到它的 landing；
- * 5 个空壳域按改造前 initNavigation 的 else 分支语义：落到 service-ops 概览，
+ * 空壳域按改造前 initNavigation 的 else 分支语义：落到 service-ops 概览，
  * 并把该页标题改成域名（经接缝 S9，因为那两个节点归 legacy 所有）。
  */
 function selectDomain(item) {
+  /**
+   * 可折叠域（目前只有 Service Ops）：点顶栏域 = 回到该域的**初始形态** —— 概览页 + 侧边栏收起。
+   *
+   * `collapsed` 是 App 实例上的状态，SPA 内切页会一直保留（展开态就是这样被带走的，
+   * 见上面 ref 的注释）。所以这里必须显式复位，否则「展开着侧边栏去别的页 → 点回
+   * Service Ops」会带着展开态回来，与「点域即看概览」的预期不符。
+   *
+   * 已经在 /service-ops 时这句同样不能省：下面的 push 是**同址导航**，router 会把它
+   * 当重复导航忽略掉，只有复位本身生效 —— 那正是「展开后点顶栏 Service Ops 毫无反应」
+   * 的场景。
+   */
+  if (item.collapsible) collapsed.value = true
   // 有侧边栏的域落到它的 landing；空壳域走自己的路由（meta.domainKey 驱动高亮与标题）
   router.push(item.sidebar ? `/${item.landing}` : `/${item.key}`)
 }
