@@ -3696,6 +3696,59 @@
         var analyzeBusy = false;   // analyze 请求在途标志（防双击）
         // agentflow（Bug Solve 后端）基址，与 Bug Solve 页一致：bugSolveBaseUrl > workflowBaseUrl > 默认 8000
         var AGENTFLOW_BASE = localStorage.getItem('bugSolveBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+        // agentflow 侧租户（X-Tenant-ID）。⚠️ 与上面的 TENANT_ID（APM 租户）**故意不同**：
+        // 问题单在 APM 租户（本机 default），而 workflow / MCP server / agent 绑定在 agentflow
+        // 租户（本机 otr）——两侧由 APM 的 APM_AGENTFLOW_TENANT 桥接（起 run 那步在 APM 内完成）。
+        // 本页此前的 agentflow 调用**全都不带这个头**，run 会落到 agentflow 的 dev 缺省租户 local，
+        // 而那里没有任何 MCP 绑定 → agent 拿不到工具。故统一收口到 agentflowFetch。
+        var AGENTFLOW_TENANT = localStorage.getItem('agentflowTenantId') || 'otr';
+        // 「分析new」固定用这条日志诊断流程（按 name 解析 id；名字要与 seed 脚本一致）
+        var LOG_DIAGNOSE_WF_NAME = 'problem-log-diagnose';
+        var pcLogWfId = '';       // 解析后的 workflow id 缓存
+        var pcLogWfBusy = false;  // 解析在途（防并发重复拉取）
+
+        function agentflowFetch(path, options) {
+            var opts = options || {};
+            var headers = { 'X-Tenant-ID': AGENTFLOW_TENANT };
+            if (opts.headers) {
+                for (var k in opts.headers) { if (opts.headers.hasOwnProperty(k)) headers[k] = opts.headers[k]; }
+            }
+            if (opts.body) headers['Content-Type'] = 'application/json';
+            return fetch(AGENTFLOW_BASE + path, {
+                method: opts.method || 'GET',
+                headers: headers,
+                body: opts.body ? JSON.stringify(opts.body) : undefined
+            });
+        }
+
+        // 解析日志诊断 workflow 的 id（按 name 查 agentflow /workflows）。
+        // 找不到时给**可执行**的提示——这条流程是 seed 出来的，库里没有它「分析new」必然失败。
+        function resolveLogDiagnoseWorkflowId() {
+            if (pcLogWfId) return Promise.resolve(pcLogWfId);
+            if (pcLogWfBusy) return Promise.reject(new Error('workflow 解析中，请稍后重试'));
+            pcLogWfBusy = true;
+            return agentflowFetch('/workflows')
+                .then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.json();
+                })
+                .then(function (list) {
+                    pcWorkflows = Array.isArray(list) ? list : [];
+                    for (var i = 0; i < pcWorkflows.length; i++) {
+                        if (pcWorkflows[i].name === LOG_DIAGNOSE_WF_NAME) {
+                            pcLogWfId = pcWorkflows[i].id;
+                            pcLogWfBusy = false;
+                            return pcLogWfId;
+                        }
+                    }
+                    pcLogWfBusy = false;
+                    throw new Error('未找到流程 ' + LOG_DIAGNOSE_WF_NAME +
+                        '（先在 multi-agent-workflow 跑 scripts/seed_problem_log_diagnose.py --tenant ' + AGENTFLOW_TENANT + '）');
+                }, function (err) {
+                    pcLogWfBusy = false;
+                    throw err;
+                });
+        }
 
         function getEl(id) { return document.getElementById(id); }
 
@@ -3852,7 +3905,8 @@
                     var title = problemTitle(p);
                     var sev = (p.severity || 'warning').toLowerCase();
                     var st = (p.state || 'pending').toLowerCase();
-                    var diag = findDiagnoseSession(p);
+                    // 「已发起分析」= 记录里存在 agent_run 绑定（分析new/Analyze 都走 agentflow run）
+                    var diag = findAgentRun(p);
                     html += '<tr>' +
                         '<td class="col-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</td>' +
                         '<td>' + escapeHtml(p.service || '-') + '</td>' +
@@ -3863,11 +3917,10 @@
                         '<td class="col-time">' + formatTime(p.detected_at || p.first_seen_at) + '</td>' +
                         '<td class="pc-actions">' +
                         '<button class="btn-alert-detail" data-id="' + escapeHtml(p.record_id) + '" data-act="detail">Detail</button>' +
-                        ((st === 'pending' || st === 'in_progress') ? '<button class="btn-alert-detail pc-diag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="diagnose"' + (diag ? ' disabled title="Diagnosis already started"' : '') + '>分析new</button>' : '') +
+                        ((st === 'pending' || st === 'in_progress') ? '<button class="btn-alert-detail pc-diag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="diagnose"' + (diag ? ' disabled title="Analysis already started"' : '') + '>分析new</button>' : '') +
                         (diag ? '<button class="btn-alert-detail pc-viewdiag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="view-diagnosis">View diagnosis</button>' : '') +
                         (st === 'pending' ? '<button class="btn-alert-detail pc-analyze-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="analyze">Analyze</button>' : '') +
-                        (st === 'pending' ? '<button class="btn-alert-detail pc-ignore-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="ignore">Ignore</button>' : '') +
-                        (st === 'in_progress' ? '<button class="btn-alert-detail pc-viewrun-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="view-analysis">View analysis</button>' : '') +
+                        ((st === 'pending' || st === 'in_progress') ? '<button class="btn-alert-detail pc-ignore-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="ignore">Ignore</button>' : '') +
                         '</td>' +
                         '</tr>';
                 } else {
@@ -3907,9 +3960,9 @@
                     if (act === 'detail') openProblemDetail(rec);
                     else if (act === 'ignore') confirmIgnore(rec);
                     else if (act === 'analyze') openAnalyze(rec);
-                    else if (act === 'view-analysis') openProblemRun(rec);
+                    else if (act === 'view-analysis') openProblemRun(rec); // 与 View diagnosis 同源（同一 run 视图）
                     else if (act === 'diagnose') startDiagnose(rec);
-                    else if (act === 'view-diagnosis') openDiagnosisView(rec);
+                    else if (act === 'view-diagnosis') openProblemRun(rec); // 分析new 的产物也是一个 run
                 });
             });
         }
@@ -4065,7 +4118,7 @@
 
         function loadAnalyzeWorkflows() {
             if (pcWorkflows.length) { fillAnalyzeWorkflows(); return; }
-            fetch(AGENTFLOW_BASE + '/workflows')
+            agentflowFetch('/workflows')
                 .then(function (res) {
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     return res.json();
@@ -4157,20 +4210,32 @@
             return last;
         }
 
+        // 「分析new」= 由 APM 组 inputs（包装的 bug_report + 时间窗）并起一次 agentflow run，
+        // 再把 run_id 绑回问题单；随后前端**直连 agentflow** 轮询进度/提交审批（复用
+        // 「View analysis」那套 run 渲染器）。起 run 之所以仍走 APM：绑定与起 run 是**原子的一步**
+        // （浏览器直连 /run 再补绑定，中间失败会留下"起了 run 但没绑定"的孤儿 run——列表上看不见、
+        // 也打不开）。tenant 桥接（APM 租户 default ↔ agentflow 租户 otr）也在 APM 内部完成。
         function startDiagnose(rec) {
             if (!rec || diagBusy[rec.record_id]) return;
             diagBusy[rec.record_id] = true;
             var recordId = rec.record_id;
-            apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/diagnose', { method: 'POST', body: {} })
+            resolveLogDiagnoseWorkflowId()
+                .then(function (wfId) {
+                    // rerun: true —— 打回后重跑（同一条记录再起一轮）；引擎没有"重跑同一个 run"的语义
+                    return apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/analyze', {
+                        method: 'POST', body: { workflow_id: wfId, rerun: true }
+                    });
+                })
                 .then(function (data) {
                     delete diagBusy[recordId];
-                    var sid = data && data.session_id ? data.session_id : '';
-                    window._showToast('分析已启动' + (sid ? ' · ' + sid : ''), 'success');
+                    var rid = data && data.run_id ? data.run_id : '';
+                    window._showToast('分析已启动' + (rid ? ' · ' + rid : ''), 'success');
+                    if (rid) openProblemRun(rec, rid); // 直接打开运行视图（不必等 evidence 回读）
                     refresh(); // 非乐观：以后端 evidence 为准 → 按钮置灰 + 出现 View diagnosis
                 })
                 .catch(function (err) {
                     delete diagBusy[recordId];
-                    window._showToast('分析失败: ' + err.message, 'error');
+                    window._showToast('分析失败: ' + (err && err.message ? err.message : 'network error'), 'error');
                 });
         }
 
@@ -4822,15 +4887,17 @@
             return runs.length ? runs[runs.length - 1] : null;
         }
 
-        function openProblemRun(rec) {
+        // explicitRunId：刚发起的那次 run（此刻 evidence 可能还没回读到列表里，调用方直接传）
+        function openProblemRun(rec, explicitRunId) {
             stopRunPolling();
             var ar = findAgentRun(rec);
-            if (!ar) {
+            var runId = explicitRunId || (ar && ar.run_id);
+            if (!runId) {
                 window._showToast('No agent analysis run found for ' + (rec && rec.record_id ? rec.record_id : 'record'), 'error');
                 return;
             }
             pcRunRec = rec;
-            pcRunId = ar.run_id;
+            pcRunId = runId;
             pcRunData = null;
             pcRunGraph = null;
             pcRunSel = null;
@@ -4842,7 +4909,7 @@
             closeRunGraph(); // 若上次残留 Flow Diagram 二级弹框，先收起
             var title = getEl('pcRunTitle');
             if (title) title.textContent = 'Analysis Process - ' + (rec && rec.record_id ? rec.record_id : '');
-            setPcRunText('pcRunId', ar.run_id);
+            setPcRunText('pcRunId', runId);
             setPcRunText('pcRunStep', '—');
             setPcRunText('pcRunTokens', '0');
             setPcRunText('pcRunCost', '0.0');
@@ -4872,7 +4939,7 @@
         function fetchRunNow() {
             var rid = pcRunId;
             if (!rid) return;
-            fetch(AGENTFLOW_BASE + '/runs/' + encodeURIComponent(rid))
+            agentflowFetch('/runs/' + encodeURIComponent(rid))
                 .then(function (res) {
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     return res.json();
@@ -4994,7 +5061,7 @@
             if (c && c.items && !running) return;               // 终态已缓存 → 不再重复请求
             if (c && running && now - c.ts < 2500) return;      // 运行中 → 节流
             pcRunTraceReq[nid] = true;
-            fetch(AGENTFLOW_BASE + '/runs/' + encodeURIComponent(pcRunId) + '/traces?node_id=' + encodeURIComponent(nid) + '&limit=500')
+            agentflowFetch('/runs/' + encodeURIComponent(pcRunId) + '/traces?node_id=' + encodeURIComponent(nid) + '&limit=500')
                 .then(function (res) {
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     return res.json();
@@ -5345,14 +5412,31 @@
 
         function runApproval(action, nodeId) {
             if (!pcRunId || !nodeId) return;
-            fetch(AGENTFLOW_BASE + '/runs/' + encodeURIComponent(pcRunId) + '/' + action, {
+            // by：审批人身份。dev 模式由 body 传入；租户一旦在管理库配了 approvers 白名单，
+            // 名字不在这里就会 403（JWT 模式下则由 token 的 sub 决定，body 被忽略）。
+            var by = localStorage.getItem('agentflowApprover') || 'lead-engineer';
+            agentflowFetch('/runs/' + encodeURIComponent(pcRunId) + '/' + action, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ node_id: nodeId })
+                body: {
+                    node_id: nodeId,
+                    by: by,
+                    comment: action === 'reject' ? 'rejected from Problem Center' : ''
+                }
             }).then(function (res) {
                 if (!res.ok) return res.json().then(function (d) { throw new Error((d && d.detail) || ('HTTP ' + res.status)); });
                 return res.json();
             }).then(function () {
+                // 审批结论**记录**回问题单（只落 evidence，不执行任何修复动作）。
+                // 记录失败不影响审批本身的结果，故静默降级。
+                if (pcRunRec && pcRunRec.record_id) {
+                    apmApi('/v1/problems/' + encodeURIComponent(pcRunRec.record_id) + '/run-decision', {
+                        method: 'POST',
+                        body: {
+                            run_id: pcRunId, node_id: nodeId,
+                            approved: action === 'approve', by: by
+                        }
+                    }).catch(function () { /* 记录失败：不打断审批流程 */ });
+                }
                 fetchRunNow(); // 立即刷一次，让被审批节点状态落图
             }).catch(function (err) {
                 window._showToast((action === 'approve' ? 'Approve' : 'Reject') + ' failed: ' + (err && err.message ? err.message : 'network error'), 'error');
@@ -5736,6 +5820,13 @@
             var action = btn && btn.getAttribute ? btn.getAttribute('data-action') : null;
             if (!action) return;
             var nodeId = btn.getAttribute('data-node');
+            // 驳回是**终态**（审批 CAS 不可逆），走一次确认；通过保持一键（可随时看历史）
+            if (action === 'reject') {
+                confirmDialog('驳回该修复计划？驳回后本次 run 走复盘分支收尾，记录上会留下审批痕迹。', function () {
+                    runApproval('reject', nodeId);
+                });
+                return;
+            }
             runApproval(action, nodeId);
         });
         var pcRunStepsEl = getEl('pcRunSteps');
