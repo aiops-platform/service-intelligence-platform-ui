@@ -1020,6 +1020,14 @@
             <button class="filter-chip pc-state-filter" data-filter="in_progress"><span class="chip-dot" style="background:#3b82f6;"></span> In Progress</button>
             <button class="filter-chip pc-state-filter" data-filter="resolved"><span class="chip-dot" style="background:#10b981;"></span> Resolved</button>
             <button class="filter-chip pc-state-filter" data-filter="closed"><span class="chip-dot" style="background:#6b7280;"></span> Closed</button>
+            <span style="margin-left:12px;"></span>
+            <!-- 证据类型：由 Smart Inspection 的徽标下钻带入（/problems?type=metric|log），
+                 也可在这里手动切换。判据是「证据存在与否」而不是后端的 detection_type ——
+                 combined 记录（指标+日志都有）在 Metric 和 Log 两个 chip 下**都**会出现，
+                 这样徽标上的数字才等于切到该 chip 后 pcRowCount 的行数。 -->
+            <button class="filter-chip active pc-type-filter" data-filter="all">All Types</button>
+            <button class="filter-chip pc-type-filter" data-filter="metric"><span class="chip-dot" style="background:#8b5cf6;"></span> Metric</button>
+            <button class="filter-chip pc-type-filter" data-filter="log"><span class="chip-dot" style="background:#3b82f6;"></span> Log</button>
         </div>
 
         <!-- Table -->

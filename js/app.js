@@ -34,6 +34,117 @@
         return text.substring(0, maxLen) + '...[truncated]';
     }
 
+    // ── Problem Record 判定（Smart Inspection 与 Problem Center 共用）─────
+    // 【为什么放顶层】Smart Inspection 徽标上的数字必须**等于**点进 Problem Center 后看到
+    // 的行数（验收锚点是 #pcRowCount）。这个不变式只有在两侧用**同一套**判定时才成立 ——
+    // 各写一份的话，今天能对上纯属巧合，后端一改就静默漂移。所以谓词共享，而不是各自
+    // 塞进 initSmartInspection / initProblems 的闭包。
+    //
+    // 术语沿用后端（aiops-apm-anomaly-detector）：
+    //   - 未解决 = state ∈ {pending, in_progress}。**白名单**而非「排除 resolved/closed/
+    //     archived」—— 后端将来加状态时，白名单让两侧**一样地**不计入；黑名单会一边算
+    //     一边不算。当前 5 个状态下两种写法等价，且与 Problem Center 的 "Open" chip 逐字相同。
+    //   - 类型由证据派生、不入库（后端 router/problems.py 的 _detection_type 也是这么算的）：
+    //     metric_anomalies / log_anomalies 谁非空就是谁。**不要**改用 detection_type 等值判断
+    //     —— 它的取值是 log/metric/combined/unknown，combined 记录在等值判断下两种筛选都
+    //     匹配不上，而按证据判断时两列各计一次（这才是要的）。
+    //   - service 可能是逗号拼接的多服务串（后端 M9 起），按**成员**匹配而非整串相等。
+
+    function problemIsOpen(state) {
+        var st = String(state || '').toLowerCase();
+        return st === 'pending' || st === 'in_progress';
+    }
+
+    function problemHasMetric(p) {
+        return !!(p && p.metric_anomalies && p.metric_anomalies.length);
+    }
+
+    function problemHasLog(p) {
+        return !!(p && p.log_anomalies && p.log_anomalies.length);
+    }
+
+    /** 记录点名的服务列表（逗号串拆开、trim、去空、去重） */
+    function problemServiceNames(p) {
+        var raw = (p && p.service) ? String(p.service) : '';
+        var out = [];
+        raw.split(',').forEach(function (name) {
+            var s = name.trim();
+            if (s && out.indexOf(s) === -1) out.push(s);
+        });
+        return out;
+    }
+
+    /**
+     * 该记录是否属于某服务。
+     *
+     * 两种都要认：
+     *   1. **整串相等** —— Problem Center 的下拉框（#pcServiceFilter）是拿 p.service 的原始值
+     *      建的 option，所以用户可能选中的就是 "gateway-service,order-service" 这一整串；
+     *   2. **成员匹配** —— 徽标按单个服务名下钻时要能找到合并记录。
+     *
+     * 只做 (2) 会漏掉 (1)：合并记录的下拉项选中后一条都匹配不上，表格直接空 —— 这是回归。
+     * 只做 (1) 则徽标与落点对不上（徽标按成员计，下钻却查不到）。所以两个都写。
+     */
+    function problemMatchesService(p, name) {
+        if (!name) return true;                 // 空 = 不过滤
+        if (!p || !p.service) return false;
+        var want = String(name);
+        if (String(p.service) === want) return true;
+        return problemServiceNames(p).indexOf(want) !== -1;
+    }
+
+    /** type ∈ {'metric','log'}；'all' / 空 = 不过滤。combined 记录两种都匹配（有意） */
+    function problemMatchesType(p, type) {
+        if (!type || type === 'all') return true;
+        if (type === 'metric') return problemHasMetric(p);
+        if (type === 'log') return problemHasLog(p);
+        return true;
+    }
+
+    /**
+     * 拉问题记录列表。
+     *
+     * 【为什么这里自己 fetch 而不是复用 apmApi】本文件里 apmApi 已有 3 份**各自闭包内**的
+     * 副本（initProblems:3756 / initMonitorTargets:6077 / initDomainConfig:6466），因为每个
+     * initXxx() 自成闭包。本次不再加第 4 份 —— 谓词既然已经共享，fetch 也一并共享，顺带把
+     * limit=500 钉在一处（两侧用不同 limit 会让徽标与落点悄悄对不上）。三份旧副本原样不动，
+     * 将来可收敛到这里。
+     *
+     * base/tenant/key **在调用时**读 localStorage，不在脚本求值时读 —— 顶层 var 会把值冻结
+     * 在加载那一刻，破坏运行时的 localStorage 覆盖（另三个消费者的习惯也是如此）。
+     *
+     * 注：默认 http://localhost:7070 是**绝对 URL**，与另外三个 APM 消费方一致（靠后端 CORS，
+     * 实测 Access-Control-Allow-Origin: *）。这不是 Smart Inspection 那个「改走相对路径
+     * /agentflow」决策的倒退 —— 那条只针对 agentflow(:8000)；APM 侧本来就没有 Vite proxy，
+     * 改相对路径要连生产 nginx 一起动。
+     *
+     * 若后端记录超过 500 条，两侧读的是**同一份**截断列表，因此一样地少算 —— 不变式仍成立。
+     * 要放宽就改这一处。
+     */
+    function fetchProblemRecords() {
+        var base = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
+        var headers = { 'X-Tenant-Id': localStorage.getItem('apmTenantId') || 'default' };
+        var apiKey = localStorage.getItem('apmApiKey') || '';
+        if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
+
+        return fetch(base + '/v1/problems?limit=500', { headers: headers })
+            .then(function (res) {
+                return res.text().then(function (text) {
+                    var data = null;
+                    if (text) { try { data = JSON.parse(text); } catch (e) { data = text; } }
+                    if (!res.ok) {
+                        var reason = 'HTTP ' + res.status;
+                        if (data && typeof data === 'object' && data.reason) reason = data.reason;
+                        var err = new Error(reason);
+                        err.status = res.status;
+                        err.data = data;
+                        throw err;
+                    }
+                    return (data && data.items) ? data.items : [];
+                });
+            });
+    }
+
     function navigateToPage(pageId, context) {
         // 接缝 S3：外壳归 Vue 后，跨页下钻改走 Vue Router（URL 可分享、可刷新），
         // 不再把 context 塞 sessionStorage 再靠切页时读回。
@@ -1302,6 +1413,20 @@
         var currentFilter = 'all';
         var isLoading = false;
 
+        // ── 问题计数（Alerts / Log Anomalies 两列的数据源）──────────
+        // 两列的数字来自 Problem Center 的数据源（APM :7070），不再是 agentflow 的
+        // alertCount —— 后者线上三个服务**全是 null**，所以两列此前实际都显示 "-"。
+        //
+        // problemTally: { [serviceName]: { metric: n, log: n } }，只统计**未解决**的问题。
+        //   判定全部走 js/app.js 顶层的共享谓词（problemIsOpen / problemHasMetric /
+        //   problemHasLog / problemServiceNames）—— 与 Problem Center 的筛选同一套，
+        //   这样徽标数字才等于点进去后 #pcRowCount 的行数。
+        // null 表示**从未成功拉到过**（渲染成 "-"，不是 0：不知道 ≠ 没有）。
+        var problemTally = null;
+        var problemsLoading = false;
+        var problemsTimer = null;
+        var problemsDiagLogged = false;
+
         // ── Helpers ──────────────────────────────────────────────
         function fmt(val, suffix) {
             if (val === null || val === undefined) return '<span class="si-null-value">-</span>';
@@ -1320,9 +1445,20 @@
             return 'normal';
         }
 
+        /**
+         * status 缺省时按 CPU/内存/磁盘推导。
+         *
+         * 注：`var disk = s.disk` 是**必须的** —— 下面那行原本直接引用未声明的 `disk`，
+         * 在 'use strict' 下会抛 ReferenceError。因为它只在后端返回空 status 时才走到，
+         * 而线上 status 恒为 "HEALTHY"，所以一直没暴露；一旦触发，异常会穿过
+         * transformService → fetchServices 的 .catch，整页变成错误条。
+         *
+         * 这里保持原意（**存在性**检查），不要顺手改成阈值比较：s.disk 来自 item.blockIO，
+         * 是形如 "8.2 MB/s" 的字符串，`disk >= 90` 没有意义。
+         */
         function deriveStatus(s) {
             if (s.status) return s.status.toLowerCase();
-            var cpu = s.cpu, mem = s.mem;
+            var cpu = s.cpu, mem = s.mem, disk = s.disk;
             if ((cpu !== null && cpu >= 90) || (mem !== null && mem >= 90)) return 'critical';
             if ((cpu !== null && cpu >= 70) || (mem !== null && mem >= 70)) return 'warning';
             if (cpu !== null || mem !== null || disk !== null) return 'healthy';
@@ -1373,10 +1509,11 @@
                 netOut: item.netOut,
                 uptime: item.uptime,
                 restartCount: item.restartCount,
+                // 注：item.alertCount 仍然映射，但**两列徽标都不再用它** —— 线上三个服务全是
+                // null，且它的口径（指标告警数）与本页现在要的「未解决的指标类问题数」并不是
+                // 一回事。两列改由 problemTally 在 renderSITable 时注入（见文件上方说明）。
+                // 保留映射是为了不丢掉后端仍在返回的字段，也方便将来对照。
                 alertCount: item.alertCount,
-                // Log Anomalies 列：数据源已下线（日志异常改从「问题中心」看），恒为 null → 渲染 "-"。
-                // 保留该键是为了让列值有明确来源，而不是 undefined。
-                logErrorCount: null,
                 status: item.status,
                 owner: item.owner,
                 description: item.description,
@@ -1457,10 +1594,87 @@
             hideLoading();
         }
 
+        // ── 问题计数 Fetch ───────────────────────────────────────
+        /**
+         * 用共享谓词把问题列表汇总成 { 服务名: {metric, log} }，只计未解决的。
+         *
+         * 一条 combined 记录（指标+日志证据都有）在**两列各计一次** —— 这是有意的，也正是
+         * Problem Center 里 Metric / Log 两个 chip 都会列出它的原因，两边因此对得上。
+         */
+        function buildProblemTally(items) {
+            var tally = {};
+            (items || []).forEach(function (p) {
+                if (!problemIsOpen(p.state)) return;         // 已解决的不算
+                var hasM = problemHasMetric(p);
+                var hasL = problemHasLog(p);
+                if (!hasM && !hasL) return;                  // unknown：两列都不属于
+                // 多服务合并记录（service 是逗号串）在它点名的**每个**服务下各计一次
+                problemServiceNames(p).forEach(function (name) {
+                    if (!tally[name]) tally[name] = { metric: 0, log: 0 };
+                    if (hasM) tally[name].metric++;
+                    if (hasL) tally[name].log++;
+                });
+            });
+            return tally;
+        }
+
+        /**
+         * 拉一次问题计数。
+         *
+         * 【独立的失败路径】绝不碰 siErrorBar / siLoadingOverlay / showError() /
+         * setRefreshSpinning() —— 那些属于本页自己的数据（agentflow 的 app-indicators）。
+         * APM 挂了不该让 Smart Inspection 看起来整个坏掉：这里只 console.warn 并**保留上次
+         * 的计数**。problemTally 只在从未成功过时保持 null → 渲染 "-"（不知道 ≠ 没有）。
+         *
+         * 【独立的 in-flight 标志】不能复用 isLoading —— 那是服务列表的锁，共用会让 5s 轮询
+         * 在问题请求在途时被整轮跳过。
+         */
+        function fetchProblemTally() {
+            if (problemsLoading) return;
+            problemsLoading = true;
+            fetchProblemRecords()
+                .then(function (items) {
+                    problemsLoading = false;
+                    problemTally = buildProblemTally(items);
+                    doSIFilter();                // 计数变了就按当前筛选重画（它会调 renderSITable）
+                    updateSIStats();             // Total Alerts 卡也读同一份计数，必须一起刷
+                    logProblemsDiagOnce(items);
+                })
+                .catch(function (err) {
+                    problemsLoading = false;
+                    // 保留上次的 problemTally（可能是 null，也可能是一份旧值）
+                    console.warn('[sip] Smart Inspection 拉取问题计数失败（保留上次结果）：', err);
+                });
+        }
+
+        /**
+         * 一次性诊断：跨后端 join 的对照。
+         *
+         * 服务名来自 agentflow(`serviceName`)，问题来自 APM(`service`)，是两套后端两套命名。
+         * 一旦对不上，症状是**两列全 0**，看起来像逻辑 bug 而实际是数据对不上。这条日志把
+         * 「页面上有几个服务 / 问题里出现几个服务名 / 哪些名字一个都没匹配上」一次打出来。
+         */
+        function logProblemsDiagOnce(items) {
+            if (problemsDiagLogged) return;
+            problemsDiagLogged = true;
+            var pageNames = {};
+            services.forEach(function (s) { pageNames[s.name] = true; });
+            var tokens = {};
+            (items || []).forEach(function (p) {
+                problemServiceNames(p).forEach(function (n) { tokens[n] = true; });
+            });
+            var tokenList = Object.keys(tokens);
+            console.info('[sip] Smart Inspection × Problem Center 服务名对照：',
+                '页面服务 ' + Object.keys(pageNames).length + ' 个',
+                '| 问题里的服务名 ' + tokenList.length + ' 个',
+                '| 两边都没匹配上的：', tokenList.filter(function (n) { return !pageNames[n]; }));
+        }
+
         // ── API Fetch ────────────────────────────────────────────
         // 注：原先这里还有一个 refreshLogAnomalies()，单独请求 sip-aiops(:8080) 的
         // `/log-alert?size=500` 给 "Log Anomalies" 列填数。该请求已下线（2026-09-16）——
-        // 日志异常改从「问题中心」查看，本页不再重复展示。列头保留占位，值恒为 "-"。
+        // 日志异常改从「问题中心」查看。**2026-09-18 起**该列不再是恒 "-" 的占位：
+        // 改由上面的 problemTally 按「该服务未解决的日志类问题数」填数。
 
         function fetchServices(silent) {
             if (isLoading) return;
@@ -1509,14 +1723,36 @@
                 '</div>';
         }
 
-        function alertBadge(count, serviceName) {
+        /**
+         * 问题数徽标。kind ∈ {'metric','log'}，决定点击后跳到 Problem Center 的哪个类型筛选。
+         *
+         * - count 为 null（问题数据从未成功拉到）→ 灰 "-"，**不带任何属性**，因此不可点：
+         *   不能拿「不知道」冒充「没有」，也不该让一个没有内容的徽标可点。
+         * - count 为 0 → 灰色 "0"，但**仍然可点**（用户要求「点任意一列」）。点进去是空列表，
+         *   这本身是有用的确认信息。
+         * - count > 0 → 沿用 has-alerts 红底样式。
+         *
+         * data-service 继续用 .replace(/"/g,'&quot;') 转义，**不要**改用 escapeHtml ——
+         * 后者基于 createTextNode，转义 & < > 但**不转义引号**，放在属性位上会逸出。
+         */
+        function alertBadge(count, serviceName, kind) {
             if (count === null || count === undefined) return '<span class="si-alert-badge null-alert">-</span>';
             var cls = count > 0 ? 'has-alerts' : '';
             var attrs = '';
-            if (count > 0 && serviceName) {
-                attrs = ' style="cursor:pointer;" data-service="' + serviceName.replace(/"/g, '&quot;') + '"';
+            if (serviceName) {
+                attrs = ' style="cursor:pointer;"' +
+                    ' data-service="' + String(serviceName).replace(/"/g, '&quot;') + '"' +
+                    ' data-kind="' + kind + '"';
             }
             return '<span class="si-alert-badge ' + cls + '"' + attrs + '>' + count + '</span>';
+        }
+
+        /** 取某服务某类型的问题数；问题数据从未拉到过时返回 null（→ 渲染 "-"） */
+        function problemCount(serviceName, kind) {
+            if (!problemTally) return null;
+            var row = problemTally[serviceName];
+            if (!row) return 0;                 // 数据有了，但该服务一个问题都没有
+            return kind === 'log' ? row.log : row.metric;
         }
 
         function renderSITable(data) {
@@ -1529,9 +1765,10 @@
                     '<td>' + renderMetricCell(s.cpu, s.cpuBaseline) + '</td>' +
                     '<td>' + renderMetricCell(s.mem, s.memBaseline) + '</td>' +
                     '<td><span class="si-metric-val" style="font-family:SF Mono,monospace;font-size:11px;white-space:nowrap;">' + fmtText(s.disk) + '</span></td>' +
-                    '<td>' + alertBadge(s.alertCount, s.name) + '</td>' +
-                    // Log Anomalies：数据源已下线（改从「问题中心」看），列头保留占位，恒为 "-"
-                    '<td>' + alertBadge(s.logErrorCount, s.name) + '</td>' +
+                    // 两列都来自 problemTally（该服务未解决的指标类 / 日志类问题数），
+                    // 点徽标下钻到 Problem Center 的对应筛选。
+                    '<td>' + alertBadge(problemCount(s.name, 'metric'), s.name, 'metric') + '</td>' +
+                    '<td>' + alertBadge(problemCount(s.name, 'log'), s.name, 'log') + '</td>' +
                     '<td>' + statusBadge(s.status) + '</td>' +
                     '<td><button class="detail-btn" data-id="' + s.id + '">Detail</button></td>' +
                     '</tr>';
@@ -1559,7 +1796,14 @@
             var healthy = services.filter(function (s) { return s.status === 'healthy'; }).length;
             var warning = services.filter(function (s) { return s.status === 'warning'; }).length;
             var critical = services.filter(function (s) { return s.status === 'critical'; }).length;
-            var totalAlerts = services.reduce(function (sum, s) { return sum + (s.alertCount || 0); }, 0);
+            // Total Alerts = 两列之和（未解决的指标类 + 日志类问题），与上面几个 KPI 一样
+            // 只统计**本页服务列表里**的服务（tally 里可能还含本页没有的服务名）。
+            // 不再用 s.alertCount —— 那个字段线上恒为 null，于是这张卡此前一直显示 0，
+            // 与表里两个徽标自相矛盾。problemTally 为空（未拉到）时保持 0：这是张汇总卡，
+            // 没有「不知道」的展示形态，具体服务的未知仍由徽标上的 "-" 表达。
+            var totalAlerts = services.reduce(function (sum, s) {
+                return sum + (problemCount(s.name, 'metric') || 0) + (problemCount(s.name, 'log') || 0);
+            }, 0);
             document.getElementById('siTotal').textContent = services.length;
             document.getElementById('siHealthy').textContent = healthy;
             document.getElementById('siWarning').textContent = warning;
@@ -1621,7 +1865,10 @@
                 '<div class="meta-item"><label>Owner</label><span>' + fmtText(s.owner) + '</span></div>' +
                 '<div class="meta-item"><label>Enabled</label><span>' + (s.enabled ? 'Yes' : 'No') + '</span></div>' +
                 '<div class="meta-item"><label>Status</label><span>' + statusBadge(s.status) + '</span></div>' +
-                '<div class="meta-item"><label>Alert Count</label><span style="font-weight:600;">' + fmtText(s.alertCount, '') + '</span></div>' +
+                // 原先这里读 s.alertCount（线上恒为 null → 恒显示 "-"）。改成与表格两列同一份
+                // 计数，否则会出现「表里写着 3、点开抽屉写着 -」。
+                '<div class="meta-item"><label>Metric Problems</label><span style="font-weight:600;">' + fmtText(problemCount(s.name, 'metric'), '') + '</span></div>' +
+                '<div class="meta-item"><label>Log Problems</label><span style="font-weight:600;">' + fmtText(problemCount(s.name, 'log'), '') + '</span></div>' +
                 '<div class="meta-item"><label>Restart Count</label><span style="font-weight:600;">' + fmtText(s.restartCount, '') + '</span></div>' +
                 '<div class="meta-item"><label>Last Updated</label><span style="font-size:11px;">' + fmtText(s.lastUpdateTime) + '</span></div>' +
                 '</div></div>';
@@ -2106,23 +2353,28 @@
         }
 
         // ── Event Bindings ────────────────────────────────────────
-        // Alert badge click delegation (bind once, not in renderSITable)
+        // 问题数徽标点击 → Problem Center，带上「该服务 + 该类型 + 只看未解决」的预筛选。
+        // 经接缝 S3 变成 /problems?service=X&type=metric&state=open，由 Problem Center 的
+        // applyQueryFilters() 消费（那边的类型/状态判据与这里同一套共享谓词，所以点进去
+        // 的行数 == 徽标上的数字）。
+        //
+        // 判据是 [data-kind] 而不是 .has-alerts：0 的徽标也要能点，而 has-alerts 只在 >0 时加。
+        // 原先这里靠「行内最后一个 has-alerts 徽标」来猜是不是日志列 —— 那个推断本来就是错的
+        // （combined 记录会让两个徽标都满足条件），现在由 alertBadge 直接写上 data-kind。
         var siTbody = document.getElementById('siTableBody');
         if (siTbody) {
             siTbody.addEventListener('click', function (e) {
-                var badge = e.target.closest('.si-alert-badge.has-alerts');
+                var badge = e.target.closest('.si-alert-badge[data-kind]');
                 if (badge) {
                     e.stopPropagation();
                     var serviceName = badge.getAttribute('data-service');
+                    var kind = badge.getAttribute('data-kind');
                     if (!serviceName) return;
-                    // Check if this is the log anomaly column (second alert badge in row)
-                    var allBadges = badge.parentElement.parentElement.querySelectorAll('.si-alert-badge.has-alerts');
-                    var isLogBadge = allBadges.length > 1 && badge === allBadges[allBadges.length - 1];
-                    if (isLogBadge) {
-                        navigateToPage('log-analysis', {serviceName: serviceName});
-                    } else {
-                        navigateToPage('metrics-analysis', {serviceName: serviceName});
-                    }
+                    navigateToPage('problems', {
+                        service: serviceName,
+                        type: kind,
+                        state: 'open'
+                    });
                 }
             });
         }
@@ -2143,10 +2395,12 @@
 
         document.getElementById('siRefreshBtn').addEventListener('click', function () {
             fetchServices();
+            fetchProblemTally();   // 两列计数走的是另一个后端，手动刷新时也要跟着刷
         });
 
         document.getElementById('siRetryBtn').addEventListener('click', function () {
             fetchServices();
+            fetchProblemTally();
         });
 
         // Alert modal close
@@ -2180,15 +2434,23 @@
         // ── Initial ───────────────────────────────────────────────
         var pollTimer = null;
 
+        /** 面板可见时才动（切走后自动暂停，与改造前一致） */
+        function siPageVisible() {
+            var page = document.getElementById('page-smart-inspection');
+            return !!(page && page.style.display !== 'none');
+        }
+
         function startPolling() {
             stopPolling();
             pollTimer = setInterval(function () {
-                // Only poll when Smart Inspection page is visible
-                var page = document.getElementById('page-smart-inspection');
-                if (page && page.style.display !== 'none') {
-                    fetchServices(true);
-                }
+                if (siPageVisible()) fetchServices(true);
             }, 5000);
+            // 问题计数单独一条 15s 定时器，**不**挤进上面 5s 那轮：/v1/problems?limit=500
+            // 的响应很肥（单条记录带 evidence / trace_ids，实测约 4KB），每 5s 拉一次纯属浪费，
+            // 而问题的状态变化本来就慢。两条定时器互斥地受可见性约束，不会叠加。
+            problemsTimer = setInterval(function () {
+                if (siPageVisible()) fetchProblemTally();
+            }, 15000);
         }
 
         function stopPolling() {
@@ -2196,15 +2458,30 @@
                 clearInterval(pollTimer);
                 pollTimer = null;
             }
+            if (problemsTimer) {
+                clearInterval(problemsTimer);
+                problemsTimer = null;
+            }
         }
 
         fetchServices();
+        fetchProblemTally();   // 与首屏服务列表并行拉，徽标不会先显示一轮 "-"
         startPolling();
     }
 
     // ── Filter Chips ────────────────────────────────────────────
     function initFilterChips() {
-        const chips = legacyRoot().querySelectorAll('.filter-chip');
+        // 【作用域】只服务 Service Ops 概览页那 12 个裸 chip（legacy-panels.html:106-118）——
+        // 它们是**唯一**没有自己的 click 绑定的 .filter-chip 组。其余 8 组（si-filter /
+        // pc-sev-filter / pc-state-filter / ma-* / l1-filter / ap-filter / agent-filter）
+        // 都在各自的 initXxx() 里绑过了。
+        //
+        // 原先这里查的是全文档 `legacyRoot().querySelectorAll('.filter-chip')`，于是每组 chip
+        // 都被**追加了第二个** click，且因为 init() 里 initFilterChips 排在最后（见文件末尾），
+        // 它总是在持有者之后执行 —— 持有者刚 add('active')，这里立刻 toggle 掉，症状是
+        // Problem Center 的 severity/state chip 点完根本不亮。「All」分支更糟：它会清掉
+        // **全文档**所有 .filter-chip 的 active，包括别的面板的组。
+        const chips = legacyRoot().querySelectorAll('#page-service-ops .filter-chip');
         chips.forEach(function (chip) {
             chip.addEventListener('click', function () {
                 // Toggle active state (single-select for tier, multi for others)
@@ -2225,7 +2502,8 @@
                 } else {
                     chip.classList.toggle('active');
                     // If any filter is active, deactivate "All"
-                    var allChip = document.querySelector('.filter-chip.active');
+                    // （同上层：只在本组内找，否则会去摘别的面板的 "All …" chip）
+                    var allChip = legacyRoot().querySelector('#page-service-ops .filter-chip.active');
                     if (allChip && allChip.textContent.trim().startsWith('All')) {
                         allChip.classList.remove('active');
                     }
@@ -3686,6 +3964,13 @@
         var currentService = '';
         var currentSeverity = 'all';
         var currentState = 'all';
+        // 证据类型：'all' | 'metric' | 'log'。由 Smart Inspection 的徽标下钻带入
+        // （/problems?type=metric），也可由本页新增的 chip 手动切换。
+        var currentType = 'all';
+        // URL query 的白名单：只接受确实有对应 chip 的值，否则 applyQueryFilters 一律忽略
+        // （手敲的 URL 不该能把页面卡在一个没有任何控件能清掉的状态上）。
+        var TYPE_FILTERS = ['all', 'metric', 'log'];
+        var STATE_FILTERS = ['all', 'open', 'in_progress', 'resolved', 'closed'];
         var allProblems = [];
         var pcPollTimer = null;    // 5s 自动刷新定时器
         var pcRefreshing = false;  // 请求在途标志：避免轮询堆叠
@@ -3826,7 +4111,73 @@
                     sel.appendChild(opt);
                 }
             });
-            if (currentService && seen[currentService]) sel.value = currentService;
+            // currentService 有值但数据里没有同名 option 时**补一个** —— 否则控件在说谎：
+            // 从 Smart Inspection 点「0」徽标下钻过来时，该服务在 allProblems 里一条都没有，
+            // 下拉框会回落显示 "All Services"，而表格其实正按该服务过滤着。
+            if (currentService && !seen[currentService]) {
+                var extra = document.createElement('option');
+                extra.value = currentService;
+                extra.textContent = currentService;
+                sel.appendChild(extra);
+            }
+            if (currentService) sel.value = currentService;
+        }
+
+        /**
+         * URL query → 本页筛选（下钻入口）。
+         *
+         * 谁写的 URL：Smart Inspection 的徽标走 navigateToPage('problems', {...})，
+         * 经接缝 S3（src/router/index.js 的 __SIP_NAVIGATE）转成
+         * /problems?service=X&type=metric&state=open。
+         *
+         * 【为什么读 location.search 而不是扩 __SIP_SHOW_PAGE 接缝】那条接缝只把
+         * to.meta.panelId 递过来，query 被丢掉。而 __SIP_NAVIGATE 的注释里本来就承诺了
+         * 「可分享、可刷新、可前进后退」—— 只是接收端从来没人兑现。读 location.search
+         * 把这个已文档化的机制补完，改动全部落在本文件；改接缝则要连 CLAUDE.md 里登记的
+         * 签名、showPage、路由三处一起动。
+         *
+         * queryArg 可选（默认取 location.search）—— 将来若有第二个 legacy 页面需要上下文，
+         * 改成 showPage(pageId, query) → _pageRefreshers[pageId](query) 递进来即可，
+         * 现有 10 个零参 refresher 不受影响。
+         *
+         * 三个参数**任一存在才生效**；都不在时完全不动（保持用户当前筛选，包括手动切过的 chip）。
+         * 取值先对着 chip 白名单校验，不认识的一律忽略 —— 免得手敲的 URL 把状态卡在一个
+         * 没有任何 chip 能清掉的值上。
+         */
+        function applyQueryFilters(queryArg) {
+            var qs = (queryArg === undefined || queryArg === null) ? location.search : String(queryArg);
+            if (!qs) return;
+            var q;
+            try { q = new URLSearchParams(qs); } catch (e) { return; }
+
+            var svc = q.get('service');
+            var type = q.get('type');
+            var state = q.get('state');
+            if (!svc && !type && !state) return;
+
+            if (svc) {
+                currentService = svc;
+                var sel = getEl('pcServiceFilter');
+                if (sel) sel.value = svc;              // loadServiceFilter 会补缺失的 option
+                var label = getEl('pcServiceLabel');
+                if (label) label.textContent = 'Filtered: ' + svc;
+            }
+            if (type && TYPE_FILTERS.indexOf(type) !== -1) {
+                currentType = type;
+                syncChipRow('.pc-type-filter', type);
+            }
+            if (state && STATE_FILTERS.indexOf(state) !== -1) {
+                currentState = state;
+                syncChipRow('.pc-state-filter', state);
+            }
+            currentPage = 0;
+        }
+
+        /** 把某一组 chip 的高亮同步到指定值（不动语义，只改 .active） */
+        function syncChipRow(selector, value) {
+            legacyRoot().querySelectorAll(selector).forEach(function (b) {
+                b.classList.toggle('active', b.getAttribute('data-filter') === value);
+            });
         }
 
         function renderKpi() {
@@ -3849,12 +4200,18 @@
 
         function filteredProblems() {
             return allProblems.filter(function (p) {
-                if (currentService && p.service !== currentService) return false;
+                // 服务：按**成员**匹配而非整串相等（problemMatchesService）—— 后端的 service
+                // 可能是逗号拼接的多服务串，旧的 `p.service !== currentService` 会让这类记录
+                // 在它点名的任何一个服务下都查不到，而 Smart Inspection 的徽标是按成员计的，
+                // 两边不一致。下拉框里那串完整值仍然选得中（整串相等是成员匹配的子集）。
+                if (!problemMatchesService(p, currentService)) return false;
                 if (currentSeverity !== 'all' && (p.severity || '').toLowerCase() !== currentSeverity) return false;
+                if (!problemMatchesType(p, currentType)) return false;
                 if (currentState !== 'all') {
                     var st = (p.state || '').toLowerCase();
                     if (currentState === 'open') {
-                        if (st !== 'pending' && st !== 'in_progress') return false;
+                        // 与共享的 problemIsOpen 同一口径（白名单 pending|in_progress）
+                        if (!problemIsOpen(st)) return false;
                     } else if (currentState === 'closed') {
                         if (st !== 'closed' && st !== 'archived') return false;
                     } else if (st !== currentState) {
@@ -5796,6 +6153,19 @@
             });
         });
 
+        // 证据类型 chip（All Types / Metric / Log）。查询收进 legacyRoot() —— CLAUDE.md 要求
+        // 本文件所有全文档查询都要收进它。紧邻的两个 chip 组用的是裸 document.querySelectorAll，
+        // 属既有写法；本次不顺手改它们，避免把 diff 铺开。
+        legacyRoot().querySelectorAll('.pc-type-filter').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                legacyRoot().querySelectorAll('.pc-type-filter').forEach(function (b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                currentType = this.getAttribute('data-filter');
+                currentPage = 0;
+                renderTable();
+            });
+        });
+
         var pcRefreshBtn = getEl('pcRefreshBtn');
         if (pcRefreshBtn) pcRefreshBtn.addEventListener('click', refresh);
 
@@ -5962,7 +6332,10 @@
         });
 
         // 切回本页时自动刷新
-        _pageRefreshers['page-problems'] = function () { refresh(); };
+        // 切回本页时自动刷新。先吃 URL query（下钻带的筛选）再拉数据 —— 顺序不能反：
+        // refresh() 内部会调 loadServiceFilter()，它依赖已经设好的 currentService 才能
+        // 把下拉框选到正确的服务上。
+        _pageRefreshers['page-problems'] = function () { applyQueryFilters(); refresh(); };
 
         // ── 初始加载 + 5s 自动刷新（仅当页面可见时静默轮询，切换走后自动暂停）──
         refresh();

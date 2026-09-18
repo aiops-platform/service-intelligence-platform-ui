@@ -114,12 +114,39 @@ export const NAV = [
           items: [{ slug: 'tickets', label: 'Ticket Inbox' }],
         },
         {
+          /*
+           * 原先这里还有 Metrics Analysis 与 Log Analysis 两个叶子。按用户要求
+           * 「隐藏掉」，已于 2026-09-18 从本数组摘除 —— 与上面 Ticket Workspace
+           * 那次同一条路子：**只摘导航，不删页面**。
+           *
+           * 两者性质不同，恢复时都要留意：
+           *   - metrics-analysis 是 **legacy 面板**：DOM 在 legacy-panels.html:885，
+           *     脚本在 js/app.js 的 initMetricsAnalysis()，两处都没动；
+           *   - log-analysis 是**已迁到 Vue 的视图**：仍留在 MIGRATED 与
+           *     router/index.js 的 VIEW_COMPONENTS 里。这两处现在暂时没有消费方
+           *     （叶子不产出 → 没有路由 → 组件不会被加载），但**必须保留**：它们是
+           *     「已迁移」的唯一登记口，摘掉反而要在恢复时重新拼回来。
+           *
+           * ⚠️ 与上两次隐藏的一个区别：Metrics Analysis **有一条应用内的入口**，
+           * 不是只有菜单能到 —— Smart Inspection 的两个问题数徽标点下去曾分别走
+           * navigateToPage('metrics-analysis' / 'log-analysis')，叶子摘掉后这些 URL
+           * 不再存在，徽标会静默落进 catch-all 回到 /service-ops。
+           *
+           * 【该入口后来改道了】2026-09-18：那两个徽标改为下钻 Problem Center
+           * （路由 /problems），带上 service / type / state 三个 query 预筛选。
+           * 所以上面这条副作用**已经不是问题** —— 但摘叶子的决定本身没变，恢复
+           * metrics-analysis / log-analysis 仍要按下面的方式把两行放回来。
+           * 下钻实现在 js/app.js 的 initSmartInspection 闭包里（navigateToPage('problems', …)），
+           * 落点由 initProblems 的 applyQueryFilters() 消费。
+           *
+           * 要恢复就把这两行放回来（其余文件一个都不用碰）：
+           *   { slug: 'metrics-analysis', label: 'Metrics Analysis' },
+           *   { slug: 'log-analysis', label: 'Log Analysis' },
+           */
           key: 'observability',
           label: 'Observability',
           items: [
             { slug: 'smart-inspection', label: 'Smart Inspection' },
-            { slug: 'metrics-analysis', label: 'Metrics Analysis' },
-            { slug: 'log-analysis', label: 'Log Analysis' },
             { slug: 'problems', label: 'Problem Center' },
           ],
           groups: [
