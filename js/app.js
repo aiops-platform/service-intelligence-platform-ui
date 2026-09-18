@@ -3905,8 +3905,10 @@
                     var title = problemTitle(p);
                     var sev = (p.severity || 'warning').toLowerCase();
                     var st = (p.state || 'pending').toLowerCase();
-                    // 「已发起分析」= 记录里存在 agent_run 绑定（分析new/Analyze 都走 agentflow run）
-                    var diag = findAgentRun(p);
+                    // 「已发起分析」= 有 agent_run（新路径：分析new/Analyze 走 agentflow run）
+                    // 或 diagnose_session（老记录：直连 spike）。两者都能进 View diagnosis——
+                    // 后端 GET /{id}/diagnose 已按绑定分派引擎，返回同一形状，前端不必分支。
+                    var diag = findAgentRun(p) || findDiagnoseSession(p);
                     html += '<tr>' +
                         '<td class="col-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</td>' +
                         '<td>' + escapeHtml(p.service || '-') + '</td>' +
@@ -3962,7 +3964,9 @@
                     else if (act === 'analyze') openAnalyze(rec);
                     else if (act === 'view-analysis') openProblemRun(rec); // 与 View diagnosis 同源（同一 run 视图）
                     else if (act === 'diagnose') startDiagnose(rec);
-                    else if (act === 'view-diagnosis') openProblemRun(rec); // 分析new 的产物也是一个 run
+                    // View diagnosis 回到**结论版面**（.dgx-*）：先看根因/方案/审批，
+                    // 执行过程退到弹窗底部「历次执行」区按需查看（见 dgxExecutions）。
+                    else if (act === 'view-diagnosis') openDiagnosisView(rec);
                 });
             });
         }
@@ -4190,6 +4194,12 @@
             analyzing: '分析中', completed: '已完成', failed: '失败',
             approved: '已通过', closed_manual: '需人工处理', dismissed: '已忽略'
         };
+        // 修复步骤的类别（agentflow 的 fix-planner 输出 type；老 spike 快照没有这个字段）
+        var DGX_STEP_TYPE = {
+            code_fix: '代码修复',
+            infra_action: '基础设施动作',
+            config_change: '配置变更'
+        };
         var dgxOptSel = 0;        // 当前选中的修复方案下标（互斥多方案分页签）
         var dgxChainOpen = false; // 「分析链路」折叠区开合（默认关闭；轮询重渲染后保持）
         var dgxFbOpen = false;    // 拒绝反馈框开合
@@ -4250,7 +4260,10 @@
         }
 
         function openDiagnosisView(rec) {
-            if (!findDiagnoseSession(rec)) {
+            // 两种绑定都能进：agent_run（新路径，走 agentflow 工作流）
+            // 或 diagnose_session（老记录，直连 spike）。
+            // 后端 GET /{id}/diagnose 会按绑定分派引擎并返回同一形状，前端不需要分支。
+            if (!findAgentRun(rec) && !findDiagnoseSession(rec)) {
                 window._showToast('No diagnosis bound to ' + (rec && rec.record_id ? rec.record_id : 'record'), 'error');
                 return;
             }
@@ -4299,10 +4312,14 @@
                     }
                     renderDiagnosis(snap);
                     if (snap && PC_DIAG_TERMINAL[snap.status] && !dgxRerunPending) stopDiagPolling();
-                    // 历史可能被别的操作者追加 → reanalyze_count 变了就重拉
-                    if (snap && typeof snap.reanalyze_count === 'number' &&
-                        snap.reanalyze_count !== pcDiagHistory.rev) {
-                        pcDiagHistory.rev = snap.reanalyze_count;
+                    // 历史可能被别的操作者追加 → 版本号变了就重拉。
+                    // 老路径（spike）用 reanalyze_count；新路径（agentflow）没有这个字段，
+                    // 改用 executions 的轮次数——每起一轮 run 就多一条，等价于"诊断又推进了一轮"。
+                    var rev = (snap && typeof snap.reanalyze_count === 'number')
+                        ? snap.reanalyze_count
+                        : ((snap && snap.executions ? snap.executions.length : 0));
+                    if (rev !== pcDiagHistory.rev) {
+                        pcDiagHistory.rev = rev;
                         loadDiagnoseDecisions(recordId);
                     }
                 })
@@ -4332,22 +4349,48 @@
         function dgxEsc(s) { return escapeHtml(s === null || s === undefined ? '' : String(s)); }
         function dgxShort(s) { var v = String(s || ''); return v.length > 10 ? v.slice(0, 10) : v; }
         function dgxClock(ts) {
-            if (!ts) return '';
-            var d = new Date(ts * 1000);
-            if (isNaN(d.getTime())) return '';
-            return d.toLocaleTimeString('zh-CN', { hour12: false });
+            var t = dgxTsMs(ts);
+            if (isNaN(t)) return '';
+            // 与 formatTime 同口径：按 UTC 解析、以 Asia/Shanghai 显示
+            return new Date(t).toLocaleTimeString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
+        }
+        // 时间戳归一 → epoch 毫秒。**两条后端路径给的形状不同**：spike 历史是 epoch 秒
+        // （`aidiag/diag/session.py` 的 `created_at: float`），agentflow 是 ISO 字符串
+        // （`viewmodel.py` 契约写的就是 ISO8601）。下面两个 helper 原先只认数字，
+        // 「分析new」切到 agentflow 后：dgxElapsed 拿字符串做减法 → 渲染出「耗时 NaNm NaNs」，
+        // dgxClock 的 `ts * 1000` → isNaN → 返回空串，把「更新」**静默吞掉**。
+        // 这里两种都吃，不再依赖上游用哪种形状。
+        function dgxTsMs(v) {
+            if (v === null || v === undefined || v === '') return NaN;
+            if (typeof v === 'number' || /^\d+(\.\d+)?$/.test(String(v).trim())) {
+                var n = Number(v);
+                // epoch 秒 vs 毫秒：1e11 秒 ≈ 公元 5138 年，真实时间戳到不了，可安全区分
+                return n < 1e11 ? Math.round(n * 1000) : Math.round(n);
+            }
+            // 后端给的是无时区的 UTC 串（实测 '2026-09-18 06:58:06' 对应本地 14:58）。
+            // 空格分隔 Safari 不认 → 换 T；无时区后缀则补 Z，与 formatTime 的口径一致。
+            var s = String(v).trim().replace(' ', 'T');
+            if (!/([Zz]|[+-]\d{2}:?\d{2})$/.test(s)) s += 'Z';
+            var t = Date.parse(s);
+            return isNaN(t) ? NaN : t;
         }
         function dgxElapsed(a, b) {
-            if (!a || !b || b < a) return '';
-            var s = Math.round(b - a);
+            var ta = dgxTsMs(a), tb = dgxTsMs(b);
+            if (isNaN(ta) || isNaN(tb) || tb < ta) return '';
+            var s = Math.round((tb - ta) / 1000);
             if (s < 60) return s + 's';
             return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
         }
-        function dgxConfChip(c) {
+        // score 可选：上游 rca.confidence 是 0~1 的小数（实测 0.86），后端压成
+        // high/medium/low 档位后**原值会丢**，故另带一个 0~100 的整百分数
+        // （conclusion.confidence_score，与档位同源）。有分值时显示「置信度 高 · 86%」；
+        // 没有的（如 spike 历史快照只有档位）退回原来的「置信度 高 · high」。
+        function dgxConfChip(c, score) {
             var v = (c || 'medium').toLowerCase();
             var zh = v === 'high' ? '高' : (v === 'low' ? '低' : '中');
+            var tail = (typeof score === 'number' && isFinite(score)) ? (score + '%') : dgxEsc(v);
             return '<span class="dgx-conf dgx-conf--' + dgxEsc(v) + '">置信度 ' + dgxEsc(zh) +
-                ' · ' + dgxEsc(v) + '</span>';
+                ' · ' + tail + '</span>';
         }
         function dgxShaChip(label, sha) {
             if (!sha) return '';
@@ -4406,11 +4449,14 @@
                 html += '<li class="dgx-step"><div class="dgx-step-head">' +
                     '<span class="dgx-step-no">' + (i + 1) + '</span>' +
                     '<span class="dgx-tag">' + dgxEsc(s.action || '') + '</span>' +
+                    // 步骤类别（agentflow 的 fix-planner 给 code_fix/infra_action/config_change）
+                    (s.type ? '<span class="dgx-tag">' + dgxEsc(DGX_STEP_TYPE[s.type] || s.type) + '</span>' : '') +
                     (s.target ? '<span class="dgx-mono dgx-step-target">' + dgxEsc(s.target) + '</span>' : '') +
                     (s.risk ? '<span class="dgx-risk dgx-risk--' + dgxEsc(s.risk) + '">risk ' + dgxEsc(s.risk) + '</span>' : '') +
                     '</div>' +
                     (s.change ? '<div class="dgx-step-change">' + dgxEsc(s.change) + '</div>' : '') +
                     (s.expected_effect ? '<div class="dgx-kv"><span class="dgx-k">预期效果</span><span class="dgx-v">' + dgxEsc(s.expected_effect) + '</span></div>' : '') +
+                    (s.verification ? '<div class="dgx-kv"><span class="dgx-k">验证方式</span><span class="dgx-v">' + dgxEsc(s.verification) + '</span></div>' : '') +
                     (s.rollback ? '<div class="dgx-kv"><span class="dgx-k">回滚</span><span class="dgx-v">' + dgxEsc(s.rollback) + '</span></div>' : '') +
                     (s.suggested_diff ? '<pre class="dgx-code">' + dgxEsc(s.suggested_diff) + '</pre>' : '') +
                     '</li>';
@@ -4424,7 +4470,7 @@
             // 1) 根因 + 置信度/commit 元信息（同屏给出「结论 + 可信度」，先看结论再决定读多深）
             var html = '<section class="dgx-card dgx-verdict"><div class="dgx-label">根因 · ROOT CAUSE</div>' +
                 '<p class="dgx-verdict-text">' + dgxEsc(c.root_cause || '—') + '</p>' +
-                '<div class="dgx-verdict-meta">' + dgxConfChip(c.confidence) +
+                '<div class="dgx-verdict-meta">' + dgxConfChip(c.confidence, c.confidence_score) +
                 dgxShaChip('deployed', c.deployed_commit) +
                 dgxShaChip('base', c.base_commit) +
                 dgxShaChip('已修复于', c.already_fixed_by) + '</div>' +
@@ -4495,7 +4541,8 @@
             var opts = (snap.conclusion && snap.conclusion.recommended_fix) || [];
             var sel = opts[dgxOptSel] || null;
             var hasSteps = !!(sel && sel.steps && sel.steps.length);
-            // 拒绝要求 spike 会话可 /remediate（status=completed 且有 steps）；failed/closed_manual 只能忽略/误报
+            // 拒绝要求结论已完成且选中方案有 steps。后端按引擎分派：新路径驳回 agentflow 审批节点
+            // 并起新一轮 run，老路径走 spike /remediate。failed/closed_manual 只能忽略/误报。
             var canReject = (st === 'completed') && hasSteps;
             var hint = sel
                 ? ('当前待处理：方案' + (dgxOptSel + 1) + '「' + sel.title + '」' +
@@ -4709,7 +4756,12 @@
                 '<div class="dgx-head"><div class="dgx-head-top">' +
                 '<span class="dgx-status dgx-status--' + dgxEsc(st) + '">' + dgxEsc(DGX_STATUS_LABEL[st] || st) + '</span>' +
                 (snap.trigger ? '<span class="dgx-chip">来源 ' + dgxEsc(snap.trigger) + '</span>' : '') +
-                (snap.session_id ? '<span class="dgx-chip dgx-mono" title="session_id">' + dgxEsc(snap.session_id) + '</span>' : '') +
+                // 轮次标识：老记录是 spike 的 session_id，新记录是 agentflow 的 run_id。
+                // 两者都落在 ref 上（历史快照没有 ref，回落 session_id），ref_kind 只影响提示文案。
+                ((snap.ref || snap.session_id)
+                    ? '<span class="dgx-chip dgx-mono" title="' + dgxEsc(snap.ref_kind === 'run' ? 'run_id' : 'session_id') + '">' +
+                      dgxEsc(snap.ref || snap.session_id) + '</span>'
+                    : '') +
                 (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">耗时 ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
                 '</div>' +
                 (snap.issue_title ? '<h2 class="dgx-issue">' + dgxEsc(snap.issue_title) + '</h2>' : '') +
@@ -4727,6 +4779,48 @@
 
         // 历史计划（详情最下边）：每条一个 <details>——决策胶囊 + 拒因 + **那一整轮**（快照）+ 驳回次数。
         // 快照缺失（会话已过期，抓不到）才降级回 steps——它是"被拒那一版方案"的权威来源，也是降级路径的唯一来源。
+        // ── 历次执行（弹窗最下方）────────────────────────────────────────────────
+        // 执行过程不再占据 View diagnosis 的主位（主位是结论：根因/方案/审批），但也不能丢——
+        // 按需从这里下钻到 #pcRunOverlay（复用「View analysis」那套 run 查看器与节点级审批）。
+        // 数据来自后端视图模型的 executions[]：每轮 run 一条，带实时状态。
+        var DGX_EXEC_STATE = {
+            analyzing: '进行中', completed: '已完成', failed: '失败',
+            approved: '已通过', closed_manual: '已中止', dismissed: '已忽略'
+        };
+
+        function dgxExecShort(id) {
+            var s = String(id || '');
+            return s.length > 14 ? s.slice(0, 8) + '…' + s.slice(-4) : s;
+        }
+
+        function dgxExecutions(snap) {
+            var items = (snap && snap.executions) || [];
+            if (!items.length) return '';
+            // 进行中置顶：用户最关心"现在跑到哪了"，历史轮次是回看用的
+            var sorted = items.slice().sort(function (a, b) {
+                var ra = (a && a.vm_status === 'analyzing') ? 0 : 1;
+                var rb = (b && b.vm_status === 'analyzing') ? 0 : 1;
+                return ra - rb;
+            });
+            var html = '<section class="dgx-card dgx-exec">' +
+                '<div class="dgx-label">历次执行 · EXECUTIONS</div>';
+            for (var i = 0; i < sorted.length; i++) {
+                var it = sorted[i] || {};
+                var st = it.vm_status || '';
+                var label = DGX_EXEC_STATE[st] || st || '未知';
+                var when = it.started_at ? formatTime(it.started_at) : '';
+                html += '<button type="button" class="dgx-exec-row dgx-exec--' + dgxEsc(st) + '"' +
+                    ' data-exec-run="' + dgxEsc(it.run_id || '') + '">' +
+                    '<span class="dgx-exec-id dgx-mono">' + dgxEsc(dgxExecShort(it.run_id)) + '</span>' +
+                    '<span class="dgx-exec-state">' + dgxEsc(label) + '</span>' +
+                    (it.is_current ? '<span class="dgx-exec-cur">当前</span>' : '') +
+                    (when ? '<span class="dgx-exec-time">' + dgxEsc(when) + '</span>' : '') +
+                    '<span class="dgx-exec-go">查看执行流程 ›</span>' +
+                    '</button>';
+            }
+            return html + '</section>';
+        }
+
         function dgxPlanHistory() {
             var items = (pcDiagHistory && pcDiagHistory.items) || [];
             if (!items.length) return '';
@@ -4789,7 +4883,12 @@
             html += '<div class="dgx-head"><div class="dgx-head-top">' +
                 '<span class="dgx-status dgx-status--' + dgxEsc(st) + '">' + dgxEsc(DGX_STATUS_LABEL[st] || st) + '</span>' +
                 (snap.trigger ? '<span class="dgx-chip">来源 ' + dgxEsc(snap.trigger) + '</span>' : '') +
-                (snap.session_id ? '<span class="dgx-chip dgx-mono" title="session_id">' + dgxEsc(snap.session_id) + '</span>' : '') +
+                // 轮次标识：老记录是 spike 的 session_id，新记录是 agentflow 的 run_id。
+                // 两者都落在 ref 上（历史快照没有 ref，回落 session_id），ref_kind 只影响提示文案。
+                ((snap.ref || snap.session_id)
+                    ? '<span class="dgx-chip dgx-mono" title="' + dgxEsc(snap.ref_kind === 'run' ? 'run_id' : 'session_id') + '">' +
+                      dgxEsc(snap.ref || snap.session_id) + '</span>'
+                    : '') +
                 (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">耗时 ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
                 (snap.updated_at ? '<span class="dgx-updated">更新 ' + dgxEsc(dgxClock(snap.updated_at)) + '</span>' : '') +
                 '</div>' +
@@ -4823,7 +4922,9 @@
                 html += dgxChain(snap);
             }
 
-            // 7) 历史计划（详情最下边；重跑窗口内也展示，方便对着上一版建议）
+            // 7) 历次执行（最下边；下钻到该轮的执行流程）
+            html += dgxExecutions(snap);
+            // 8) 历史计划（重跑窗口内也展示，方便对着上一版建议）
             html += dgxPlanHistory();
             html += '</div>';
             bodyEl.innerHTML = html;
@@ -5750,6 +5851,13 @@
                     } else if (act === 'fp') {
                         confirmDialog('标记为误报？将记入误报率并关闭这条问题单。', function () { submitDiagnosisDecision('false_positive'); });
                     }
+                    return;
+                }
+                // 历次执行 → 下钻到该轮的 run 执行流程（复用 View analysis 的查看器）
+                var execRow = t && t.closest ? t.closest('.dgx-exec-row') : null;
+                if (execRow) {
+                    var rid = execRow.getAttribute('data-exec-run');
+                    if (rid && pcDiagRec) openProblemRun(pcDiagRec, rid);
                     return;
                 }
                 var tab = t && t.closest ? t.closest('.dgx-tab') : null;

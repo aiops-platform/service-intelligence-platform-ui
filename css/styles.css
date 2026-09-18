@@ -7184,6 +7184,43 @@ svg { fill: currentColor; }
 .dgx-chain--hist { background: var(--bg-white); }
 .dgx-chain--hist .dgx-chain-sum { color: var(--text-secondary); }
 
+/* 8) 历次执行（弹窗最下边；点行走该轮的 run 执行流程）
+   配色沿用 .dgx-status--* 的语言：进行中蓝、完成绿、失败红。 */
+.dgx-exec { background: var(--bg-body); }
+.dgx-exec-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-white);
+    font-size: 12px;
+    cursor: pointer;
+}
+.dgx-exec-row:last-child { margin-bottom: 0; }
+.dgx-exec-row:hover { border-color: var(--accent-blue); }
+.dgx-exec-id { color: var(--text-secondary); font-family: var(--font-mono); }
+.dgx-exec-state { font-weight: 600; color: var(--text-secondary); }
+.dgx-exec--analyzing .dgx-exec-state { color: var(--accent-blue); }
+.dgx-exec--completed .dgx-exec-state,
+.dgx-exec--approved .dgx-exec-state { color: #047857; }
+.dgx-exec--failed .dgx-exec-state { color: var(--accent-red); }
+.dgx-exec-cur {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+.dgx-exec-time { color: var(--text-tertiary); }
+.dgx-exec-go { margin-left: auto; color: var(--accent-blue); white-space: nowrap; }
+
 /* ===== Agent 目录（周期表）===== */
 /* v2.0.0 新增页（Vue 原生，无 legacy 对应）。结构对齐参考站：
    大组(role) → 行(stage) → 单元格；右侧 Inspector 点选填充。 */
