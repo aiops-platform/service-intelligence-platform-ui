@@ -3975,10 +3975,6 @@
         var pcPollTimer = null;    // 5s 自动刷新定时器
         var pcRefreshing = false;  // 请求在途标志：避免轮询堆叠
 
-        // Analyze 弹框状态：pending 问题 → 选 workflow → POST /analyze（agentflow 联动）
-        var pcAnalyzeRec = null;   // 正在被 Analyze 弹框处理的问题记录
-        var pcWorkflows = [];      // agentflow /workflows 缓存 [{id,name}]
-        var analyzeBusy = false;   // analyze 请求在途标志（防双击）
         // agentflow（Bug Solve 后端）基址，与 Bug Solve 页一致：bugSolveBaseUrl > workflowBaseUrl > 默认 8000
         var AGENTFLOW_BASE = localStorage.getItem('bugSolveBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
         // agentflow 侧租户（X-Tenant-ID）。⚠️ 与上面的 TENANT_ID（APM 租户）**故意不同**：
@@ -3987,7 +3983,7 @@
         // 本页此前的 agentflow 调用**全都不带这个头**，run 会落到 agentflow 的 dev 缺省租户 local，
         // 而那里没有任何 MCP 绑定 → agent 拿不到工具。故统一收口到 agentflowFetch。
         var AGENTFLOW_TENANT = localStorage.getItem('agentflowTenantId') || 'otr';
-        // 「分析new」固定用这条日志诊断流程（按 name 解析 id；名字要与 seed 脚本一致）
+        // 「Analyze」固定用这条日志诊断流程（按 name 解析 id；名字要与 seed 脚本一致）
         var LOG_DIAGNOSE_WF_NAME = 'problem-log-diagnose';
         var pcLogWfId = '';       // 解析后的 workflow id 缓存
         var pcLogWfBusy = false;  // 解析在途（防并发重复拉取）
@@ -4007,10 +4003,10 @@
         }
 
         // 解析日志诊断 workflow 的 id（按 name 查 agentflow /workflows）。
-        // 找不到时给**可执行**的提示——这条流程是 seed 出来的，库里没有它「分析new」必然失败。
+        // 找不到时给**可执行**的提示——这条流程是 seed 出来的，库里没有它「Analyze」必然失败。
         function resolveLogDiagnoseWorkflowId() {
             if (pcLogWfId) return Promise.resolve(pcLogWfId);
-            if (pcLogWfBusy) return Promise.reject(new Error('workflow 解析中，请稍后重试'));
+            if (pcLogWfBusy) return Promise.reject(new Error('workflow lookup already in progress, please retry'));
             pcLogWfBusy = true;
             return agentflowFetch('/workflows')
                 .then(function (res) {
@@ -4018,17 +4014,18 @@
                     return res.json();
                 })
                 .then(function (list) {
-                    pcWorkflows = Array.isArray(list) ? list : [];
-                    for (var i = 0; i < pcWorkflows.length; i++) {
-                        if (pcWorkflows[i].name === LOG_DIAGNOSE_WF_NAME) {
-                            pcLogWfId = pcWorkflows[i].id;
+                    var workflows = Array.isArray(list) ? list : [];
+                    for (var i = 0; i < workflows.length; i++) {
+                        if (workflows[i].name === LOG_DIAGNOSE_WF_NAME) {
+                            pcLogWfId = workflows[i].id;
                             pcLogWfBusy = false;
                             return pcLogWfId;
                         }
                     }
                     pcLogWfBusy = false;
-                    throw new Error('未找到流程 ' + LOG_DIAGNOSE_WF_NAME +
-                        '（先在 multi-agent-workflow 跑 scripts/seed_problem_log_diagnose.py --tenant ' + AGENTFLOW_TENANT + '）');
+                    throw new Error('workflow ' + LOG_DIAGNOSE_WF_NAME + ' not found' +
+                        ' (seed it first: run scripts/seed_problem_log_diagnose.py in multi-agent-workflow' +
+                        ' with --tenant ' + AGENTFLOW_TENANT + ')');
                 }, function (err) {
                     pcLogWfBusy = false;
                     throw err;
@@ -4262,7 +4259,7 @@
                     var title = problemTitle(p);
                     var sev = (p.severity || 'warning').toLowerCase();
                     var st = (p.state || 'pending').toLowerCase();
-                    // 「已发起分析」= 有 agent_run（新路径：分析new/Analyze 走 agentflow run）
+                    // 「已发起分析」= 有 agent_run（新路径：Analyze 走 agentflow run）
                     // 或 diagnose_session（老记录：直连 spike）。两者都能进 View diagnosis——
                     // 后端 GET /{id}/diagnose 已按绑定分派引擎，返回同一形状，前端不必分支。
                     var diag = findAgentRun(p) || findDiagnoseSession(p);
@@ -4276,9 +4273,8 @@
                         '<td class="col-time">' + formatTime(p.detected_at || p.first_seen_at) + '</td>' +
                         '<td class="pc-actions">' +
                         '<button class="btn-alert-detail" data-id="' + escapeHtml(p.record_id) + '" data-act="detail">Detail</button>' +
-                        ((st === 'pending' || st === 'in_progress') ? '<button class="btn-alert-detail pc-diag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="diagnose"' + (diag ? ' disabled title="Analysis already started"' : '') + '>分析new</button>' : '') +
+                        ((st === 'pending' || st === 'in_progress') && !diag ? '<button class="btn-alert-detail pc-diag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="diagnose">Analyze</button>' : '') +
                         (diag ? '<button class="btn-alert-detail pc-viewdiag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="view-diagnosis">View diagnosis</button>' : '') +
-                        (st === 'pending' ? '<button class="btn-alert-detail pc-analyze-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="analyze">Analyze</button>' : '') +
                         ((st === 'pending' || st === 'in_progress') ? '<button class="btn-alert-detail pc-ignore-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="ignore">Ignore</button>' : '') +
                         '</td>' +
                         '</tr>';
@@ -4318,8 +4314,6 @@
                     if (!rec) return;
                     if (act === 'detail') openProblemDetail(rec);
                     else if (act === 'ignore') confirmIgnore(rec);
-                    else if (act === 'analyze') openAnalyze(rec);
-                    else if (act === 'view-analysis') openProblemRun(rec); // 与 View diagnosis 同源（同一 run 视图）
                     else if (act === 'diagnose') startDiagnose(rec);
                     // View diagnosis 回到**结论版面**（.dgx-*）：先看根因/方案/审批，
                     // 执行过程退到弹窗底部「历次执行」区按需查看（见 dgxExecutions）。
@@ -4466,78 +4460,8 @@
             });
         }
 
-        // ── Analyze：pending 问题 → 选 workflow → POST /v1/problems/{id}/analyze ──────
-        function fillAnalyzeWorkflows() {
-            var sel = getEl('pcWorkflow');
-            if (!sel) return;
-            var html = '<option value="">-- Select a saved workflow --</option>';
-            pcWorkflows.forEach(function (w) {
-                html += '<option value="' + escapeHtml(w.id) + '">' + escapeHtml(w.name || w.id) + '</option>';
-            });
-            sel.innerHTML = html;
-        }
-
-        function loadAnalyzeWorkflows() {
-            if (pcWorkflows.length) { fillAnalyzeWorkflows(); return; }
-            agentflowFetch('/workflows')
-                .then(function (res) {
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    return res.json();
-                })
-                .then(function (data) {
-                    pcWorkflows = Array.isArray(data) ? data : [];
-                    fillAnalyzeWorkflows();
-                })
-                .catch(function (err) {
-                    window._showToast('Failed to load workflows: ' + (err && err.message ? err.message : 'network error'), 'error');
-                });
-        }
-
-        function openAnalyze(rec) {
-            pcAnalyzeRec = rec;
-            var info = getEl('pcAnalyzeInfo');
-            if (info) info.textContent = 'Start an agent workflow analysis for problem ' + (rec && rec.record_id ? rec.record_id : '') + '?';
-            var sel = getEl('pcWorkflow');
-            if (sel) sel.value = '';
-            var overlay = getEl('pcAnalyzeOverlay');
-            if (overlay) overlay.classList.add('open');
-            if (pcWorkflows.length) fillAnalyzeWorkflows();
-            else loadAnalyzeWorkflows();
-        }
-
-        function closeAnalyze() {
-            pcAnalyzeRec = null;
-            var overlay = getEl('pcAnalyzeOverlay');
-            if (overlay) overlay.classList.remove('open');
-        }
-
-        function confirmAnalyze() {
-            var rec = pcAnalyzeRec;
-            if (!rec || analyzeBusy) return;
-            var sel = getEl('pcWorkflow');
-            var workflowId = sel ? sel.value : '';
-            if (!workflowId) { window._showToast('Please select a workflow first', 'error'); return; }
-            analyzeBusy = true;
-            var confirmBtn = getEl('pcAnalyzeConfirm');
-            if (confirmBtn) confirmBtn.disabled = true;
-            var recordId = rec.record_id; // 先捕获，closeAnalyze() 会置空 pcAnalyzeRec
-            apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/analyze', { method: 'POST', body: { workflow_id: workflowId } })
-                .then(function () {
-                    analyzeBusy = false;
-                    if (confirmBtn) confirmBtn.disabled = false;
-                    closeAnalyze();
-                    window._showToast('Analyze started for ' + recordId, 'success');
-                    refresh(); // 非乐观，以后端为准（5s 轮询兜底）
-                })
-                .catch(function (err) {
-                    analyzeBusy = false;
-                    if (confirmBtn) confirmBtn.disabled = false;
-                    window._showToast('Analyze failed: ' + err.message, 'error'); // 保持弹框开启，可换流程重试
-                });
-        }
-
-        // ── 分析new：问题单 → POST /v1/problems/{id}/diagnose（后端按记录拼装 /diagnose/logs，
-        //    session_id 绑进 evidence；绑定后「分析new」置灰，出现「View diagnosis」）──────
+        // ── Analyze：问题单 → POST /v1/problems/{id}/diagnose（后端按记录拼装 /diagnose/logs，
+        //    session_id 绑进 evidence；绑定后 Analyze 隐藏，出现「View diagnosis」）──────
         // 内容视图：本页轮询 GET /v1/problems/{id}/diagnose（后端同源代理诊断服务 /status），
         // 直到终态（completed/failed/approved/closed_manual）停轮。
         var diagBusy = {};        // record_id -> true（请求在途，防双击）
@@ -4577,7 +4501,7 @@
             return last;
         }
 
-        // 「分析new」= 由 APM 组 inputs（包装的 bug_report + 时间窗）并起一次 agentflow run，
+        // 「Analyze」= 由 APM 组 inputs（包装的 bug_report + 时间窗）并起一次 agentflow run，
         // 再把 run_id 绑回问题单；随后前端**直连 agentflow** 轮询进度/提交审批（复用
         // 「View analysis」那套 run 渲染器）。起 run 之所以仍走 APM：绑定与起 run 是**原子的一步**
         // （浏览器直连 /run 再补绑定，中间失败会留下"起了 run 但没绑定"的孤儿 run——列表上看不见、
@@ -4596,13 +4520,13 @@
                 .then(function (data) {
                     delete diagBusy[recordId];
                     var rid = data && data.run_id ? data.run_id : '';
-                    window._showToast('分析已启动' + (rid ? ' · ' + rid : ''), 'success');
+                    window._showToast('Analyze started' + (rid ? ' · ' + rid : ''), 'success');
                     if (rid) openProblemRun(rec, rid); // 直接打开运行视图（不必等 evidence 回读）
-                    refresh(); // 非乐观：以后端 evidence 为准 → 按钮置灰 + 出现 View diagnosis
+                    refresh(); // 非乐观：以后端 evidence 为准 → Analyze 隐藏 + 出现 View diagnosis
                 })
                 .catch(function (err) {
                     delete diagBusy[recordId];
-                    window._showToast('分析失败: ' + (err && err.message ? err.message : 'network error'), 'error');
+                    window._showToast('Analyze failed: ' + (err && err.message ? err.message : 'network error'), 'error');
                 });
         }
 
@@ -4714,7 +4638,7 @@
         // 时间戳归一 → epoch 毫秒。**两条后端路径给的形状不同**：spike 历史是 epoch 秒
         // （`aidiag/diag/session.py` 的 `created_at: float`），agentflow 是 ISO 字符串
         // （`viewmodel.py` 契约写的就是 ISO8601）。下面两个 helper 原先只认数字，
-        // 「分析new」切到 agentflow 后：dgxElapsed 拿字符串做减法 → 渲染出「耗时 NaNm NaNs」，
+        // 「Analyze」切到 agentflow 后：dgxElapsed 拿字符串做减法 → 渲染出「耗时 NaNm NaNs」，
         // dgxClock 的 `ts * 1000` → isNaN → 返回空串，把「更新」**静默吞掉**。
         // 这里两种都吃，不再依赖上游用哪种形状。
         function dgxTsMs(v) {
@@ -6185,18 +6109,6 @@
             if (e.target === this) closeProblemDetail();
         });
 
-        // Analyze 弹窗生命周期（pcAnalyzeOverlay）：关闭按钮 / Cancel / Confirm / 点遮罩 / Escape
-        var pcAnalyzeClose = getEl('pcAnalyzeClose');
-        if (pcAnalyzeClose) pcAnalyzeClose.addEventListener('click', closeAnalyze);
-        var pcAnalyzeCancel = getEl('pcAnalyzeCancel');
-        if (pcAnalyzeCancel) pcAnalyzeCancel.addEventListener('click', closeAnalyze);
-        var pcAnalyzeConfirm = getEl('pcAnalyzeConfirm');
-        if (pcAnalyzeConfirm) pcAnalyzeConfirm.addEventListener('click', confirmAnalyze);
-        var pcAnalyzeOverlay = getEl('pcAnalyzeOverlay');
-        if (pcAnalyzeOverlay) pcAnalyzeOverlay.addEventListener('click', function (e) {
-            if (e.target === this) closeAnalyze();
-        });
-
         // 诊断内容弹窗生命周期（pcDiagnoseOverlay）：关闭 / 点遮罩 / Escape
         var pcDiagnoseClose = getEl('pcDiagnoseClose');
         if (pcDiagnoseClose) pcDiagnoseClose.addEventListener('click', closeDiagnosisView);
@@ -6327,7 +6239,6 @@
             if (getEl('pcRunGraphOverlay') && getEl('pcRunGraphOverlay').classList.contains('open')) closeRunGraph();
             else if (getEl('pcRunOverlay') && getEl('pcRunOverlay').classList.contains('open')) closeProblemRun();
             else if (getEl('pcDiagnoseOverlay') && getEl('pcDiagnoseOverlay').classList.contains('open')) closeDiagnosisView();
-            else if (getEl('pcAnalyzeOverlay') && getEl('pcAnalyzeOverlay').classList.contains('open')) closeAnalyze();
             else if (getEl('pcDetailOverlay') && getEl('pcDetailOverlay').classList.contains('open')) closeProblemDetail();
         });
 

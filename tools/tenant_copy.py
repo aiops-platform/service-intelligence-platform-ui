@@ -334,6 +334,67 @@ def patch_ask_sip(chunks_dir) -> bool:
     return True
 
 
+# Business Ops journey 表的行内「名字」单元格 —— 见 patch_journey_name_drill()
+JND_FILE = "00tsl~72wvlrr.js"       # 与 AS_FILE 同一个文件（两页共享 chunk）
+JND_FIND = (
+    '(0,t.jsxs)("div",{children:[(0,t.jsx)("div",{style:{fontFamily:"var(--font-display)",'
+    'fontSize:13,fontWeight:600,color:"var(--text-primary)",lineHeight:1.2},'
+    'children:e.isCrossJourney?"Cross-Journey":e.domain.label})'
+)
+JND_REPL = (
+    '(0,t.jsxs)("div",{onClick:e=>{e.stopPropagation(),i()},'
+    'title:"Drill into "+e.domain.label,style:{cursor:"pointer"},children:['
+    '(0,t.jsx)("div",{style:{fontFamily:"var(--font-display)",'
+    'fontSize:13,fontWeight:600,color:"var(--text-primary)",lineHeight:1.2},'
+    'children:e.isCrossJourney?"Cross-Journey":e.domain.label})'
+)
+
+
+def patch_journey_name_drill(chunks_dir) -> bool:
+    """
+    把 journey 表行内**名字**的点击行为从「选中」改成「下钻」。
+
+    行组件 `w()` 收到 `onSelect` 和 `onDrill` 两个回调，三个点击面分工如下：
+
+        <div role="button" onClick={onSelect}>            ← 整行：选中 → 右侧 inspector
+          <span/>                                          ← 胶囊（HC / HT / ⊙）
+          <div>名字 + 副标题</div>                          ← ★ 本次改这里
+          …XLA / Apps / Inc/d / Bot %…
+          <span role="button" onClick={stopPropagation,onDrill}>›</span>   ← 行尾箭头：下钻
+        </div>
+
+    名字本来是个普通 div，点击冒泡到整行 → 只选中，顶部筛选框仍停在 Enterprise。
+    改法是把行尾箭头那一套**原样搬过来**：`onClick:e=>{e.stopPropagation(),i()}`，
+    `i` 就是这个组件已经收到的 `onDrill` —— 不新增状态、不新增回调。
+
+    ## 为什么改 JS，而不是像租户文案那样做 DOM 改写
+
+    下钻要用**该行的 domain id**（`onDrill` 内部就是按 id 调 `findDomain`）。DOM 层要复现，
+    只能拿名字文本去顶部筛选框里找同名按钮再 `.click()` —— 那等于把「文案」当成「标识」，
+    改标签/换语言就断；而 id 是数据里现成的。这里要接的是事件，不是文案，DOM 改写没有优势。
+
+    ## 锚点
+
+    必须带上 `children:e.isCrossJourney?…` 才唯一 —— 同一个 style 前缀在组件 `A()`
+    （组合行）里还有一份。`title` 里的 `e` 是渲染作用域的（此时仍是行 prop；箭头参数 `e`
+    只在箭头体内遮蔽），文案与行尾箭头逐字一致，所以**不必给 cross-journey 行分支**。
+
+    返回是否打过。幂等：已打过跳过；站点改版导致原串不唯一也静默跳过
+    （行为退回改动前，不会把页面改坏）。
+    """
+    f = chunks_dir / JND_FILE
+    if not f.is_file():
+        return False
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if JND_REPL in t:
+        return False                                # 已打过
+    if t.count(JND_FIND) != 1:
+        return False                                # 站点改版/不唯一 → 静默跳过
+    f.write_text(t.replace(JND_FIND, JND_REPL),
+                 encoding="utf-8", errors="surrogateescape")
+    return True
+
+
 # 服务概览页底部 "Daily incident volume · last 30 days" 热力图的配色 —— 见 patch_heatmap_palette()
 HM_FILE = "100pim9o6kpoy.js"
 HM_FIND = (

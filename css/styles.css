@@ -4687,14 +4687,6 @@ svg { fill: currentColor; }
     gap: 8px;
 }
 
-/* pcAnalyzeOverlay（Problem Center Analyze 弹框）：按钮区与下拉之间留白；
-   主按钮用平台紫强调（作用域限定，不改变全局 .btn-primary 的黑色）。 */
-#pcAnalyzeOverlay .apm-confirm-actions { margin-top: 24px; }
-#pcAnalyzeOverlay .apm-confirm-actions .btn-primary {
-    background: var(--accent-purple);
-    color: #fff;
-}
-
 .apm-form-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -4963,26 +4955,11 @@ svg { fill: currentColor; }
 .pc-actions { white-space: nowrap; }
 .pc-ignore-btn { color: var(--text-tertiary); }
 .pc-ignore-btn:hover { color: var(--accent-red); border-color: var(--accent-red); }
-/* 分析按钮（同 btn-alert-detail 视觉，accent-blue 强调，pending 行展示） */
-.pc-analyze-btn { color: var(--accent-blue); }
-.pc-analyze-btn:hover { color: var(--accent-blue); border-color: var(--accent-blue); }
-/* View analysis 按钮（in_progress 行展示，accent-purple 强调，与 Analyze 弹框主按钮同色系） */
-.pc-viewrun-btn { color: var(--accent-purple); }
-.pc-viewrun-btn:hover { color: var(--accent-purple); border-color: var(--accent-purple); }
-/* 「分析new」触发 + View diagnosis（诊断链路专属色 accent-purple，与 .dgx-verdict 同色系） */
+/* 「Analyze」触发 + View diagnosis（诊断链路专属色 accent-purple，与 .dgx-verdict 同色系） */
 .pc-diag-btn { color: var(--accent-purple); }
 .pc-diag-btn:hover { color: var(--accent-purple); border-color: var(--accent-purple); }
 .pc-viewdiag-btn { color: var(--accent-purple); }
 .pc-viewdiag-btn:hover { color: var(--accent-purple); border-color: var(--accent-purple); }
-/* 已发起诊断 → 「分析new」置灰不可点（后端 409 兜底；前端仅作提示） */
-#pcTableContainer .pc-actions .pc-diag-btn:disabled,
-#pcTableContainer .pc-actions .pc-diag-btn[disabled] {
-    color: var(--text-tertiary);
-    border-color: var(--border-color);
-    background: #f3f4f6;
-    cursor: not-allowed;
-    opacity: 1;
-}
 /* Problem Center 操作按钮统一定宽 + margin 隔开（仅作用域 #pcTableContainer，不影响其它页面）。
    注意：td 保持纯 table-cell（不能 display:inline-flex，否则 border-collapse 表格里该单元格
    底边框不参与折叠绘制，行末分隔线会消失）。 */
@@ -6739,7 +6716,7 @@ svg { fill: currentColor; }
     opacity: 1;
 }
 
-/* ── Problem Center：「分析new」诊断内容弹窗（#pcDiagnoseOverlay / .dgx-*）──
+/* ── Problem Center：「Analyze」诊断内容弹窗（#pcDiagnoseOverlay / .dgx-*）──
    信息层级（结论优先）：状态头 → 根因+置信度同屏 → 总结 → 修复方案 → 分析链路（默认收起）。
    .pc-diag-body 仅作滚动容器；.pc-diag-loading/.pc-diag-error 为加载/失败态。 */
 

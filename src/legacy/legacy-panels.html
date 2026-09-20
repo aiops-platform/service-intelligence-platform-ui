@@ -1754,30 +1754,7 @@
     </div>
 </div>
 
-<!-- Problem Center Analyze Modal：pending 问题发起 agent 工作流分析，选 workflow 后 POST analyze -->
-<div class="ap-modal-overlay" id="pcAnalyzeOverlay">
-    <div class="ap-modal" style="max-width: 460px;">
-        <div class="ap-modal-header">
-            <h3>Analyze Problem</h3>
-            <button class="ap-modal-close" id="pcAnalyzeClose">&times;</button>
-        </div>
-        <div class="ap-modal-body">
-            <p class="apm-confirm-msg" id="pcAnalyzeInfo"></p>
-            <div class="apm-field">
-                <label for="pcWorkflow">Workflow <span class="apm-req">*</span></label>
-                <select id="pcWorkflow">
-                    <option value="">-- 选择已保存流程 --</option>
-                </select>
-            </div>
-            <div class="apm-confirm-actions">
-                <button class="btn btn-secondary" id="pcAnalyzeCancel">Cancel</button>
-                <button class="btn btn-primary" id="pcAnalyzeConfirm">Analyze</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Problem Center Diagnosis Modal：「分析new」绑定诊断会话后查看诊断内容（轮询后端 /diagnose） -->
+<!-- Problem Center Diagnosis Modal：「Analyze」绑定诊断会话后查看诊断内容（轮询后端 /diagnose） -->
 <div class="ap-modal-overlay" id="pcDiagnoseOverlay">
     <div class="ap-modal">
         <div class="ap-modal-header">
