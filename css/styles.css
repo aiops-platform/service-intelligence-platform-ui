@@ -6292,6 +6292,14 @@ svg { fill: currentColor; }
 .bs-node-status-skipped .bs-node-rect { fill: #f9fafb; stroke: #d1d5db; }
 .bs-node-status-skipped .bs-node-text { fill: var(--text-tertiary); }
 
+/* 中断（`kind: halt` 被触发）。
+   **不能沿用 done 的绿色**：halt 节点在库里确实是 done（它跑完了），但它代表的是
+   「证据不足、不再往下走」——上绿会让人以为这一步正常通过、整个 run 成功了。
+   用琥珀色而不是红：红是"失败"，中断不是失败，是**需要人补信息**。
+   与 waiting_approval 同色系但用实心描边区分（waiting 是虚线感更弱的浅底）。 */
+.bs-node-status-halted .bs-node-rect { fill: #fffbeb; stroke: #d97706; stroke-width: 1.6; }
+.bs-node-status-halted .bs-node-text { fill: #92400e; }
+
 /* running 呼吸圈 */
 @keyframes bs-pulse {
     0% { stroke-opacity: 1; }
@@ -6349,6 +6357,7 @@ svg { fill: currentColor; }
 }
 
 .bs-badge-done { background: #dcfce7; color: #166534; }
+.bs-badge-halted { background: #fffbeb; color: #92400e; }
 .bs-badge-running { background: #dbeafe; color: #1d4ed8; }
 .bs-badge-failed { background: #fee2e2; color: #b91c1c; }
 .bs-badge-rejected { background: #fee2e2; color: #b91c1c; }
@@ -8093,6 +8102,10 @@ textarea.cmdb-input { resize: vertical; }
    后端只把 done→success 做映射，其余原样透传，所以这几个都得有。 */
 .alert-tag.status-success          { background: #ecfdf5; color: #059669; }
 .alert-tag.status-failed           { background: #fef2f2; color: #dc2626; }
+/* 中断：琥珀，不是绿也不是红 —— 见 .bs-node-status-halted 的说明 */
+.alert-tag.status-halted           { background: #fffbeb; color: #b45309; }
+/* 工单：跑完了但缺信息，需要人补 */
+.alert-tag.status-needs_info       { background: #fffbeb; color: #b45309; }
 .alert-tag.status-canceled         { background: #f3f4f6; color: #6b7280; }
 .alert-tag.status-waiting_approval { background: #fffbeb; color: #d97706; }
 

@@ -8,6 +8,7 @@ import { ref, computed } from 'vue'
 import { runApi } from '@/api/agentflow'
 import { usePolling } from '@/composables/usePolling'
 import { statusClass } from '@/views/bug-solve/useBugSolveRun'
+import { nodeStatusOf, runStatusOf } from '@/utils/runStatus'
 
 const TERMINAL = new Set(['success', 'failed', 'cancelled'])
 
@@ -19,9 +20,23 @@ export function useRunDetail(getRunId) {
   const detailTab = ref('output')
   const stopping = ref(false)
 
+  /** 后端原值（`success` / `failed` …）。**判终态/轮询用这个**，不要用下面的展示值。 */
   const status = computed(() => run.value?.status || '')
+  /**
+   * 展示状态：中断的 run 报 `halted` 而不是 `success`（判据见 `@/utils/runStatus`）。
+   *
+   * 与 `status` 分开是**故意的**：`running` / `isTerminal` 这些控制轮询与按钮的
+   * 判断必须看后端原值 —— 拿展示值去判，`halted` 不在 `TERMINAL` 里，
+   * 轮询就永远停不下来（终态 run 会被 2 秒一轮地反复拉）。
+   */
+  const displayStatus = computed(() => runStatusOf(run.value))
   const isTerminal = computed(() => TERMINAL.has(status.value))
   const running = computed(() => !!status.value && !isTerminal.value)
+
+  /** 单个节点的展示状态（触发中断的那个节点报 `halted`，不是 `done`）。 */
+  function nodeStatus(nid, rawStatus) {
+    return nodeStatusOf(run.value, nid, rawStatus)
+  }
 
   const nodes = computed(() => Object.entries(run.value?.nodes || {}))
 
@@ -41,7 +56,8 @@ export function useRunDetail(getRunId) {
     if (!n) return null
     return {
       nid,
-      status: n.status || 'pending',
+      // 展示状态：halt 节点显示 halted（库里的原值是 done）
+      status: nodeStatusOf(run.value, nid, n.status),
       tokens: n.tokens || 0,
       cost: typeof n.cost === 'number' ? n.cost.toFixed(4) : '0.0',
       durationMs: n.duration_ms,
@@ -118,6 +134,9 @@ export function useRunDetail(getRunId) {
     loading,
     error,
     status,
+    /** 展示状态（halted 的 run 不再显示 success）—— 见 displayStatus 的说明 */
+    displayStatus,
+    nodeStatus,
     isTerminal,
     running,
     nodes,

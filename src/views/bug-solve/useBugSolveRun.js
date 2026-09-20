@@ -9,23 +9,14 @@
 import { ref, computed } from 'vue'
 import { workflowApi, runApi } from '@/api/agentflow'
 import { usePolling } from '@/composables/usePolling'
+import { nodeStatusOf, runStatusOf } from '@/utils/runStatus'
 
-/** 节点状态 → 着色类名（逐字移植 statusClass） */
-const STATUS_CLASS = {
-  done: 'bs-node-status-done',
-  running: 'bs-node-status-running',
-  pending: 'bs-node-status-pending',
-  failed: 'bs-node-status-failed',
-  cancelled: 'bs-node-status-cancelled',
-  rejected: 'bs-node-status-rejected',
-  waiting_approval: 'bs-node-status-waiting',
-  skipped: 'bs-node-status-skipped',
-}
 const TERMINAL = { success: 1, failed: 1, cancelled: 1 }
 
-export function statusClass(st) {
-  return STATUS_CLASS[st] || 'bs-node-status-pending'
-}
+// 状态 → 类名的表已收进 `@/utils/runStatus`（那里同时住着「halted 怎么派生」的规则）。
+// 这里**原样再导出**：BugSolveView 与 useRunDetail 一直是从本模块 import 的，
+// 搬个家不该顺手改掉两个调用方。
+export { statusClass } from '@/utils/runStatus'
 
 export function useBugSolveRun({ getCanvas }) {
   const workflows = ref([])
@@ -46,13 +37,26 @@ export function useBugSolveRun({ getCanvas }) {
   // 来自 run 响应字段（不是按节点求和 —— 原实现即如此）
   const totalTokens = ref(0)
   const totalCost = ref('0.0')
+  /**
+   * 中断判据（`outcome` / `halted_at`）。
+   *
+   * 本模块原先只存 `runStatus = data.status`，而中断的 run 那个值也是 `success`
+   * —— 于是「证据不足、什么都没诊断出来」在本页显示成绿色的成功。判据与颜色
+   * 的规则统一在 `@/utils/runStatus`（Run Detail 用的是同一份）。
+   */
+  const runMeta = ref(null)
+
+  /** 单个节点的展示状态（halt 节点报 `halted`，不是 `done`） */
+  function nodeStatus(nid, rawStatus) {
+    return nodeStatusOf(runMeta.value, nid, rawStatus)
+  }
 
   /** 左侧「当前节点」提示文案 */
   const stepLabel = computed(() => {
     const data = currentNodeData.value
     if (!data) return '—'
     const statusMap = {}
-    Object.keys(data).forEach((nid) => (statusMap[nid] = data[nid].status))
+    Object.keys(data).forEach((nid) => (statusMap[nid] = nodeStatus(nid, data[nid].status)))
     const runNid = Object.keys(statusMap).filter((nid) => statusMap[nid] === 'running')[0] || null
 
     if (runNid) {
@@ -74,7 +78,7 @@ export function useBugSolveRun({ getCanvas }) {
     const data = currentNodeData.value
     if (!nid || !data || !data[nid]) return null
     const n = data[nid]
-    const st = n.status || 'pending'
+    const st = nodeStatus(nid, n.status)
     return {
       nid,
       status: st,
@@ -175,7 +179,8 @@ export function useBugSolveRun({ getCanvas }) {
 
   function applyRun(data) {
     if (!runId.value || data.run_id !== runId.value) return
-    runStatus.value = data.status
+    runMeta.value = { outcome: data.outcome, halted_at: data.halted_at }
+    runStatus.value = runStatusOf(data)
     totalTokens.value = data.total_tokens || 0
     totalCost.value = typeof data.total_cost === 'number' ? data.total_cost.toFixed(4) : '0.0'
     pendingApprovals.value = data.pending_approvals || []
@@ -184,7 +189,7 @@ export function useBugSolveRun({ getCanvas }) {
 
     const statusMap = {}
     Object.keys(currentNodeData.value).forEach((nid) => {
-      statusMap[nid] = currentNodeData.value[nid].status
+      statusMap[nid] = nodeStatus(nid, currentNodeData.value[nid].status)
     })
     const runNid = Object.keys(statusMap).filter((nid) => statusMap[nid] === 'running')[0] || null
 

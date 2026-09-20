@@ -19,7 +19,8 @@ const router = useRouter()
 const state = useRunDetail(() => String(route.params.runId || ''))
 
 const {
-  run: runData, loading, error, status, running, nodes, totals, detail, detailTab,
+  run: runData, loading, error, status, displayStatus, nodeStatus, running, nodes,
+  totals, detail, detailTab,
   stopping, start, stop, stopPolling, approve, reject, selectNode, statusClass,
 } = state
 
@@ -83,7 +84,8 @@ watch(
     if (!graph || !canvasRef.value) return
     const statusMap = {}
     for (const [nid, n] of Object.entries(runData.value?.nodes || {})) {
-      statusMap[nid] = n.status
+      // 走 nodeStatus 而不是 n.status：halt 节点该上自己的颜色（见 utils/runStatus）
+      statusMap[nid] = nodeStatus(nid, n.status)
     }
     canvasRef.value.render(graph, statusMap)
   },
@@ -106,7 +108,10 @@ watch(
         </span>
       </h1>
       <div style="display: flex; align-items: center; gap: 12px">
-        <span class="alert-tag" :class="'status-' + status">{{ status || '…' }}</span>
+        <!-- 展示状态：halted 的 run 不再是绿色的 success（见 utils/runStatus） -->
+        <span class="alert-tag" :class="'status-' + displayStatus">
+          {{ displayStatus || '…' }}
+        </span>
         <button v-if="running" class="btn btn-outline" :disabled="stopping" @click="stop">
           {{ stopping ? '停止中…' : '停止' }}
         </button>
@@ -235,7 +240,11 @@ watch(
           <tr v-for="[nid, n] in nodes" :key="nid" @click="selectNode(nid)" style="cursor: pointer">
             <td class="col-title">{{ nid }}</td>
             <td>{{ (runData?.graph?.nodes || []).find((g) => g.id === nid)?.agent || '—' }}</td>
-            <td><span class="alert-tag" :class="'status-' + n.status">{{ n.status }}</span></td>
+            <td>
+              <span class="alert-tag" :class="'status-' + nodeStatus(nid, n.status)">
+                {{ nodeStatus(nid, n.status) }}
+              </span>
+            </td>
             <td class="col-time">{{ fmtMs(n.duration_ms) }}</td>
             <td>{{ n.tokens || 0 }}</td>
             <td class="col-time">{{ typeof n.cost === 'number' ? n.cost.toFixed(4) : '0.0' }}</td>

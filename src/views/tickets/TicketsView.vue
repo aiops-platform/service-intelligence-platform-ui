@@ -35,6 +35,8 @@ const {
   activeNodeCount,
   formatDuration,
   windowWarning,
+  ticketDisplayStatus,
+  ticketStatusLabel,
 } = useTickets()
 
 const showNew = ref(false)
@@ -107,7 +109,7 @@ onActivated(load)
     </div>
 
     <!-- Stats -->
-    <div class="reflow-stats" style="grid-template-columns: repeat(5, 1fr)">
+    <div class="reflow-stats" style="grid-template-columns: repeat(6, 1fr)">
       <div class="kpi-card">
         <div class="kpi-header"><span>Total Tickets</span></div>
         <div><div class="kpi-value" style="color: var(--accent-blue)">{{ counts.all }}</div>
@@ -122,6 +124,12 @@ onActivated(load)
         <div class="kpi-header"><span>In Progress</span></div>
         <div><div class="kpi-value" style="color: #f59e0b">{{ counts.running }}</div>
           <div class="kpi-sub">run started</div></div>
+      </div>
+      <!-- 跑完了但没诊断出结果（run 停在 halt 节点）：不会自己往下走了，等人补信息 -->
+      <div class="kpi-card">
+        <div class="kpi-header"><span>需要补充信息</span></div>
+        <div><div class="kpi-value" style="color: #b45309">{{ counts.needs_info }}</div>
+          <div class="kpi-sub">evidence insufficient</div></div>
       </div>
       <div class="kpi-card">
         <div class="kpi-header"><span>Resolved</span></div>
@@ -190,7 +198,12 @@ onActivated(load)
               </span>
               <span v-else>-</span>
             </td>
-            <td><span class="alert-tag" :class="'status-' + t.status">{{ t.status }}</span></td>
+            <td>
+              <!-- 展示状态：run 停在 halt 节点的工单报"缺少必要信息"，不再是 running -->
+              <span class="alert-tag" :class="'status-' + ticketDisplayStatus(t)">
+                {{ ticketStatusLabel(ticketDisplayStatus(t)) }}
+              </span>
+            </td>
             <td>
               <button
                 v-if="t.run_ids && t.run_ids.length"
@@ -227,7 +240,9 @@ onActivated(load)
         <div class="ap-modal-header">
           <h3>
             {{ detail.number || detail.id }}
-            <span class="alert-tag" :class="'status-' + detail.status">{{ detail.status }}</span>
+            <span class="alert-tag" :class="'status-' + ticketDisplayStatus(detail)">
+              {{ ticketStatusLabel(ticketDisplayStatus(detail)) }}
+            </span>
           </h3>
           <button class="ap-modal-close" @click="closeDetail">&times;</button>
         </div>

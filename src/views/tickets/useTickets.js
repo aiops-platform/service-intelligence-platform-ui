@@ -20,9 +20,63 @@ const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
   { value: 'new', label: 'New' },
   { value: 'running', label: 'In Progress' },
+  // 跑完了但**什么都没诊断出来**：run 停在 halt 节点。与"进行中"必须分开 ——
+  // 它不会自己往下走了，等人补信息（服务名 / trace_id）。
+  { value: 'needs_info', label: '需要补充信息' },
   { value: 'resolved', label: 'Resolved' },
   { value: 'failed', label: 'Failed' },
 ]
+
+/**
+ * 工单的**展示状态**。
+ *
+ * ## 为什么不能直接显示 `ticket.status`
+ *
+ * 后端只在发起 run 时把工单置成 `running`，**之后没有任何代码再改它**
+ * （`TICKET_RESOLVED` / `TICKET_FAILED` 定义了但从未被写入）——所以列表里那条
+ * 会永远是 running，哪怕 run 早就失败或中断了。
+ *
+ * 判据只能来自 run。后端 `GET /tickets` 顺带返回 `latest_run`
+ * （`{run_id, status, outcome, halted_at}`，见 `api/app.py` 的 `_with_latest_run`）。
+ *
+ * 所以**工单的展示状态几乎完全由 run 派生**，`ticket.status` 只在"没发起过 run"时
+ * 才用得上。这不是绕远路，是实情：后端那份状态本来就没有后续。
+ */
+export const NEEDS_INFO = 'needs_info'
+
+/** run 还在跑的状态（这些才叫"进行中"）。 */
+const RUN_ACTIVE = new Set(['running', 'pending', 'queued', 'paused', 'waiting_approval'])
+
+/**
+ * run 终态 → 工单展示状态。
+ *
+ * ⚠️ `success` → `resolved` 是个**约定**：一条按图跑完的 run 意味着诊断→修复→
+ * 提交这条链走完了。它**不等于**"事故已确认解决"（那要看 PR 有没有合、服务有没有
+ * 真恢复）——本测试床没有那条反馈回路，所以这是现有信号里最接近的一个。
+ * 要改口径只改这张表。
+ */
+const RUN_TERMINAL_TO_TICKET = {
+  success: 'resolved',
+  failed: 'failed',
+  cancelled: 'failed',
+}
+
+export function ticketDisplayStatus(t) {
+  const r = t?.latest_run
+  // 没发起过 run（或后端没给）→ 用后端自己的状态（new / running…）
+  if (!r) return t?.status || ''
+  // 中断优先于一切：run 的 status 是 success，但它什么都没诊断出来
+  if (r.outcome === 'halted') return NEEDS_INFO
+  if (RUN_ACTIVE.has(r.status)) return 'running'
+  return RUN_TERMINAL_TO_TICKET[r.status] || t?.status || ''
+}
+
+/** 展示状态的文案。表里没有的原样透出（后端加新状态时不该显示成空白）。 */
+const STATUS_LABELS = { needs_info: '缺少必要信息' }
+
+export function ticketStatusLabel(st) {
+  return STATUS_LABELS[st] || st
+}
 
 /** 默认时间窗：最近 1 小时。v5.5 §7.1 要求窗口由调用方下发，不能留给平台猜。 */
 /**
@@ -126,10 +180,13 @@ export function useTickets() {
     return payload
   }
 
+  // 计数与过滤都走**展示状态**：否则"中断"的工单会被算进 In Progress，
+  // 点进去却一条都看不到（列表按展示状态过滤，计数按原始状态统计）。
   const counts = computed(() => {
-    const c = { all: tickets.value.length, new: 0, running: 0, resolved: 0, failed: 0 }
+    const c = { all: tickets.value.length, new: 0, running: 0, needs_info: 0, resolved: 0, failed: 0 }
     for (const t of tickets.value) {
-      if (c[t.status] !== undefined) c[t.status] += 1
+      const st = ticketDisplayStatus(t)
+      if (c[st] !== undefined) c[st] += 1
     }
     return c
   })
@@ -137,7 +194,7 @@ export function useTickets() {
   const visible = computed(() =>
     statusFilter.value === 'all'
       ? tickets.value
-      : tickets.value.filter((t) => t.status === statusFilter.value),
+      : tickets.value.filter((t) => ticketDisplayStatus(t) === statusFilter.value),
   )
 
   async function load() {
@@ -334,5 +391,8 @@ export function useTickets() {
     activeNodeCount,
     formatDuration,
     windowWarning,
+    // 展示状态：中断的工单不再显示 running（见 ticketDisplayStatus）
+    ticketDisplayStatus,
+    ticketStatusLabel,
   }
 }

@@ -121,6 +121,22 @@ workflow DAG 由 `GraphCanvas.vue` + `useGraphCanvas.js`（命令式引擎）画
 - **`nodeTip` 的两个描述是不同维度**：`desc` = agent 的描述（Agents 页同一份，
   `GET /agents`，可被租户覆盖）；`nodeDesc` = 节点在 YAML 里写的自述。
 
+## Run / 工单的状态（`src/utils/runStatus.js`）
+
+后端的 run 判定是**两层**的，前端必须都用上：
+
+- `status` —— **有没有节点失败**。中断的 run 没有节点失败，所以是 `success`。
+- `outcome` / `halted_at` —— **按图走完**还是**中途证据不足**（`halting`）。
+
+- **判据与配色只写一份**（`runStatusOf` / `nodeStatusOf` / `NODE_STATUS_CLASS`）。
+  图画布、节点表、详情徽章三处各写一遍，就会出现「图是绿的、表写 done、徽章说中断」。
+- **`displayStatus` 与 `status` 必须分开**：`TERMINAL` 里没有 `halted`，
+  拿展示值去判终态，轮询永远停不下来（终态 run 被 2 秒一轮地反复拉）。
+- **工单的展示状态由 run 派生**（`useTickets.ticketDisplayStatus`）。
+  `ticket.status` 只在"没发起过 run"时才有意义 —— 后端只在发起时写一次
+  `running`，之后**没有任何代码回写**（`TICKET_RESOLVED`/`TICKET_FAILED` 定义了但从未被写入）。
+- 后端 `GET /tickets` 为此返回 `latest_run`；`GET /runs` 也带 `outcome`。
+
 ## 内嵌页（`public/` 下的 Next.js 离线副本）
 
 Constellation / Business Ops / Service Ops 三个域都是**另一套 Next.js 应用**的离线副本，
