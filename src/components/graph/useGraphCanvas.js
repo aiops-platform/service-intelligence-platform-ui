@@ -60,6 +60,7 @@ export function createGraphCanvas(opts) {
   let flowNode = null
   let hoverTimer = null   // 1.5s 悬停计时
   let hoverNode = null    // 当前正在计时的节点（换节点要重新计时）
+  let tipNode = null      // 当前**显示着**提示的节点（render 会重放，见 renderGraph 末尾）
   /**
    * 把缩放**直接写进 SVG 的 width/height**（而不是 CSS transform）。
    *
@@ -316,8 +317,18 @@ export function createGraphCanvas(opts) {
         '</g>'
     })
 
+    // ⚠️ 悬停提示：**不能直接 hideTip()**。
+    // 宿主轮询驱动，每几秒 render 一次；鼠标不动就不会再触发 `mouseover`，
+    // 直接收起的话提示会**跟着刷新节奏一闪一闪**（而且要用户动一下鼠标才回来）。
+    // 正确做法与 flowNode 同款：记住节点、重建后**重放**——
+    // 但必须用 `querySelector` 拿**新**的 <g>（旧的已随 innerHTML 卸载）。
+    const tipToRestore = tipNode
     svgEl.innerHTML = html
-    hideTip()   // 同上：提示行内元素已被重建，留着会指向已卸载的节点
+    if (tipToRestore) {
+      const gEl = svgEl.querySelector(`[data-node="${tipToRestore.replace(/["\\]/g, '\\$&')}"]`)
+      if (gEl) showTip(tipToRestore, gEl)
+      else hideTip()   // 节点没了（换了图）→ 收起
+    }
     // innerHTML 整段重写会抹掉高亮。宿主（RunDetailView / BugSolveView）是**轮询驱动**的，
     // 每次数据变化都重新 render —— 不在这里重放的话，点击后的流动效果几秒后就自己没了。
     if (flowNode) highlightFlow(flowNode)
@@ -355,6 +366,7 @@ export function createGraphCanvas(opts) {
       hoverTimer = null
     }
     hoverNode = null
+    tipNode = null
     if (tipEl) tipEl.style.display = 'none'
   }
 
@@ -367,6 +379,7 @@ export function createGraphCanvas(opts) {
       return
     }
     if (!tip) return
+    tipNode = nid
     tipEl.textContent = ''
     const title = document.createElement('div')
     title.className = 'bs-node-tip-title'
