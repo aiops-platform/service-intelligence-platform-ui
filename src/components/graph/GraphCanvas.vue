@@ -14,6 +14,8 @@ import { createGraphCanvas } from './useGraphCanvas'
 const props = defineProps({
   /** 节点着色规则 (node, status) => { cls, label } */
   nodeStyle: { type: Function, default: null },
+  /** 悬停 1.5s 后的提示内容：(nodeId) => { title, rows: [[label, value], …] } | null */
+  nodeTip: { type: Function, default: null },
   hint: { type: String, default: '' },
 })
 const emit = defineEmits(['node-click'])
@@ -22,6 +24,7 @@ const zoomEl = ref(null)
 const svgEl = ref(null)
 const stageEl = ref(null)
 const hintEl = ref(null)
+const tipEl = ref(null)
 
 let canvas = null
 let unbind = null
@@ -36,6 +39,8 @@ onMounted(() => {
     nodeCls: 'bs-node',
     edgeCls: 'bs-edge',
     nodeStyle: props.nodeStyle,
+    tipEl: tipEl.value,
+    nodeTip: props.nodeTip,
     onNodeClick: (nid) => emit('node-click', nid),
   })
   unbind = canvas.mount()
@@ -71,6 +76,8 @@ defineExpose({
         <svg class="bs-graph" id="bsGraph" ref="svgEl" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
     </div>
+    <!-- 悬停提示：位置由引擎按节点的屏幕矩形算，见 useGraphCanvas 的 showTip -->
+    <div class="bs-node-tip" ref="tipEl" style="display: none"></div>
     <!--
       ⚠️ 这里**没有**缩放控件了：图固定以 fit 模式展示（滚轮/拖拽也一并移除）。
 

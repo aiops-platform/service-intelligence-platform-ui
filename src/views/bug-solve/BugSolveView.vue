@@ -9,6 +9,7 @@
 import { ref, onMounted, onActivated } from 'vue'
 import { useBugSolveRun, statusClass } from './useBugSolveRun'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
+import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
 
 const canvasRef = ref(null)
 const refreshing = ref(false)
@@ -45,6 +46,17 @@ function nodeStyle(n, st) {
   if (n.kind === 'approval') cls += ' bs-node-approval'
   // 图里只显示**节点名**（节点 id）；agent 看详情面板，不往图上堆
   return { cls, label: n.id }
+}
+
+/**
+ * 悬停 1.5s 的节点提示。字段口径与 Run Detail 一致（见 nodeTip.js）——
+ * 同一张 workflow 在两个页面 hover 出来的东西应当一样。
+ */
+function nodeTip(nid) {
+  // ⚠️ 本页的 composable 暴露的是 currentGraph / currentNodeData，**不是** runData
+  // （两者都是 ref；currentNodeData 存的是 `data.nodes` 那个映射）。
+  const r = (x) => (x && typeof x === 'object' && 'value' in x ? x.value : x)
+  return nodeTipOf(graphNodeById(r(run.currentGraph), nid), r(run.currentNodeData)?.[nid])
 }
 
 const HINT =
@@ -186,7 +198,8 @@ onActivated(loadWorkflows)
 
       <!-- Right: graph canvas + node detail -->
       <div class="bs-main">
-        <GraphCanvas ref="canvasRef" :hint="HINT" :node-style="nodeStyle" @node-click="selectNode" />
+        <GraphCanvas ref="canvasRef" :hint="HINT" :node-style="nodeStyle"
+                     :node-tip="nodeTip" @node-click="selectNode" />
         <div class="bs-detail" id="bsDetail">
           <template v-if="detail">
             <div class="bs-detail-head">

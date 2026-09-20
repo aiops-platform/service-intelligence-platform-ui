@@ -9,6 +9,7 @@ import { onActivated, onDeactivated, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRunDetail } from './useRunDetail'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
+import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
 import { formatTime } from '@/utils/time'
 
 const route = useRoute()
@@ -30,6 +31,11 @@ function nodeStyle(n, st) {
 }
 
 const HINT = 'Click a node to inspect its output · params · duration · error。'
+
+/** 悬停 1.5s 的节点提示（内容口径与 Bug Solve 一致，见 nodeTip.js） */
+function nodeTip(nid) {
+  return nodeTipOf(graphNodeById(runData.value?.graph, nid), runData.value?.nodes?.[nid])
+}
 
 function fmtMs(ms) {
   if (ms === null || ms === undefined) return '—'
@@ -144,7 +150,8 @@ watch(
     <div class="bs-body">
       <!-- 左：DAG -->
       <div class="bs-main" style="flex: 2">
-        <GraphCanvas ref="canvasRef" :hint="HINT" :node-style="nodeStyle" @node-click="selectNode" />
+        <GraphCanvas ref="canvasRef" :hint="HINT" :node-style="nodeStyle"
+                   :node-tip="nodeTip" @node-click="selectNode" />
       </div>
 
       <!-- 右：节点详情 / 待审批 -->

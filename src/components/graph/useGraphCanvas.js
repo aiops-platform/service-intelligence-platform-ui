@@ -26,6 +26,14 @@ const FLOW_COLOR = '#3b82f6'
 //: 高亮时给线加的类名（样式在 css/styles.css 的 .bs-edge-flow）
 const FLOW_CLS = 'bs-edge-flow'
 
+//: fit 的**可读下限**。装不下时不再继续缩小，改为让容器滚动。
+//: 节点字号 11px —— 缩到 0.4 只剩 4.4px，等于看不见（实测就是这条导致"图显示空白"）。
+//: 0.8 → 8.8px，仍可读，同时保留"大图缩小一点"的收益。
+//: 悬停多久才弹节点提示。太短会跟着鼠标乱闪，太长又像没反应。
+const HOVER_DELAY_MS = 1500
+
+const MIN_SCALE = 0.8
+
 const NODE_W = 150
 const NODE_H = 46
 const LEVEL_GAP = 110
@@ -42,37 +50,49 @@ export function createGraphCanvas(opts) {
     edgeCls,
     nodeCls,
     nodeStyle,
+    tipEl,
+    nodeTip,
     onNodeClick,
   } = opts
 
   let zoom = 1
   // 当前被高亮的节点：render 会整段重写 innerHTML，高亮必须重放（见 renderGraph 末尾）
   let flowNode = null
-  let panX = 0
-  let panY = 0
-  function applyTransform() {
-    if (stageEl) {
-      stageEl.style.transform = `translate(${panX}px,${panY}px) scale(${zoom})`
-      // 舞台模式下清掉残留的容器 transform，避免叠加
-      if (zoomEl) zoomEl.style.transform = ''
-    }
+  let hoverTimer = null   // 1.5s 悬停计时
+  let hoverNode = null    // 当前正在计时的节点（换节点要重新计时）
+  /**
+   * 把缩放**直接写进 SVG 的 width/height**（而不是 CSS transform）。
+   *
+   * 为什么不用 transform：transform 只改绘制、**不改布局尺寸**，容器的可滚动区域
+   * 仍按未缩放的尺寸算 —— 于是"缩小后滚动"会滚错、出现大片空白。
+   * 写 width/height 后布局与视觉一致，`overflow: auto` 才能正确工作。
+   *
+   * SVG 自带 viewBox，改 width/height 即等比缩放内容，不需要额外变换。
+   */
+  function applyScale(gw, gh) {
+    if (!svgEl) return
+    svgEl.setAttribute('width', String(Math.round(gw * zoom)))
+    svgEl.setAttribute('height', String(Math.round(gh * zoom)))
   }
 
-  /** 适配画布：整图缩放到可视区域内（不大幅放大，最大 1 倍基线） */
+  /**
+   * 适配：装得下就装下，**装不下只缩到可读下限**，再小交给容器滚动。
+   *
+   * 为什么要有下限：本图是纵向铺开的 DAG（18 个节点实测 780×1506），
+   * 硬塞进一个几百像素高的面板要缩到 0.24~0.4，节点文字只剩 3~4.5px——
+   * **看起来就是一片空白**（这正是"流程图看不到"的真因）。
+   * 与其缩到读不出，不如保持可读并允许滚动。
+   */
   function fitGraph() {
-    if (!zoomEl || !svgEl || !svgEl.getAttribute('viewBox')) return
-    const vb = svgEl.getAttribute('viewBox').split(/\s+/).map(Number)
+    if (!zoomEl || !svgEl) return
+    const vb = (svgEl.getAttribute('viewBox') || '').split(/\s+/).map(Number)
     const gw = vb[2]
     const gh = vb[3]
     if (!gw || !gh) return
     const cw = zoomEl.clientWidth || 600
     const ch = zoomEl.clientHeight || 420
-    // 只缩不放：**不大于 1**。图小的时候放大反而把节点撑成马赛克、
-    // 且一放大就必然溢出容器（fit 模式没有滚动条可退）
-    zoom = Math.min(1, cw / gw, ch / gh)
-    panX = (cw - gw * zoom) / 2
-    panY = (ch - gh * zoom) / 2
-    applyTransform()
+    zoom = Math.min(1, Math.max(MIN_SCALE, Math.min(cw / gw, ch / gh)))
+    applyScale(gw, gh)
   }
 
   /**
@@ -136,9 +156,10 @@ export function createGraphCanvas(opts) {
     const width = maxCols * NODE_W + (maxCols - 1) * COL_GAP + PAD * 2
     const height = levels.length * LEVEL_GAP + NODE_H + PAD
     svgEl.setAttribute('viewBox', `0 0 ${width} ${height}`)
-    // SVG 按 1:1 像素渲染，缩放/平移交给 CSS transform 控制
-    svgEl.style.width = width + 'px'
-    svgEl.style.height = height + 'px'
+    // 尺寸（width/height）由 fitGraph 按缩放算，这里只定 viewBox 与 1:1 基准
+    svgEl.style.maxWidth = 'none'
+    svgEl.removeAttribute('width')
+    svgEl.removeAttribute('height')
 
     const pos = {}
     const layerOf = {}
@@ -285,6 +306,7 @@ export function createGraphCanvas(opts) {
     })
 
     svgEl.innerHTML = html
+    hideTip()   // 同上：提示行内元素已被重建，留着会指向已卸载的节点
     // innerHTML 整段重写会抹掉高亮。宿主（RunDetailView / BugSolveView）是**轮询驱动**的，
     // 每次数据变化都重新 render —— 不在这里重放的话，点击后的流动效果几秒后就自己没了。
     if (flowNode) highlightFlow(flowNode)
@@ -296,9 +318,80 @@ export function createGraphCanvas(opts) {
     if (svgEl) svgEl.innerHTML = ''
     if (hintEl) hintEl.style.display = 'block'
     zoom = 1
-    panX = 0
-    panY = 0
-    applyTransform()
+  }
+
+
+  // ── 悬停提示（1.5s）──────────────────────────────────────────────
+  //
+  // 为什么用「延迟弹出」而不是 hover 即显：图里节点密，鼠标滑过时立刻弹会一路闪，
+  // 反而看不清。1.5s 表示"停在这里看"。
+  //
+  // 内容由调用方以 `nodeTip(nid) => { title, rows }` 提供（引擎只懂图的形状，
+  // 不知道 run 的 status/tokens/error）。渲染一律用 **textContent**——
+  // 节点 id、agent 名、error 文本都是数据，走 innerHTML 就是 XSS 口子。
+  function hideTip() {
+    if (hoverTimer) {
+      clearTimeout(hoverTimer)
+      hoverTimer = null
+    }
+    hoverNode = null
+    if (tipEl) tipEl.style.display = 'none'
+  }
+
+  function showTip(nid, gEl) {
+    if (!tipEl || !nodeTip) return
+    let tip
+    try {
+      tip = nodeTip(nid)
+    } catch {
+      return
+    }
+    if (!tip) return
+    tipEl.textContent = ''
+    const title = document.createElement('div')
+    title.className = 'bs-node-tip-title'
+    title.textContent = tip.title || nid
+    tipEl.appendChild(title)
+    ;(tip.rows || []).forEach(([k, v]) => {
+      const row = document.createElement('div')
+      row.className = 'bs-node-tip-row'
+      const key = document.createElement('span')
+      key.className = 'bs-node-tip-key'
+      key.textContent = k
+      const val = document.createElement('span')
+      val.className = 'bs-node-tip-val'
+      val.textContent = v === undefined || v === null || v === '' ? '—' : String(v)
+      row.appendChild(key)
+      row.appendChild(val)
+      tipEl.appendChild(row)
+    })
+    tipEl.style.display = 'block'
+    // 定位：用节点在**屏幕上的实际矩形**（容器缩放/滚动都自动算进去），
+    // 不去手动乘 zoom —— 那是"看起来对、一缩放就偏"的做法。
+    if (gEl && zoomEl) {
+      const nr = gEl.getBoundingClientRect()
+      const cr = zoomEl.getBoundingClientRect()
+      const tw = tipEl.offsetWidth
+      const th = tipEl.offsetHeight
+      let left = nr.left - cr.left + nr.width + 8
+      let top = nr.top - cr.top
+      if (left + tw > cr.width) left = Math.max(0, nr.left - cr.left - tw - 8)  // 右边放不下 → 翻到左边
+      if (top + th > cr.height) top = Math.max(0, cr.height - th)
+      tipEl.style.left = left + 'px'
+      tipEl.style.top = top + 'px'
+    }
+  }
+
+  /** 悬停在某个节点上：换节点要**重新计时**，否则滑过几个节点会沿用前一个的计时。 */
+  function onNodeHover(nid, gEl) {
+    if (hoverNode === nid) return
+    hideTip()
+    if (!nid || !tipEl || !nodeTip) return
+    hoverNode = nid
+    hoverTimer = setTimeout(() => {
+      hoverTimer = null
+      if (hoverNode === nid) showTip(nid, gEl)
+    }, HOVER_DELAY_MS)
   }
 
   function onClick(e) {
@@ -306,6 +399,7 @@ export function createGraphCanvas(opts) {
     if (!g) return
     const nid = g.getAttribute('data-node')
     if (!nid) return
+    hideTip()   // 点击去看右侧详情了，提示别继续挡着
     highlightFlow(nid)
     if (onNodeClick) onNodeClick(nid)
   }
@@ -372,8 +466,26 @@ export function createGraphCanvas(opts) {
    * ResizeObserver 是必须的：既然只剩 fit 一种模式，容器一变宽窄就得重算，
    * 否则侧边栏折叠/窗口缩放后图会溢出或被裁。
    */
+  function onMouseOver(e) {
+    const g = e.target.closest ? e.target.closest('[data-node]') : null
+    onNodeHover(g ? g.getAttribute('data-node') : null, g)
+  }
+
+  function onMouseOut(e) {
+    const g = e.target.closest ? e.target.closest('[data-node]') : null
+    // 只有真正离开节点才收起；节点内的子元素之间移动不触发（relatedTarget 仍在同一 g 内）
+    if (!g) return
+    const to = e.relatedTarget
+    if (to && g.contains(to)) return
+    hideTip()
+  }
+
   function mount() {
-    if (zoomEl) zoomEl.addEventListener('click', onClick)
+    if (zoomEl) {
+      zoomEl.addEventListener('click', onClick)
+      zoomEl.addEventListener('mouseover', onMouseOver)
+      zoomEl.addEventListener('mouseout', onMouseOut)
+    }
 
     const ro =
       typeof ResizeObserver !== 'undefined' && zoomEl
@@ -383,6 +495,9 @@ export function createGraphCanvas(opts) {
 
     return () => {
       zoomEl?.removeEventListener('click', onClick)
+      zoomEl?.removeEventListener('mouseover', onMouseOver)
+      zoomEl?.removeEventListener('mouseout', onMouseOut)
+      hideTip()
       ro?.disconnect()
     }
   }
