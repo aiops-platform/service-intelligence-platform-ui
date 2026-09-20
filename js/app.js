@@ -6090,6 +6090,52 @@
             });
         });
 
+        /**
+         * 一键清空四组筛选（服务下拉 + 严重度 + 状态 + 证据类型），并重新拉数据。
+         *
+         * ⚠️ 必须连 **URL 里的下钻参数** 一起清（`?service=&type=&state=`）。那些参数是
+         * Smart Inspection 点徽标下钻带进来的，而本页每次被切回来都会经
+         * `_pageRefreshers['page-problems']`（本文件内，搜这个名字）跑一次
+         * `applyQueryFilters()` —— 只清 UI 不动 URL 的话，切走再回来，刚重置掉的筛选会被
+         * URL 原样装回来。（这里不写行号：本文件一改行号就漂，先前那版就写歪了。）
+         *
+         * 清 URL 的方式分两种，不能混用：
+         *   - 嵌在 Vue 应用里 → 走接缝 S3（`__SIP_NAVIGATE`），由 Vue Router 改地址；
+         *     直接 history.replaceState 会**抹掉 vue-router 存在 history.state 里的状态**，
+         *     影响它后续的前进/后退还原。
+         *   - 单独打开旧 index.html → 没有路由，那一步才退化成直接改地址栏。
+         */
+        var pcResetBtn = getEl('pcResetBtn');
+        if (pcResetBtn) pcResetBtn.addEventListener('click', function () {
+            currentService = '';
+            currentSeverity = 'all';
+            currentState = 'all';
+            currentType = 'all';
+            currentPage = 0;
+
+            // UI 同步：下拉框 / 服务标签 / 三组 chip（用现成的 syncChipRow，只改高亮不动语义）
+            var resetSel = getEl('pcServiceFilter');
+            if (resetSel) resetSel.value = '';
+            var resetLabel = getEl('pcServiceLabel');
+            if (resetLabel) resetLabel.textContent = '';
+            syncChipRow('.pc-sev-filter', 'all');
+            syncChipRow('.pc-state-filter', 'all');
+            syncChipRow('.pc-type-filter', 'all');
+
+            if (location.search) {
+                if (window.__SIP_NAVIGATE) {
+                    // 这次切页会经 _pageRefreshers 自动 refresh，这里就**不能**再调一次 ——
+                    // 两个 refresh 之间只有 pcRefreshing 这个"在途"标志去重，而后端不可达时
+                    // 第一个请求瞬间就失败返回、标志已经落下，第二次会真的再发出去
+                    // （实测：连着两次切回本页、间隔 50ms → 2 个请求）。
+                    window.__SIP_NAVIGATE('problems', {});
+                    return;
+                }
+                history.replaceState(null, '', location.pathname);   // 单独打开旧页：没有路由
+            }
+            refresh();
+        });
+
         var pcRefreshBtn = getEl('pcRefreshBtn');
         if (pcRefreshBtn) pcRefreshBtn.addEventListener('click', refresh);
 

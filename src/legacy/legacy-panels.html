@@ -1028,6 +1028,9 @@
             <button class="filter-chip active pc-type-filter" data-filter="all">All Types</button>
             <button class="filter-chip pc-type-filter" data-filter="metric"><span class="chip-dot" style="background:#8b5cf6;"></span> Metric</button>
             <button class="filter-chip pc-type-filter" data-filter="log"><span class="chip-dot" style="background:#3b82f6;"></span> Log</button>
+            <!-- 一键清空上面四组筛选（服务下拉 + 严重度 + 状态 + 证据类型）。
+                 样式沿用各页 Reset 的既有成例（btn btn-outline），不新增 CSS。 -->
+            <button class="btn btn-outline" id="pcResetBtn">Reset</button>
         </div>
 
         <!-- Table -->
