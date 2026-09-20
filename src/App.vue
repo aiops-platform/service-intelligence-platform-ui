@@ -63,8 +63,23 @@ const slugDomainKey = computed(() => navKeyOf(activeSlug.value))
 const sidebarCollapsible = computed(
   () => !!activeSidebar.value && !!NAV.find((n) => n.key === slugDomainKey.value)?.collapsible,
 )
+/**
+ * 不属任何导航域的独立页（`meta.standalone`，如 `/cmdb`）：**不显示侧边栏**，页面全宽。
+ *
+ * 为什么需要这个显式开关：`activeKey` 带 `?? 'service-ops'` 兜底，域外路由会**误命中
+ * Service Ops**，于是它的侧边栏挂到了一个跟它无关的页面上。`slugDomainKey` 那套
+ * （只用 `navKeyOf`、绕开兜底）只挡住了折叠把手，没挡侧边栏本身——把手没了、导航还在，
+ * 反而更怪。
+ *
+ * 用**声明的 meta** 而不是在这里按路径判：路径散在 router 里，加了新独立页要回来改这里，
+ * 很容易漏（`/runs/:runId` 就是靠隐式的 `navKeyOf` 返回 null 才没显示把手）。
+ */
+const isStandalonePage = computed(() => route.meta.standalone === true)
 const showSidebar = computed(
-  () => !!activeSidebar.value && !(sidebarCollapsible.value && collapsed.value),
+  () =>
+    !isStandalonePage.value &&
+    !!activeSidebar.value &&
+    !(sidebarCollapsible.value && collapsed.value),
 )
 
 /**

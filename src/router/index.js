@@ -44,7 +44,9 @@ const EXTRA_ROUTES = [
     path: '/cmdb',
     name: 'cmdb',
     component: () => import('@/views/cmdb/CmdbView.vue'),
-    meta: { label: 'CMDB', legacy: false },
+    // `standalone: true` —— 该页**不属于任何导航域**（nav.js 里没有它）：
+    // 显示侧边栏会把 Service Ops 的导航挂在一个跟它无关的页面上（见 App.vue 的 showSidebar）。
+    meta: { label: 'CMDB', legacy: false, standalone: true },
   },
 ]
 
