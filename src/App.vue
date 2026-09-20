@@ -16,6 +16,7 @@ import AppFooter from '@/components/shell/AppFooter.vue'
 import LegacyPanels from '@/components/LegacyPanels.vue'
 import AlertDetailModal from '@/components/AlertDetailModal.vue'
 import { openAlertDetail } from '@/composables/useAlertDetail'
+import { useEmbedBridge } from '@/composables/useEmbedBridge'
 
 // 接缝 S4：未迁移的视图（metrics-analysis）经 openAlertDetailGeneric 调到这里。
 // 全文档只有一个模态实例 —— #alertDetailOverlay 已从 legacy 树移除（S1）。
@@ -23,6 +24,9 @@ window.__SIP_OPEN_ALERT_DETAIL = (apiPrefix, alert) => openAlertDetail(apiPrefix
 
 const route = useRoute()
 const router = useRouter()
+
+// 内嵌页（iframe）请求跳转的通道。App 只挂载一次，所以全局唯一的那个 message 监听在这里。
+useEmbedBridge()
 
 /** 当前 slug 完全由 URL 决定（可分享、可刷新、可前进后退） */
 const activeSlug = computed(() => resolveSlug(route.path.slice(1)) || DEFAULT_SLUG)

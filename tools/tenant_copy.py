@@ -541,6 +541,130 @@ def patch_service_ops_portfolio_filter(chunks_dir) -> str:
     return "applied"
 
 
+# Business Ops 组合表的「名字」→ 跳到 Service Ops —— 见 patch_business_ops_portfolio_jump()
+BPJ_FILE = "00tsl~72wvlrr.js"
+# 组合 label 里带零宽空格（页面上不显示），原串必须逐字带上，少一个字符就匹配不上
+BPJ_ZW = "​"
+BPJ_LABEL = 'e.label.replace(/' + BPJ_ZW + '/g,"")'
+BPJ_NAME = ('(0,t.jsx)("div",{style:{fontFamily:"var(--font-display)",fontSize:13,'
+            'fontWeight:600,color:"var(--text-primary)",lineHeight:1.2},'
+            'children:' + BPJ_LABEL + '})')
+# 名字那个 div（父 div 的开头）—— 带 children:…replace 才唯一：
+# 同一个 style 前缀在 journey 行（组件 w）里还有一份
+BPJ_FIND = '(0,t.jsxs)("div",{children:[' + BPJ_NAME
+BPJ_REPL = (
+    '(0,t.jsxs)("div",{onClick:q=>{q.stopPropagation();window.parent!==window'
+    '?window.parent.postMessage({type:"sip:open-service-ops",portfolio:e.id},location.origin)'
+    ':location.assign("/service-ops/?portfolio="+encodeURIComponent(e.id))},'
+    'title:"Open in Service Ops · "+' + BPJ_LABEL +
+    ',style:{cursor:"pointer"},children:[' + BPJ_NAME
+)
+
+
+def patch_business_ops_portfolio_jump(chunks_dir) -> bool:
+    """
+    Business Ops 的 journey 视图（点 journey 后出现的那张**组合**表）里，
+    点**组合名字** → 跳到 Service Ops，并让那边的列表预先按这个 portfolio 过滤。
+
+        <div role="button" onClick={onSelect}>        ← 整行：选中 → 右侧组合 inspector
+          <div>名字 + max risk…</div>                 ← ★ 本次改这里
+          …XLA / Apps / Inc/d / Bot %…
+        </div>
+
+    名字本来是普通 div，点击冒泡到整行只选中。现在改成 stopPropagation + 发消息给父窗口：
+
+        {type:"sip:open-service-ops", portfolio:"portfolio:lead"}
+
+    外壳（`src/composables/useEmbedBridge.js`）收下并 `router.push('/service-ops?portfolio=…')`，
+    Service Ops 内嵌页再从这个 query 里把筛选器预置好 —— 三段各自单一职责。
+
+    ## 为什么走 postMessage 而不是 iframe 直接改 parent.location
+
+    后者要整页刷新：Vue 应用重启、legacy 世界（js/app.js 的 17 个 init）重跑、
+    其它视图的 KeepAlive 缓存全丢。postMessage + 外壳路由只重载 Service Ops 那一个 iframe。
+
+    ## 单独打开时（没被嵌入）的兜底
+
+    `window.parent === window` 时 postMessage 等于发给自己、没人听，所以退化成整页跳转
+    `/service-ops/?portfolio=…`。离线单独看时两个页面同根目录（tools/README 的快速开始
+    就是这么用的），这条真能走通。
+
+    ⚠️ 零宽空格：组合 label 里带 U+200B，锚点里那两个字符少一个就匹配不上 —— 所以用
+    `BPJ_ZW` 拼出来，不手打。
+
+    返回是否打过。幂等；锚点不唯一（站点改版）则静默跳过 —— 行为退回「点名字只选中」，
+    页面不会坏。
+    """
+    f = chunks_dir / BPJ_FILE
+    if not f.is_file():
+        return False
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if BPJ_REPL in t:
+        return False                                # 已打过
+    if t.count(BPJ_FIND) != 1:
+        return False                                # 站点改版/不唯一 → 静默跳过
+    f.write_text(t.replace(BPJ_FIND, BPJ_REPL),
+                 encoding="utf-8", errors="surrogateescape")
+    return True
+
+
+# Service Ops 的 Portfolio 深链（`?portfolio=`）—— 见 patch_service_ops_portfolio_deeplink()
+SDL_FILE = "0t1fyt7wcotiz.js"
+SDL_SITES = [
+    (
+        "① 读 ?portfolio= 参数（复用同一次 useSearchParams）",
+        'let e=(0,a.useSearchParams)().get("app"),',
+        'let pfU=(0,a.useSearchParams)(),e=pfU.get("app"),pfQ=pfU.get("portfolio"),',
+    ),
+    (
+        "② 落地时预置「所属 journey + 该 portfolio」两项筛选",
+        '(0,o.useEffect)(()=>{e&&e!==m&&b(e)},[e])',
+        '(0,o.useEffect)(()=>{e&&e!==m&&b(e)},[e]),'
+        '(0,o.useEffect)(()=>{if(!pfQ)return;let pfJ=x.get(pfQ);'
+        'pfJ&&(E(new Set([pfJ])),pfToggle(new Set([pfQ])))},[pfQ])',
+    ),
+]
+
+
+def patch_service_ops_portfolio_deeplink(chunks_dir) -> str:
+    """
+    让 Service Ops 支持深链 `?portfolio=<portfolioId>`：落地时把筛选器预置成
+    「它的 journey + 它自己」，列表于是直接是这个 portfolio 的 app。
+
+    Business Ops 点组合名跳过来时带的就是这个参数（见 `patch_business_ops_portfolio_jump`）。
+    之所以**顺带选中它所属的 journey**，是因为 portfolio 筛选按既定口径只在选中 journey 时
+    生效（`SPF_SITES` ②）；同时选中也是准确的上下文标记 —— 用户一眼看得出数据来自哪条 journey。
+
+    参数从哪儿来：内层页面自己的 URL。外壳把 query 拼进 iframe 的 src（`ServiceOpsView.vue`），
+    所以**路径仍是 `/service-ops/`**，只是多了查询串 —— 实测内层 h1 仍解析成 "Service Ops"，
+    不会掉进 `d?.label ?? "SIP"` 那个静默分支。
+
+    ## 前置依赖
+
+    ② 引用了 portfolio 筛选补丁（`patch_service_ops_portfolio_filter`）装上的 `pfToggle`，
+    所以本函数**先确认那个补丁已打**（`pfToggle` 在文本里）才动手 —— 否则会打出一个引用
+    未定义变量的页面（整页白屏）。构建脚本里两个补丁的调用顺序也是 SPF 在前。
+
+    返回状态字符串，与 SPF 同约定：`"applied"` / `"already"` / 其它为跳过原因。
+    """
+    f = chunks_dir / SDL_FILE
+    if not f.is_file():
+        return f"找不到 {SDL_FILE}"
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if all(repl in t for _, _, repl in SDL_SITES):
+        return "already"
+    if "pfToggle" not in t:
+        return "前置补丁未打（portfolio 筛选）→ 整组跳过"
+    missing = [label for label, find, repl in SDL_SITES
+               if repl not in t and t.count(find) != 1]
+    if missing:
+        return "锚点失效（站点改版？）：" + "、".join(missing)
+    for _, find, repl in SDL_SITES:
+        t = t.replace(find, repl, 1)
+    f.write_text(t, encoding="utf-8", errors="surrogateescape")
+    return "applied"
+
+
 # 服务概览页底部 "Daily incident volume · last 30 days" 热力图的配色 —— 见 patch_heatmap_palette()
 HM_FILE = "100pim9o6kpoy.js"
 HM_FIND = (

@@ -31,11 +31,58 @@
   2. 生产 nginx 补一条 `location = /service-ops { try_files /index.html =404; }`
      —— 否则通用 `try_files $uri $uri/ /index.html` 会把 `/service-ops` 经 `$uri/`
      解成目录索引，同样吐内嵌页。见 README 的 nginx 片段。
+  ## 深链：`?portfolio=<id>`
+
+  Business Ops 的组合名点了之后跳到 `/service-ops?portfolio=portfolio:lead`
+  （外壳收到 iframe 的 postMessage 后 push 的，见 `src/composables/useEmbedBridge.js`）。
+  本视图把这个 query 拼进 iframe 的 src，内嵌页自己从自己的 URL 里读它、预置筛选器。
+
+  ⚠️ **路径不变**：仍是 `/service-ops/`，只是多一个查询串 —— 实测内层 h1 仍解析成
+  "Service Ops"（不会掉进上面那个静默变 "SIP" 的分支）。上面那条"路径不能改"的约束
+  说的是 pathname，查询串不参与 `panelByRoute` 的比较。
 -->
 <script setup>
+import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import NextEmbed from '@/components/NextEmbed.vue'
+
+const route = useRoute()
+
+/** 深链参数。数组形式（`?portfolio=a&portfolio=b`）一律当没有 —— 只认单个字符串。 */
+const portfolio = computed(() =>
+  typeof route.query.portfolio === 'string' ? route.query.portfolio : '',
+)
+
+const src = computed(() =>
+  portfolio.value
+    ? `/service-ops/?portfolio=${encodeURIComponent(portfolio.value)}`
+    : '/service-ops/',
+)
+
+/**
+ * 重新挂载 iframe 的计数器。
+ *
+ * 只在**带着 portfolio 落到本页**时自增，用来兜住一种情况：目标组合跟上次一样时
+ * `src` 不变，Vue 就不会重设 iframe 的 src，iframe 也就不重载 —— 用户看到的是自己
+ * 上次手动改过的筛选（比如点过 All），像是"跳转没生效"。
+ *
+ * 不带 portfolio 的普通导航（点顶栏 Service Ops）不自增，保持改造前的行为：
+ * KeepAlive 缓存着这个视图，来回切页时内层状态原样保留。
+ */
+const embedKey = ref(0)
+watch(
+  () => route.fullPath,
+  () => {
+    if (route.path === '/service-ops' && portfolio.value) embedKey.value++
+  },
+)
 </script>
 
 <template>
-  <NextEmbed src="/service-ops/" title="Service Ops" label="正在载入 Service Ops…" />
+  <NextEmbed
+    :key="embedKey"
+    :src="src"
+    title="Service Ops"
+    label="正在载入 Service Ops…"
+  />
 </template>

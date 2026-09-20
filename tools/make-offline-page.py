@@ -340,6 +340,15 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
                 print("  Service Ops：journey 筛选后新增 portfolio 筛选（9 处已打）")
             elif spf != "already":
                 print(f"  ! Service Ops portfolio 筛选未打：{spf}")
+            # Business Ops 组合名 → 跳到 Service Ops（postMessage 给外壳）
+            if tenant_copy.patch_business_ops_portfolio_jump(chunks_dir):
+                print("  Business Ops：组合名 → 跳转 Service Ops（组合筛选）")
+            # Service Ops 的 ?portfolio= 深链 —— 必须在 SPF 之后（依赖它装上的 pfToggle）
+            sdl = tenant_copy.patch_service_ops_portfolio_deeplink(chunks_dir)
+            if sdl == "applied":
+                print("  Service Ops：支持 ?portfolio= 深链（落地预置 journey+portfolio）")
+            elif sdl != "already":
+                print(f"  ! Service Ops 深链未打：{sdl}")
     except Exception as e:
         print(f"    ! 注入租户文案失败，跳过：{e}")
 
