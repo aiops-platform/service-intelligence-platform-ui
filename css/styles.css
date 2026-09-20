@@ -6097,6 +6097,26 @@ svg { fill: currentColor; }
     gap: 8px;
 }
 
+/*
+ * 图区**受限高度**（只服务 GraphCanvas.vue，故用专属修饰类——`.bs-canvas` 本身
+ * 与 src/legacy/legacy-panels.html 共用，直接给它加高度会波及 legacy 的图弹框）。
+ *
+ * ⚠️ 没有这条时 fit 是**假的**：`.bs-body` / `.bs-main` / `.bs-canvas` 整条链
+ * 都没有高度约束，`.bs-zoom` 会被 SVG 撑到全高（实测 18 节点的图 1506px），
+ * 于是 `fitGraph` 里 `ch/gh ≡ 1` —— 永远不会缩小；而 `panY` 又把内容垂直居中到
+ * 那个超高盒子里，外层 `overflow: hidden` 一裁，看到的就是一大片空白。
+ *
+ * legacy 侧早就有对应物（`#pcRunGraphOverlay .bs-zoom { flex: 1 1 auto; min-height: 0 }`），
+ * Vue 侧一直缺。以前有滚轮/拖拽能自救，改成"固定 fit"之后才成为致命伤。
+ */
+.bs-graph-fit {
+    height: clamp(360px, 62vh, 820px);
+}
+.bs-graph-fit .bs-zoom {
+    flex: 1 1 auto;
+    min-height: 0;   /* 允许收缩到内容以下，否则 flex 子项的下限仍是内容高度 */
+}
+
 .bs-canvas-hint {
     color: var(--text-tertiary);
     font-size: 12px;

@@ -57,7 +57,12 @@ defineExpose({
     id 与原始标记保持一致（引擎虽改用 ref 取元素，但 styles.css 里存在 ID 选择器：
     `#bsZoomFit` 让 Fit 按钮变宽，区别于方形的 +/−。去掉 id 会静默丢样式。）
   -->
-  <div class="bs-canvas">
+  <!--
+    `bs-graph-fit` 是本组件专属的修饰类（`.bs-canvas` 本身与 legacy-panels 共用，
+    不能直接给它加高度）。它给图区一个**受限高度**——见 css/styles.css 里的说明：
+    没有它，`.bs-zoom` 会被 SVG 撑到全高，fit 恒等于 1，图看起来是被裁掉/空白。
+  -->
+  <div class="bs-canvas bs-graph-fit">
     <div class="bs-canvas-hint" id="bsHint" ref="hintEl">{{ hint }}</div>
     <div class="bs-zoom" id="bsZoom" ref="zoomEl">
       <!-- 舞台层：变换只施加在这里，.bs-zoom 保持不动充当视口/裁剪面（内容才会按视口居中） -->
