@@ -20,6 +20,8 @@ const STATUS_FILTERS = [
   { value: 'all', label: 'All' },
   { value: 'new', label: 'New' },
   { value: 'running', label: 'In Progress' },
+  // 停在审批门等人批 —— 不往下走了，与"进行中"必须分开
+  { value: 'waiting_approval', label: '待审批' },
   // 跑完了但**什么都没诊断出来**：run 停在 halt 节点。与"进行中"必须分开 ——
   // 它不会自己往下走了，等人补信息（服务名 / trace_id）。
   { value: 'needs_info', label: '需要补充信息' },
@@ -43,9 +45,18 @@ const STATUS_FILTERS = [
  * 才用得上。这不是绕远路，是实情：后端那份状态本来就没有后续。
  */
 export const NEEDS_INFO = 'needs_info'
+/** run 停在审批门（等人批）。展示值直接复用 `waiting_approval` —— 那个类名
+ *  `.alert-tag.status-waiting_approval` 早就有了（工单详情里的 run 列表在用）。 */
+export const WAITING_APPROVAL = 'waiting_approval'
 
-/** run 还在跑的状态（这些才叫"进行中"）。 */
-const RUN_ACTIVE = new Set(['running', 'pending', 'queued', 'paused', 'waiting_approval'])
+/**
+ * run **确实在往前走**的状态。
+ *
+ * ⚠️ `waiting_approval` **不在**这里：它不动了，在等人。混进"进行中"等于把一个
+ * 需要人动手的状态藏起来 —— 与 halted 被算成 success 是同一类错误，
+ * 只是这次藏的是"等你审批"。
+ */
+const RUN_ACTIVE = new Set(['running', 'pending', 'queued'])
 
 /**
  * run 终态 → 工单展示状态。
@@ -67,12 +78,15 @@ export function ticketDisplayStatus(t) {
   if (!r) return t?.status || ''
   // 中断优先于一切：run 的 status 是 success，但它什么都没诊断出来
   if (r.outcome === 'halted') return NEEDS_INFO
+  // 审批门：不往下走了，等的是**人**。必须排在 RUN_ACTIVE 之前 ——
+  // 混进 running 的话，"等你审批"这条最该被看见的信息就没了。
+  if (r.status === WAITING_APPROVAL) return WAITING_APPROVAL
   if (RUN_ACTIVE.has(r.status)) return 'running'
   return RUN_TERMINAL_TO_TICKET[r.status] || t?.status || ''
 }
 
 /** 展示状态的文案。表里没有的原样透出（后端加新状态时不该显示成空白）。 */
-const STATUS_LABELS = { needs_info: '缺少必要信息' }
+const STATUS_LABELS = { needs_info: '缺少必要信息', waiting_approval: '待审批' }
 
 export function ticketStatusLabel(st) {
   return STATUS_LABELS[st] || st
@@ -183,7 +197,10 @@ export function useTickets() {
   // 计数与过滤都走**展示状态**：否则"中断"的工单会被算进 In Progress，
   // 点进去却一条都看不到（列表按展示状态过滤，计数按原始状态统计）。
   const counts = computed(() => {
-    const c = { all: tickets.value.length, new: 0, running: 0, needs_info: 0, resolved: 0, failed: 0 }
+    const c = {
+      all: tickets.value.length, new: 0, running: 0,
+      waiting_approval: 0, needs_info: 0, resolved: 0, failed: 0,
+    }
     for (const t of tickets.value) {
       const st = ticketDisplayStatus(t)
       if (c[st] !== undefined) c[st] += 1

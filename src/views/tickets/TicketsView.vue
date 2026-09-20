@@ -8,6 +8,7 @@
 import { ref, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTickets } from './useTickets'
+import { runStatusOf } from '@/utils/runStatus'
 import { formatTimeAgo } from '@/utils/time'
 
 const router = useRouter()
@@ -109,7 +110,7 @@ onActivated(load)
     </div>
 
     <!-- Stats -->
-    <div class="reflow-stats" style="grid-template-columns: repeat(6, 1fr)">
+    <div class="reflow-stats" style="grid-template-columns: repeat(7, 1fr)">
       <div class="kpi-card">
         <div class="kpi-header"><span>Total Tickets</span></div>
         <div><div class="kpi-value" style="color: var(--accent-blue)">{{ counts.all }}</div>
@@ -124,6 +125,12 @@ onActivated(load)
         <div class="kpi-header"><span>In Progress</span></div>
         <div><div class="kpi-value" style="color: #f59e0b">{{ counts.running }}</div>
           <div class="kpi-sub">run started</div></div>
+      </div>
+      <!-- 停在审批门：不往下走了，等的是人 —— 与"进行中"分开才有意义 -->
+      <div class="kpi-card">
+        <div class="kpi-header"><span>待审批</span></div>
+        <div><div class="kpi-value" style="color: #d97706">{{ counts.waiting_approval }}</div>
+          <div class="kpi-sub">waiting for approval</div></div>
       </div>
       <!-- 跑完了但没诊断出结果（run 停在 halt 节点）：不会自己往下走了，等人补信息 -->
       <div class="kpi-card">
@@ -307,7 +314,11 @@ onActivated(load)
               >
                 <div class="ticket-run-head">
                   <span class="ticket-run-wf">{{ r.workflow || '—' }}</span>
-                  <span class="alert-tag" :class="'status-' + r.status">{{ r.status }}</span>
+                  <!-- 走 runStatusOf 而不是 r.status：停在 halt 节点的 run 也是
+                       success，直接显示会与列表列（缺少必要信息）自相矛盾 -->
+                  <span class="alert-tag" :class="'status-' + runStatusOf(r)">
+                    {{ runStatusOf(r) }}
+                  </span>
                   <span v-if="activeNodeCount(r)" class="alert-tag status-waiting_approval">
                     {{ activeNodeCount(r) }} 个节点进行中
                   </span>
