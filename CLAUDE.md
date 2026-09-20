@@ -97,6 +97,30 @@ dev 下可用 `__sipApi.setBase('sipAiops', 'http://host:8080/api/sip-aiops')` �
   Vue 响应式买不到东西；但**其产物经 `v-html` 注入，`escapeHtml` 一处都不能省**，
   且**不能用 `onclick`**（v-html 注入的 HTML 不会被 Vue 编译），一律用 `data-action` + 委托
 
+## 图渲染（`src/components/graph/`）
+
+workflow DAG 由 `GraphCanvas.vue` + `useGraphCanvas.js`（命令式引擎）画，
+**Run Detail 与 Bug Solve 共用**。几条改之前必须知道的不变量：
+
+- **`<svg>` 里必须是空的**，一个 Vue 插值子节点都不能有——图内容由引擎
+  `innerHTML` 整段重写，Vue 的 patch 会与它互相覆盖。（`GraphCanvas.vue` 顶部有说明。）
+- **连线一律正交折线**，横向段走**层间空档**（两层之间必然无节点），
+  竖向段借「列间通道」。判"某竖线是否畅通"必须按**真实 x 区间重叠**算
+  （`vFree`）——**不能按列号**：每层各自居中排列，列号相同在不同层的 x 并不一样，
+  按列号判会判出"畅通"的线实际穿过别层节点（实测扫出 6 处遮挡，肉眼看不出来）。
+- **同一节点的多条出入边合并为共享主干**（节点上下各只接一条线）。
+- **缩放只写 SVG 的 `width`/`height`，不用 CSS `transform`**：transform 不改布局尺寸，
+  容器的可滚动区域会算错，"缩小后滚动"就滚偏。
+- **fit 有可读下限 `MIN_SCALE`**：装不下时不再缩、改让容器滚动。
+  节点字号 11px，缩到 0.4 只剩 4.4px —— **图看着就是一片空白**（实测踩过）。
+- **`.bs-canvas` / `.bs-zoom` / `.bs-edge` / `.bs-node` 与 legacy `js/app.js` 共用**，
+  改样式前先 grep 使用方（legacy 的 Flow Diagram 弹框用的是同一套类名）。
+  新行为一律加**专属修饰类**（如 `bs-graph-fit`），别改共用类。
+- **悬停提示内容一律 `textContent`**：节点 id / agent 名 / error 文本都是数据，
+  拼 HTML 就是注入口子。
+- **`nodeTip` 的两个描述是不同维度**：`desc` = agent 的描述（Agents 页同一份，
+  `GET /agents`，可被租户覆盖）；`nodeDesc` = 节点在 YAML 里写的自述。
+
 ## 项目约定
 
 开发流程、Commit 格式、Changelog 规范等约定参见 `CONTRIBUTING.md`。
