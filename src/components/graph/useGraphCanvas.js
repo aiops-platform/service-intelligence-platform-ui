@@ -145,28 +145,19 @@ export function createGraphCanvas(opts) {
       })
     })
 
-    // ── 连线锚点分配 ──
-    // 同一节点的多条出/入边**平分**该边（下沿/上沿），而不是全挤在正中。
-    // 不分的话多条边共用一个点、出节点就重叠成一束，看着像一根线。
-    // 按对端的位置排序，保证同一张图每次渲染的锚点顺序一致（不会抖动）。
-    const outs = {}
-    const ins = {}
-    nodes.forEach((n) => ((outs[n.id] = []), (ins[n.id] = [])))
-    edges.forEach((e, i) => {
-      if (!outs[e.from] || !ins[e.to]) return
-      outs[e.from].push({ i, to: e.to })
-      ins[e.to].push({ i, from: e.from })
-    })
-    const anchorX = (p, idx, total) => p.x + (NODE_W * (idx + 1)) / (total + 1)
-    const outAnchor = {}
-    Object.entries(outs).forEach(([nid, list]) => {
-      list.sort((a, b) => (pos[a.to]?.x ?? 0) - (pos[b.to]?.x ?? 0) || a.i - b.i)
-      list.forEach((e, k) => (outAnchor[e.i] = anchorX(pos[nid], k, list.length)))
-    })
-    const inAnchor = {}
-    Object.entries(ins).forEach(([nid, list]) => {
-      list.sort((a, b) => (pos[a.from]?.x ?? 0) - (pos[b.from]?.x ?? 0) || a.i - b.i)
-      list.forEach((e, k) => (inAnchor[e.i] = anchorX(pos[nid], k, list.length)))
+    // ── 连线合并：每个节点**只出一根主干 / 只入一根主干** ──
+    //
+    // 早期实现是把同一节点的多条边**均分**到该边沿（下沿/上沿各占一段），
+    // 结果一个扇出 7 条的节点底部拖着 7 条线头，看着就是一束毛边。
+    // 改成共享主干后：节点上/下各接**一条**线，到主干末端再分叉，线条数量骤减。
+    const cxOf = (nid) => pos[nid].x + NODE_W / 2
+    const hasOut = {}
+    const hasIn = {}
+    edges.forEach((e) => {
+      if (pos[e.from] && pos[e.to]) {
+        hasOut[e.from] = true
+        hasIn[e.to] = true
+      }
     })
 
     /**
@@ -194,7 +185,7 @@ export function createGraphCanvas(opts) {
      * 按离目标越近越优先挑选，因此绝大多数边只在目标列旁平移十几像素，
      * 不会拉出横贯全图的长横线。
      */
-    function pickLane(tx, yOut, yIn, sx) {
+    function pickLane(tx, yOut, yIn, cx) {
       if (vFree(tx, yOut, yIn)) return tx
       const cands = []
       nodes.forEach((n) => {
@@ -204,7 +195,7 @@ export function createGraphCanvas(opts) {
       cands.sort((a, b) => Math.abs(a - tx) - Math.abs(b - tx))
       for (const gx of cands) if (vFree(gx, yOut, yIn)) return gx
       // 兜底：画布外侧（节点最左从 PAD 起，此处必然无节点）
-      return sx < width / 2 ? PAD / 2 : width - PAD / 2
+      return cx < width / 2 ? PAD / 2 : width - PAD / 2
     }
 
     /**
@@ -218,23 +209,24 @@ export function createGraphCanvas(opts) {
      * 为什么不用直线：改造前就是「源节点底部中心 → 目标节点顶部中心」的直线，
      * 跨列时是**斜线**，且节点在边之后绘制 → 线穿到节点背后被遮挡。
      */
-    function edgePath(from, to, sx, sy, tx, ty) {
+    function edgePath(from, to, cx, tx) {
       const p1 = pos[from]
       const p2 = pos[to]
       const l1 = layerOf[from]
       const l2 = layerOf[to]
       const halfGap = (LEVEL_GAP - NODE_H) / 2
+      const yOut = p1.y + NODE_H + halfGap   // 源节点下方那层空档（主干末端）
+      const yIn = p2.y - halfGap             // 目标节点上方那层空档（入主干起点）
 
       if (l2 > l1) {
-        const yOut = p1.y + NODE_H + halfGap   // 源节点下方那层空档
-        const yIn = p2.y - halfGap             // 目标节点上方那层空档
-        const gx = pickLane(tx, yOut, yIn, sx)
-        if (sx === tx && gx === tx) return `M ${sx} ${sy} V ${ty}`
-        return `M ${sx} ${sy} V ${yOut} H ${gx} V ${yIn} H ${tx} V ${ty}`
+        // 相邻层时 yOut 与 yIn 恰好相等 → 退化成一条横线（主干两端各自负责竖段）
+        const gx = pickLane(tx, yOut, yIn, cx)
+        if (gx === tx) return `M ${cx} ${yOut} H ${tx} V ${yIn}`
+        return `M ${cx} ${yOut} H ${gx} V ${yIn} H ${tx}`
       }
       // 反向边（回边 / 环）：走右侧通道，避免与正向边压在一起
       const busX = width - PAD / 2
-      return `M ${sx} ${sy} V ${p1.y - halfGap} H ${busX} V ${p2.y + NODE_H + halfGap} H ${tx} V ${ty}`
+      return `M ${cx} ${yOut} H ${busX} V ${p2.y + NODE_H + halfGap} H ${tx} V ${yIn}`
     }
 
     // innerHTML 会整段替换，故箭头 marker 的 defs 一并写入
@@ -243,17 +235,25 @@ export function createGraphCanvas(opts) {
       `<marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">` +
       '<path d="M 0 0 L 10 5 L 0 10 z" fill="#8b8fa3"></path></marker></defs>'
 
-    edges.forEach((e, i) => {
-      const p1 = pos[e.from]
-      const p2 = pos[e.to]
-      if (!p1 || !p2) return
-      const sx = outAnchor[i] ?? p1.x + NODE_W / 2
-      const sy = p1.y + NODE_H
-      const tx = inAnchor[i] ?? p2.x + NODE_W / 2
-      const ty = p2.y
+    // 主干：每个有出/入边的节点各一根，只画一次（这就是"合并"的落点）
+    nodes.forEach((n) => {
+      const p = pos[n.id]
+      if (!p) return
+      const cx = p.x + NODE_W / 2
+      const halfGap = (LEVEL_GAP - NODE_H) / 2
+      if (hasOut[n.id]) {
+        html += `<path class="${edgeCls}" d="M ${cx} ${p.y + NODE_H} V ${p.y + NODE_H + halfGap}" fill="none"/>`
+      }
+      if (hasIn[n.id]) {
+        html += `<path class="${edgeCls}" d="M ${cx} ${p.y - halfGap} V ${p.y}" fill="none" marker-end="url(#${markerId})"/>`
+      }
+    })
+
+    // 分支：主干末端 → 目标上方的入主干起点
+    edges.forEach((e) => {
+      if (!pos[e.from] || !pos[e.to]) return
       html +=
-        `<path class="${edgeCls}" d="${edgePath(e.from, e.to, sx, sy, tx, ty)}"` +
-        ` fill="none" marker-end="url(#${markerId})"/>`
+        `<path class="${edgeCls}" fill="none" d="${edgePath(e.from, e.to, cxOf(e.from), cxOf(e.to))}"/>`
     })
 
     nodes.forEach((n) => {
