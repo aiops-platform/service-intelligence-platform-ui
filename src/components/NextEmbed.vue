@@ -58,8 +58,36 @@ defineProps({
   label: { type: String, required: true },
 })
 
+/**
+ * 本应用是不是**已经被同源页面嵌着**在跑。
+ *
+ * 兜住一类别的东西都拦不住的故障：**外壳被套进自己的 iframe**。
+ * 起因是内嵌页里一个指向本仓**没有导出**的路由的链接（Service Ops 表格行尾的 `›`
+ * → `/entity/app/<slug>/`）—— 那个路径落进宿主的 SPA 兜底，返回 Vue 应用自己的
+ * index.html，vue-router 的 catch-all 再重定向回 `/service-ops`，于是 Service Ops
+ * 的 iframe 里又是一个 Service Ops，每点一次多套一层。
+ *
+ * 那两个链接的具体处置在构建期（`tools/tenant_copy.py` 的
+ * `patch_service_ops_entity_links`）。这里是**第二道**：不管什么原因让宿主被套进自己，
+ * 都在这一层停住，不再往下渲染 iframe。
+ *
+ * 为什么判同源、而不是判「在不在 iframe 里」：跨源 iframe 是**正常的**第三方嵌入
+ * （别人把 SIP 挂进自己页面），那时本组件应当照常工作。只有同源祖先才说明
+ * 「SIP 套 SIP」。跨源时读 `window.top.location` 会抛，正好用来区分。
+ */
+function inSameOriginFrame() {
+  if (window.self === window.top) return false
+  try {
+    void window.top.location.href
+    return true
+  } catch {
+    return false                                  // 跨源：读不到 → 正常的第三方嵌入
+  }
+}
+
 const frameEl = ref(null)
 const loading = ref(true)
+const selfEmbedded = inSameOriginFrame()
 
 let poll = null
 let fallback = null
@@ -72,6 +100,7 @@ function done() {
 }
 
 onMounted(() => {
+  if (selfEmbedded) return                       // 不渲染 iframe，也就没有 load 要等
   poll = setInterval(() => {
     const f = frameEl.value
     if (f && f.contentDocument && f.contentDocument.readyState === 'complete') done()
@@ -92,16 +121,26 @@ onUnmounted(() => {
     它是 styles.css 的消费方，改名会静默掉样式。）
   -->
   <div class="cs-embed">
-    <iframe
-      ref="frameEl"
-      :src="src"
-      class="cs-embed__frame"
-      :title="title"
-      @load="done"
-    />
-    <div v-if="loading" class="cs-embed__mask">
-      <div class="cs-embed__spinner" />
-      <div>{{ label }}</div>
+    <!-- 第二道闸：宿主已被同源页面嵌着，就不再往下套（见 inSameOriginFrame 的说明） -->
+    <div v-if="selfEmbedded" class="cs-embed__guard">
+      <div class="cs-embed__guard-title">未继续加载内嵌页</div>
+      <div class="cs-embed__guard-body">
+        本应用当前运行在同源 iframe 里，再嵌一层会变成「自己套自己」。
+        请在新标签页打开本页，或从顶部导航进入。
+      </div>
     </div>
+    <template v-else>
+      <iframe
+        ref="frameEl"
+        :src="src"
+        class="cs-embed__frame"
+        :title="title"
+        @load="done"
+      />
+      <div v-if="loading" class="cs-embed__mask">
+        <div class="cs-embed__spinner" />
+        <div>{{ label }}</div>
+      </div>
+    </template>
   </div>
 </template>

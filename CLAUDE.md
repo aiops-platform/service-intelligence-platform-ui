@@ -121,6 +121,26 @@ workflow DAG 由 `GraphCanvas.vue` + `useGraphCanvas.js`（命令式引擎）画
 - **`nodeTip` 的两个描述是不同维度**：`desc` = agent 的描述（Agents 页同一份，
   `GET /agents`，可被租户覆盖）；`nodeDesc` = 节点在 YAML 里写的自述。
 
+## 内嵌页（`public/` 下的 Next.js 离线副本）
+
+Constellation / Business Ops / Service Ops 三个域都是**另一套 Next.js 应用**的离线副本，
+由 `NextEmbed.vue` 用同源 iframe 嵌进来。几条改之前必须知道的：
+
+- **产物由 `tools/make-offline-page.py` 生成，绝不手改 `public/`。**
+  构建每次都从 `tools/vendor/` 重新铺 `public/_next/`，手改没有任何工具会写回去 ——
+  **下次重建静默回退**。要对产物做的每一处改写，都得是同目录下
+  `tenant_copy.py` 里的一个**声明式补丁**（有意为之的手改已经栽过一次：默认租户）。
+  **提交前先看 `git status` / diff**，别看构建输出「一切正常」。
+- **内层页面里指向本仓没有导出的路由的链接，会让宿主套进自己**。
+  典型是 Service Ops 行尾的 `›` → `/entity/app/<slug>/`：该路径落进宿主 SPA 兜底，
+  vue-router 的 catch-all 再重定向回 `/service-ops`，于是在 Service Ops 里渲染出
+  Service Ops，点一次多一层。当前两道防线：
+  ① 构建期拆链接（`patch_service_ops_entity_links`）；
+  ② 运行期 `NextEmbed.vue` 的 `inSameOriginFrame()` —— **同源祖先**时不渲染 iframe
+  （跨源不算，那是正常的第三方嵌入）。
+- **路径不能随便改**：内层用 `usePathname()` 查面板表决定 h1，对不上时**静默**变成
+  `"SIP"`（不报错、不白屏）。详见各视图与 `vite.config.js` 的 `sipEmbedPageIndex`。
+
 ## 项目约定
 
 开发流程、Commit 格式、Changelog 规范等约定参见 `CONTRIBUTING.md`。

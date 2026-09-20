@@ -7644,6 +7644,35 @@ svg { fill: currentColor; }
     to { transform: rotate(360deg); }
 }
 
+/* 自嵌闸门：本应用已被同源 iframe 嵌着，本组件拒绝再往下套一层。
+   见 src/components/NextEmbed.vue 的 inSameOriginFrame()。样式与遮罩同族 ——
+   它替代的是那份正常内容，占满同一块地方。 */
+.cs-embed__guard {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 0 24px;
+    text-align: center;
+    background: var(--bg-white);
+    color: var(--text-secondary);
+}
+
+.cs-embed__guard-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.cs-embed__guard-body {
+    font-size: 12px;
+    line-height: 1.6;
+    max-width: 420px;
+}
+
 /* ====== CMDB 实体图谱编辑器（cmdb-*）====== */
 /* 承载页：Architecture 域（/architecture）。布局是「左清单 + 右 Inspector」，
    与 Agent 目录同构，但 Inspector 是**表单**不是只读详情。 */

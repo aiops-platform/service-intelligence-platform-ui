@@ -395,6 +395,93 @@ def patch_journey_name_drill(chunks_dir) -> bool:
     return True
 
 
+# Service Ops 里指向 `/entity/app/<slug>/` 的两个链接 —— 见 patch_service_ops_entity_links()
+#
+# 该路径是**部署站**的实体详情页，从来没被导出进离线副本（public/ 下只有
+# constellation-app.html / business-ops/ / service-ops/）。点它会掉进宿主的 SPA 兜底，
+# 于是 Service Ops 的 iframe 里渲染出 Vue 应用自己 —— 自己套自己。
+SEL_FILE = "0t1fyt7wcotiz.js"
+SEL_ROW_FIND = (
+    '(0,n.jsx)("a",{href:`/entity/app/${(0,u.appKeySlug)(e.appKey)}/`,'
+    'onClick:e=>e.stopPropagation(),title:`Open ${e.label} detail page`,'
+    'style:{textAlign:"center",color:"var(--text-tertiary)",fontSize:14,fontWeight:600,'
+    'textDecoration:"none"},children:"›"})'
+)
+# `i` 是行组件 `({app:e,rank:t,selected:r,onSelect:i,…})` 的 onSelect ——
+# 就是整行 `onClick:i` 用的那个。改成点一下开 inspector，与点行同效。
+SEL_ROW_REPL = (
+    '(0,n.jsx)("a",{href:"#",onClick:e=>{e.preventDefault(),e.stopPropagation(),i()},'
+    'title:`Show ${e.label} details`,'
+    'style:{textAlign:"center",color:"var(--text-tertiary)",fontSize:14,fontWeight:600,'
+    'textDecoration:"none"},children:"›"})'
+)
+SEL_FOOT_FIND = (
+    '(0,n.jsxs)("a",{href:`/entity/app/${(0,u.appKeySlug)(e.appKey)}/`,'
+    'style:{color:"var(--electric-500, #3b82f6)"},'
+    'children:["→ Open detail · /entity/app/",e.appKey]})'
+)
+# 这一条在 inspector 页脚，此时该 app **已经**选中、面板已经开着 —— 没有可跳的目标，
+# 也没有可再选中的东西。所以整条去掉，而不是留一个「点了没反应」的死链。
+SEL_FOOT_REPL = 'null'
+
+
+def patch_service_ops_entity_links(chunks_dir) -> str:
+    """
+    拆掉 Service Ops 里两个指向 `/entity/app/<slug>/` 的链接 —— 那条路由**离线副本里没有**。
+
+    ## 症状：多层 Vue 应用自己套自己
+
+    行尾 `›` 本来是个普通 `<a href="/entity/app/<slug>/">`（不是 Next 的 `<Link>`，
+    所以走的是**整页导航**）。点击后 iframe 导航到该路径，而：
+
+        public/ 下只有 constellation-app.html / business-ops/ / service-ops/
+        `sipEmbedPageIndex` 只拦尾斜杠的 /business-ops/ 与 /service-ops/
+
+    → `/entity/app/xentry-work-order/` 落进 Vite 的 **SPA 兜底**，返回 Vue 应用自己的
+    index.html；vue-router 的 catch-all (`/:pathMatch(.*)*`) 再重定向到 `/service-ops`
+    → ServiceOpsView 又渲染一个 `/service-ops/` 的 iframe。**在 Service Ops 里看到了
+    Service Ops**，每点一次多套一层。生产 nginx 的 `try_files $uri $uri/ /index.html`
+    一模一样。
+
+    ## 两个锚点的处置不同
+
+    ① 表格行尾 `›`（`title: Open … detail page`）：改成 `preventDefault` + 调本行已有的
+       `onSelect`（`i`）→ 打开右侧 inspector。**不跳转**，所以用户设的筛选
+       （journey / portfolio / tier / HC / bot）不会因为整页重载丢掉。
+       没有换成 `/service-ops/?app=<key>` 那条深链，就是为了这个：那条会重载 iframe。
+
+    ② inspector 页脚的 `→ Open detail · /entity/app/…`：此时面板**已经**开着，
+       既没有可跳的目标也没有可再选中的东西 —— 整条去掉。留一个点了没反应的死链
+       比没有更糟（正是本仓 CLAUDE.md 反复点名的「静默失败」）。
+
+    ## 为什么改 JS 而不是在宿主侧拦
+
+    宿主侧只能靠「猜哪些路径算外部路由」来 404（`/entity/` 只是今天已知的那一个），
+    而链接在编译产物里是明摆着的。宿主那条兜底另有其事 —— 见 `NextEmbed.vue`
+    的 `inSameOriginFrame()`：**任何**原因导致宿主被套进自己的 iframe，它都不再往下渲染。
+
+    返回状态字符串（同 SPF 约定）：`"applied"` / `"already"` / 其它为跳过原因。
+    """
+    f = chunks_dir / SEL_FILE
+    if not f.is_file():
+        return f"找不到 {SEL_FILE}"
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    # 幂等判据：行尾 › 已换成新版，**且**页脚那条锚点已经不在（换成了 `null`）。
+    # 不能拿 SEL_FOOT_REPL（就是字面量 `null`）去判断在不在 —— 它处处都在。
+    if SEL_ROW_REPL in t and SEL_FOOT_FIND not in t:
+        return "already"
+    bad = []
+    if t.count(SEL_ROW_FIND) != 1:
+        bad.append("行尾 ›")
+    if t.count(SEL_FOOT_FIND) != 1:
+        bad.append("inspector 页脚")
+    if bad:
+        return "锚点失效（站点改版？）：" + "、".join(bad)
+    t = t.replace(SEL_ROW_FIND, SEL_ROW_REPL, 1).replace(SEL_FOOT_FIND, SEL_FOOT_REPL, 1)
+    f.write_text(t, encoding="utf-8", errors="surrogateescape")
+    return "applied"
+
+
 # Service Ops 筛选条的 Portfolio 筛选 —— 见 patch_service_ops_portfolio_filter()
 #
 # ★ 本仓**唯一的多点补丁**：下面 9 处必须整组生效，所以不走「不唯一就静默跳过」那套，
@@ -770,6 +857,47 @@ def patch_switcher(chunks_dir, all_tenants: dict) -> list:
     f.write_text(t[:end] + add + t[end:], encoding="utf-8",
                  errors="surrogateescape")
     return [x["id"] for x in missing]
+
+
+# 内嵌页的**兜底租户** —— 见 patch_default_tenant()。必须与 src/api/config.js 的
+# DEFAULT_TENANT 一致（那边是 Vue 侧发 X-Tenant-ID 用的）。
+DT_FILE = "0wuztp2.9oz~8.js"
+DT_DEFAULT = "otr"
+# 锚点必须带上 `if(t&&t in tg)return t}catch{}` 才唯一 —— 裸的 return"retail" 别处也可能有。
+DT_RE = re.compile(r'(if\(t&&t in tg\)return t\}catch\{\}return")[A-Za-z0-9._-]+("\}\(\))')
+
+
+def patch_default_tenant(chunks_dir) -> str:
+    """
+    把内嵌页的**兜底租户**改成 `otr`，与 Vue 侧的 `src/api/config.js` 的 `DEFAULT_TENANT` 对齐。
+
+        ?tenant=<id>  →  localStorage["sip-active-tenant"]  →  兜底 "otr"
+
+    站点自带的那份兜底是 `"retail"`（Next 应用的原生租户）。但 agentflow 侧统一用的是
+    `otr`（`src/api/config.js` 的 `DEFAULT_TENANT`、后端 `--tenant otr`），两边不一致时
+    **看同一份数据要换名字** —— 所以内嵌页也兜底到 `otr`。
+
+    ## 为什么必须做成补丁，不能手改 bundle
+
+    这一处原先就是**手改**在 `public/` 那份产物里的（见 `cf01394`：「数据 + 默认租户」）。
+    后果是**重建即回退**：`make-offline-page.py` 每次都从 `tools/vendor/` 的原始外壳
+    重新铺 `public/_next/`，手改的那一处没有任何工具会再写回去，于是默认租户悄悄变回
+    `retail` —— 而构建输出一切正常、不报错。本文件里所有补丁都是为这个理由存在的。
+
+    返回状态字符串（同 SPF 约定）：`"applied"` / `"already"` / 其它为跳过原因。
+    """
+    f = chunks_dir / DT_FILE
+    if not f.is_file():
+        return f"找不到 {DT_FILE}"
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    hits = DT_RE.findall(t)
+    if len(hits) != 1:
+        return f"锚点不唯一（{len(hits)} 处，站点改版？）"
+    if hits[0][0].endswith(f'"{DT_DEFAULT}"'):
+        return "already"
+    f.write_text(DT_RE.sub(lambda m: m.group(1) + DT_DEFAULT + m.group(2), t, count=1),
+                 encoding="utf-8", errors="surrogateescape")
+    return "applied"
 
 
 # ── 注入到页面的运行时改写器 ─────────────────────────────────────────

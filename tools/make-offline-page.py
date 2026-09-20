@@ -349,6 +349,20 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
                 print("  Service Ops：支持 ?portfolio= 深链（落地预置 journey+portfolio）")
             elif sdl != "already":
                 print(f"  ! Service Ops 深链未打：{sdl}")
+            # Service Ops 里指向 /entity/app/<slug>/ 的两个链接 —— 那条路由没被导出，
+            # 点它会掉进宿主 SPA 兜底 → 在 Service Ops 的 iframe 里套出 Vue 应用自己
+            sel = tenant_copy.patch_service_ops_entity_links(chunks_dir)
+            if sel == "applied":
+                print("  Service Ops：/entity/app/ 链接拆除（行尾 › 改为开 inspector）")
+            elif sel != "already":
+                print(f"  ! Service Ops /entity/app/ 链接未拆：{sel}")
+            # 内嵌页的兜底租户 → otr（与 src/api/config.js 的 DEFAULT_TENANT 一致）。
+            # ⚠ 必须在这里打，**不能手改产物** —— 重建会把它冲掉。
+            dt = tenant_copy.patch_default_tenant(chunks_dir)
+            if dt == "applied":
+                print(f"  兜底租户：retail（站点原生）→ {tenant_copy.DT_DEFAULT}")
+            elif dt != "already":
+                print(f"  ! 兜底租户未改：{dt}")
     except Exception as e:
         print(f"    ! 注入租户文案失败，跳过：{e}")
 
