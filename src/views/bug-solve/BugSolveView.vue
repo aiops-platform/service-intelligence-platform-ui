@@ -43,11 +43,12 @@ const {
 function nodeStyle(n, st) {
   let cls = statusClass(st)
   if (n.kind === 'approval') cls += ' bs-node-approval'
-  return { cls, label: n.id + (n.agent ? ` (${n.agent})` : '') }
+  // 图里只显示**节点名**（节点 id）；agent 看详情面板，不往图上堆
+  return { cls, label: n.id }
 }
 
 const HINT =
-  '选择流程后预览图；点击「开始解决问题」运行。节点按状态着色：绿=done 蓝=running 灰=pending 红=failed 橙=cancelled 琥珀=待审批。Scroll to zoom · drag to pan.'
+  '选择流程后预览图；点击「开始解决问题」运行。节点按状态着色：绿=done 蓝=running 灰=pending 红=failed 橙=cancelled 琥珀=待审批。'
 
 async function refreshWorkflows() {
   refreshing.value = true

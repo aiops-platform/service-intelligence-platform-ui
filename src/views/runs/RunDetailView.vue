@@ -25,10 +25,11 @@ const {
 function nodeStyle(n, st) {
   let cls = statusClass(st)
   if (n.kind === 'approval') cls += ' bs-node-approval'
-  return { cls, label: n.id + (n.agent ? ` (${n.agent})` : '') }
+  // 图里只显示**节点名**（节点 id）；agent 看详情面板，不往图上堆
+  return { cls, label: n.id }
 }
 
-const HINT = 'Click a node to inspect its output · params · duration · error。Scroll to zoom · drag to pan.'
+const HINT = 'Click a node to inspect its output · params · duration · error。'
 
 function fmtMs(ms) {
   if (ms === null || ms === undefined) return '—'

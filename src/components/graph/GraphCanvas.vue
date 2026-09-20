@@ -22,10 +22,6 @@ const zoomEl = ref(null)
 const svgEl = ref(null)
 const stageEl = ref(null)
 const hintEl = ref(null)
-const controlsEl = ref(null)
-const zoomInEl = ref(null)
-const zoomOutEl = ref(null)
-const zoomFitEl = ref(null)
 
 let canvas = null
 let unbind = null
@@ -36,14 +32,9 @@ onMounted(() => {
     svgEl: svgEl.value,
     stageEl: stageEl.value,
     hintEl: hintEl.value,
-    controlsEl: controlsEl.value,
-    zoomInEl: zoomInEl.value,
-    zoomOutEl: zoomOutEl.value,
-    zoomFitEl: zoomFitEl.value,
     markerId: 'bsArrow',
     nodeCls: 'bs-node',
     edgeCls: 'bs-edge',
-    controlsCls: 'bs-zoom-controls',
     nodeStyle: props.nodeStyle,
     onNodeClick: (nid) => emit('node-click', nid),
   })
@@ -75,10 +66,15 @@ defineExpose({
         <svg class="bs-graph" id="bsGraph" ref="svgEl" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
     </div>
-    <div class="bs-zoom-controls" id="bsZoomControls" ref="controlsEl" style="display: none">
-      <button class="bs-zoom-btn" id="bsZoomOut" ref="zoomOutEl" title="缩小">−</button>
-      <button class="bs-zoom-btn" id="bsZoomIn" ref="zoomInEl" title="放大">+</button>
-      <button class="bs-zoom-btn" id="bsZoomFit" ref="zoomFitEl" title="适配画布">Fit</button>
-    </div>
+    <!--
+      ⚠️ 这里**没有**缩放控件了：图固定以 fit 模式展示（滚轮/拖拽也一并移除）。
+
+      **但 `.bs-zoom-controls` / `.bs-zoom-btn` / `#bsZoomFit` 的样式不能从
+      styles.css 删掉**——legacy 的 `js/app.js` 还在用同一套类名渲染自己的缩放条
+      （`controlsCls: 'bs-zoom-controls'`，两处：pcRunZoomControls / bsZoomControls）。
+      那正是本仓记录过的坑：**样式表也是类名的消费方**，从一个世界删掉会让另一个静默掉样式。
+
+      要恢复本组件的缩放，把按钮加回来 + 重新接上引擎的监听即可（引擎侧已移除）。
+    -->
   </div>
 </template>
