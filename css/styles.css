@@ -6176,6 +6176,34 @@ svg { fill: currentColor; }
     fill: none;
 }
 
+/*
+ * 点击节点时的"流动"效果：虚线沿线的方向（源 → 目标）滚动。
+ *
+ * dashoffset 取**负值**：SVG 的 dash 前进方向就是路径方向，而本引擎生成的
+ * path 一律是从源节点画向目标节点，所以负偏移 = 朝着目标流动。
+ * 写成正值会变成"倒吸"，看着像数据往回走。
+ *
+ * 与 useGraphCanvas.js 的 FLOW_CLS / FLOW_COLOR 成对；改一处要改两处。
+ */
+.bs-edge-flow {
+    stroke: var(--accent-blue);
+    stroke-width: 2;
+    stroke-dasharray: 6 6;
+    animation: bsEdgeFlow 0.7s linear infinite;
+}
+
+@keyframes bsEdgeFlow {
+    to { stroke-dashoffset: -12; }
+}
+
+/* 尊重系统的"减少动态效果"：去掉滚动，只留高亮色 */
+@media (prefers-reduced-motion: reduce) {
+    .bs-edge-flow {
+        animation: none;
+        stroke-dasharray: none;
+    }
+}
+
 /* SVG 节点：默认（pending/未知）灰 */
 .bs-node-rect {
     fill: #f3f4f6;

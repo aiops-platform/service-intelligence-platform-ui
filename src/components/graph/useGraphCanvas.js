@@ -21,6 +21,11 @@
  * 内容才会**按视口居中**，而不是把整块容器推偏/裁掉。
  */
 
+//: 流动高亮色（与 styles.css 的 --accent-blue 一致；SVG 里 marker 的 fill 取不到 CSS 变量，故写值）
+const FLOW_COLOR = '#3b82f6'
+//: 高亮时给线加的类名（样式在 css/styles.css 的 .bs-edge-flow）
+const FLOW_CLS = 'bs-edge-flow'
+
 const NODE_W = 150
 const NODE_H = 46
 const LEVEL_GAP = 110
@@ -41,6 +46,8 @@ export function createGraphCanvas(opts) {
   } = opts
 
   let zoom = 1
+  // 当前被高亮的节点：render 会整段重写 innerHTML，高亮必须重放（见 renderGraph 末尾）
+  let flowNode = null
   let panX = 0
   let panY = 0
   function applyTransform() {
@@ -233,7 +240,10 @@ export function createGraphCanvas(opts) {
     let html =
       '<defs>' +
       `<marker id="${markerId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">` +
-      '<path d="M 0 0 L 10 5 L 0 10 z" fill="#8b8fa3"></path></marker></defs>'
+      '<path d="M 0 0 L 10 5 L 0 10 z" fill="#8b8fa3"></path></marker>' +
+      // 高亮态箭头：与流动线同色——否则线变了色、箭头还是灰的
+      `<marker id="${markerId}Flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">` +
+      `<path d="M 0 0 L 10 5 L 0 10 z" fill="${FLOW_COLOR}"></path></marker></defs>`
 
     // 主干：每个有出/入边的节点各一根，只画一次（这就是"合并"的落点）
     nodes.forEach((n) => {
@@ -242,10 +252,12 @@ export function createGraphCanvas(opts) {
       const cx = p.x + NODE_W / 2
       const halfGap = (LEVEL_GAP - NODE_H) / 2
       if (hasOut[n.id]) {
-        html += `<path class="${edgeCls}" d="M ${cx} ${p.y + NODE_H} V ${p.y + NODE_H + halfGap}" fill="none"/>`
+        html += `<path class="${edgeCls}" data-out="${escapeAttr(n.id)}"` +
+                ` d="M ${cx} ${p.y + NODE_H} V ${p.y + NODE_H + halfGap}" fill="none"/>`
       }
       if (hasIn[n.id]) {
-        html += `<path class="${edgeCls}" d="M ${cx} ${p.y - halfGap} V ${p.y}" fill="none" marker-end="url(#${markerId})"/>`
+        html += `<path class="${edgeCls}" data-in="${escapeAttr(n.id)}"` +
+                ` d="M ${cx} ${p.y - halfGap} V ${p.y}" fill="none" marker-end="url(#${markerId})"/>`
       }
     })
 
@@ -253,7 +265,8 @@ export function createGraphCanvas(opts) {
     edges.forEach((e) => {
       if (!pos[e.from] || !pos[e.to]) return
       html +=
-        `<path class="${edgeCls}" fill="none" d="${edgePath(e.from, e.to, cxOf(e.from), cxOf(e.to))}"/>`
+        `<path class="${edgeCls}" data-from="${escapeAttr(e.from)}" data-to="${escapeAttr(e.to)}"` +
+        ` fill="none" d="${edgePath(e.from, e.to, cxOf(e.from), cxOf(e.to))}"/>`
     })
 
     nodes.forEach((n) => {
@@ -272,10 +285,14 @@ export function createGraphCanvas(opts) {
     })
 
     svgEl.innerHTML = html
+    // innerHTML 整段重写会抹掉高亮。宿主（RunDetailView / BugSolveView）是**轮询驱动**的，
+    // 每次数据变化都重新 render —— 不在这里重放的话，点击后的流动效果几秒后就自己没了。
+    if (flowNode) highlightFlow(flowNode)
     fitGraph()
   }
 
   function reset() {
+    flowNode = null
     if (svgEl) svgEl.innerHTML = ''
     if (hintEl) hintEl.style.display = 'block'
     zoom = 1
@@ -286,7 +303,63 @@ export function createGraphCanvas(opts) {
 
   function onClick(e) {
     const g = e.target.closest ? e.target.closest('[data-node]') : null
-    if (g && g.getAttribute('data-node') && onNodeClick) onNodeClick(g.getAttribute('data-node'))
+    if (!g) return
+    const nid = g.getAttribute('data-node')
+    if (!nid) return
+    highlightFlow(nid)
+    if (onNodeClick) onNodeClick(nid)
+  }
+
+  /** 清掉上一次的流动高亮（含把箭头换回灰色）。 */
+  function clearFlow() {
+    if (!svgEl) return
+    svgEl.querySelectorAll('.' + FLOW_CLS).forEach((p) => {
+      p.classList.remove(FLOW_CLS)
+      const orig = p.getAttribute('data-flow-marker')
+      if (orig) {
+        p.setAttribute('marker-end', orig)
+        p.removeAttribute('data-flow-marker')
+      }
+    })
+  }
+
+  /**
+   * 点击节点 → 让**从这个节点出去的线**流动起来，一直到目标节点。
+   *
+   * 要覆盖三段才"看起来流到了目标"：
+   *   1. 该节点的出主干（`data-out`）
+   *   2. 该节点出发的全部分支（`data-from`）
+   *   3. **各目标节点的入主干**（`data-in`）——少了这段，流动在目标上方就断了
+   *
+   * 分支本身只到"目标上方"，最后一截竖线是目标节点的入主干，所以第 3 段必须带上。
+   *
+   * 色值 / 类名与 styles.css 的 `.bs-edge-flow` 成对；改一处要改两处。
+   */
+  function highlightFlow(nid) {
+    flowNode = nid
+    clearFlow()
+    if (!svgEl) return
+    const q = (attr, val) => {
+      const safe = String(val).replace(/["\\]/g, '\\$&')
+      return svgEl.querySelectorAll(`[data-${attr}="${safe}"]`)
+    }
+    const targets = new Set()
+    q('from', nid).forEach((p) => {
+      p.classList.add(FLOW_CLS)
+      const to = p.getAttribute('data-to')
+      if (to) targets.add(to)
+    })
+    q('out', nid).forEach((p) => p.classList.add(FLOW_CLS))
+    targets.forEach((t) => {
+      q('in', t).forEach((p) => {
+        p.classList.add(FLOW_CLS)
+        const m = p.getAttribute('marker-end')
+        if (m) {
+          p.setAttribute('data-flow-marker', m)
+          p.setAttribute('marker-end', `url(#${markerId}Flow)`)
+        }
+      })
+    })
   }
 
   /**
@@ -314,7 +387,7 @@ export function createGraphCanvas(opts) {
     }
   }
 
-  return { render: renderGraph, reset, fit: fitGraph, mount }
+  return { render: renderGraph, reset, fit: fitGraph, mount, clearFlow }
 }
 
 /** 属性值转义（改造前用的是 escapeHtml，同样基于 DOM；这里只需满足属性场景） */
