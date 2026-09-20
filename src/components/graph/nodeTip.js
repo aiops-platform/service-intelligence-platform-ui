@@ -32,7 +32,9 @@ export function nodeTipOf(graphNode, runNode) {
   ]
   if ((n.attempts || 0) > 1) rows.push(['重试', `${n.attempts - 1} 次`])
   if (n.error) rows.push(['error', String(n.error).slice(0, 160)])
-  return { title: g.id || '—', rows }
+  // 节点说明：以**独立段落**呈现（不是 label/value 行）——它是给节点的一句话解释，
+  // 可能较长；塞进行里会把 key 列挤没。
+  return { title: g.id || '—', desc: g.description || '', rows }
 }
 
 /** 从图数据里按 id 取节点（图很小，线性找即可）。 */

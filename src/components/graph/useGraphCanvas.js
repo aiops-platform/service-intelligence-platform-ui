@@ -352,6 +352,12 @@ export function createGraphCanvas(opts) {
     title.className = 'bs-node-tip-title'
     title.textContent = tip.title || nid
     tipEl.appendChild(title)
+    if (tip.desc) {
+      const desc = document.createElement('div')
+      desc.className = 'bs-node-tip-desc'
+      desc.textContent = tip.desc
+      tipEl.appendChild(desc)
+    }
     ;(tip.rows || []).forEach(([k, v]) => {
       const row = document.createElement('div')
       row.className = 'bs-node-tip-row'
