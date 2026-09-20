@@ -395,6 +395,152 @@ def patch_journey_name_drill(chunks_dir) -> bool:
     return True
 
 
+# Service Ops 筛选条的 Portfolio 筛选 —— 见 patch_service_ops_portfolio_filter()
+#
+# ★ 本仓**唯一的多点补丁**：下面 9 处必须整组生效，所以不走「不唯一就静默跳过」那套，
+#   改成「9 个锚点全部校验通过才落笔」—— 只打一半会 ReferenceError 整页白屏。
+SPF_FILE = "0t1fyt7wcotiz.js"
+SPF_SITES = [
+    (
+        "① 新增 portfolio 选中态",
+        '[$,E]=(0,o.useState)(new Set)',
+        '[$,E]=(0,o.useState)(new Set),[pfSel,pfToggle]=(0,o.useState)(new Set)',
+    ),
+    (
+        "② 谓词：选中 journey 内再按 portfolio 过滤",
+        'if($.size>0){let t=x.get(e.portfolioId);if(!t||!$.has(t))return!1}return!0}',
+        'if($.size>0){let t=x.get(e.portfolioId);if(!t||!$.has(t))return!1;'
+        'if(pfSel.size>0&&!pfSel.has(e.portfolioId))return!1}return!0}',
+    ),
+    (
+        "③ useMemo 依赖数组补 pfSel",
+        ',[w,F,I,$])',
+        ',[w,F,I,$,pfSel])',
+    ),
+    (
+        "④ anyActive 带上 portfolio 筛选",
+        'W=w.size>0||F||I||$.size>0',
+        'W=w.size>0||F||I||$.size>0||pfSel.size>0',
+    ),
+    (
+        "⑤ onReset 一并清空 portfolio 选择",
+        'onReset:()=>{M(new Set),A(!1),L(!1),E(new Set)}',
+        'onReset:()=>{M(new Set),A(!1),L(!1),E(new Set),pfToggle(new Set)}',
+    ),
+    (
+        "⑥ 切 journey 时清空 portfolio 选择",
+        'onToggleJourney:e=>E(t=>{let r=new Set(t);return r.has(e)?r.delete(e):r.add(e),r})',
+        'onToggleJourney:e=>{E(t=>{let r=new Set(t);return r.has(e)?r.delete(e):r.add(e),r}),'
+        'pfToggle(new Set)}',
+    ),
+    (
+        "⑦ 调用处传两个新 prop（toggle 要在父组件里包一层 Set 更新）",
+        'lowBotOnly:I,journeyFilter:$,',
+        'lowBotOnly:I,journeyFilter:$,portfolioFilter:pfSel,'
+        'onTogglePortfolio:e=>pfToggle(t=>{let r=new Set(t);'
+        'return r.has(e)?r.delete(e):r.add(e),r}),',
+    ),
+    (
+        "⑧ 筛选条解构接这两个 prop",
+        'onToggleJourney:l,anyActive:d,onReset:u,filteredCount:p}){',
+        'onToggleJourney:l,anyActive:d,onReset:u,filteredCount:p,'
+        'portfolioFilter:pfP,onTogglePortfolio:pfT}){',
+    ),
+    (
+        "⑨ journey chips 之后渲染 portfolio chips",
+        'b.map(e=>(0,n.jsx)(h,{label:e.label,active:i.has(e.id),'
+        'count:k.byJourney.get(e.id)??0,onClick:()=>l(e.id)},e.id))',
+        'b.map(e=>(0,n.jsx)(h,{label:e.label,active:i.has(e.id),'
+        'count:k.byJourney.get(e.id)??0,onClick:()=>l(e.id)},e.id)),'
+        'i.size>0&&(0,n.jsxs)(n.Fragment,{children:[(0,n.jsx)(w,{}),'
+        'g.JOURNEY_DOMAINS.filter(e=>i.has(e.id)).flatMap(e=>e.portfolios)'
+        '.map(e=>(0,n.jsx)(h,{label:e.label,active:pfP.has(e.id),count:e.appCount,'
+        'onClick:()=>pfT(e.id)},e.id))]})',
+    ),
+]
+
+
+def patch_service_ops_portfolio_filter(chunks_dir) -> str:
+    """
+    在 Service Ops 概览页的筛选条里，journey 那组 chip **后面**加一组 portfolio chip：
+    只列出**当前选中 journey 名下的** portfolio，点它就在该 journey 内再按 portfolio 过滤。
+
+        Filter │ All · 50 │ T1 T2 T3 │ PS · 21  Bot<50% · 0 │ Sales… · 28  Customer… · 22
+                                                             └─ 选中 Sales… 之后 ↓
+        Filter │ … │ Sales… · 28 │ ─── Lead · 7  Offer&Order · 5  Handover · 5 …
+
+    ## 三条产品口径（已确认）
+
+    1. **没选任何 journey 时不渲染这组 chip**（严格「由 journey 决定有哪些 portfolio」）；
+    2. **切换 journey 时清空已选 portfolio**（⑥）—— 否则会出现「chip 看不见、却仍在筛」的
+       幽灵筛选，最坏情况列表直接变空；
+    3. 组前只加一根现有分隔符，不加组标签。
+
+    ## 数据与控件都是复用，不是新造
+
+    - portfolio 列表：模块级 `g.JOURNEY_DOMAINS[].portfolios[]`（域构造函数里从
+      `snapshot.portfolios` 现算的），每项自带 `id` / `label` / `appCount`，
+      且**已按 incidentsTotal 降序**，与 journey chip 的顺序口径一致；
+    - chip 组件是本文件里的 `h`（`{label,active,count,onClick}`），分隔符是 `w`，
+      都与左邻右舍同一套；
+    - 计数口径与 journey chip 一致：静态的「该 portfolio 有几个 app」（`k` 那套计数同样是静态的）。
+
+    ## 为什么必须 9 处一起改
+
+    `pfSel` 这个新状态要穿过「定义 → 过滤谓词 → useMemo 依赖 → anyActive 徽标 → 重置 →
+    journey 联动 → 父组件传参 → 子组件解构 → 渲染」。**只打一半的后果不一样**：
+
+        / 少 ①（状态没定义）→ `pfSel is not defined` → **整页白屏**
+        / 少 ③（依赖没补）  → 筛选生效但列表不重算（要等别的状态变化才刷新）
+        / 少 ⑤（All 没清）  → 幽灵筛选：UI 看着全清空了，列表却还是被 portfolio 卡着
+
+    所以本函数**先全量校验 9 个锚点、全部命中才落笔**，任一缺失就整组跳过 —— 与单点补丁
+    「不唯一就静默跳过」的约定不同（那里是「功能不见了」，这里是「页面坏了」）。
+
+    ## ⑦ 为什么要包一层：`useState` 的 setter 不能直接喂 id（踩过）
+
+    最初 ⑦ 图省事写成 `onTogglePortfolio:pfToggle`，chip 里 `pfT(e.id)` 于是调用
+    `pfToggle("portfolio:lead")` —— setter 收到**非函数值就整体替换 state**，
+    state 从 Set 变成字符串，下一次渲染 `pfP.has(...)` 立刻 `TypeError` 崩。
+
+    既有那几个 toggle 全都在**父组件**里包一层，正是这个原因：
+
+        onToggleJourney:e=>E(t=>{let r=new Set(t);return r.has(e)?r.delete(e):r.add(e),r})
+
+    —— id 进、Set 内的增删在 updater 里做，setter 永远只收到函数。新加的这一处必须照抄
+    这个形状。（静态检查、`node --check` 都发现不了这个错：它只在真点上那一下才炸。）
+
+    ## 为什么不做 DOM 改写
+
+    这是个**有状态**的筛选：点 chip 要驱动 React 的筛选谓词重算。DOM 层注入的 chip 没有
+    任何途径去改 React state（既不能伪造出「选中某个 portfolio」的既有事件，也没有 id 可传），
+    所以只能改 JS。这与「租户文案」那类纯文本改写不同。
+
+    ## 已知边界
+
+    若某个 journey 名下 0 个 portfolio（12 个租户实测均无），选中它时会多出一根**孤立的
+    分隔符** —— 纯外观、无害。为它加守卫要在压缩代码里引入一个 IIFE 或重复一遍域名过滤
+    表达式，不划算，故不加。
+
+    返回状态字符串：`"applied"` / `"already"` / 其它为跳过原因（构建脚本会把非 already
+    的情况打出来 —— 这个补丁**不能静默失效**，否则功能会凭空消失且无人察觉）。
+    """
+    f = chunks_dir / SPF_FILE
+    if not f.is_file():
+        return f"找不到 {SPF_FILE}"
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if all(repl in t for _, _, repl in SPF_SITES):
+        return "already"
+    missing = [label for label, find, repl in SPF_SITES
+               if repl not in t and t.count(find) != 1]
+    if missing:
+        return "锚点失效（站点改版？）：" + "、".join(missing)
+    for _, find, repl in SPF_SITES:
+        t = t.replace(find, repl, 1)
+    f.write_text(t, encoding="utf-8", errors="surrogateescape")
+    return "applied"
+
+
 # 服务概览页底部 "Daily incident volume · last 30 days" 热力图的配色 —— 见 patch_heatmap_palette()
 HM_FILE = "100pim9o6kpoy.js"
 HM_FIND = (

@@ -334,6 +334,12 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
             # journey 表行内的「名字」—— 点击从「选中」改成「下钻」（与行尾 › 一致）
             if tenant_copy.patch_journey_name_drill(chunks_dir):
                 print("  journey 名字：点击 → 下钻（与行尾 › 一致）")
+            # Service Ops 筛选条：journey 之后新增 portfolio 筛选（9 处，整组原子）
+            spf = tenant_copy.patch_service_ops_portfolio_filter(chunks_dir)
+            if spf == "applied":
+                print("  Service Ops：journey 筛选后新增 portfolio 筛选（9 处已打）")
+            elif spf != "already":
+                print(f"  ! Service Ops portfolio 筛选未打：{spf}")
     except Exception as e:
         print(f"    ! 注入租户文案失败，跳过：{e}")
 
