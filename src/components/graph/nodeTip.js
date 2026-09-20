@@ -19,7 +19,7 @@ function fmtMs(ms) {
  * @param runNode   run 的节点状态 `{ status, duration_ms, tokens, cost, attempts, error }`
  * @returns `{ title, rows: [[label, value], …] }`
  */
-export function nodeTipOf(graphNode, runNode) {
+export function nodeTipOf(graphNode, runNode, agentDesc) {
   const g = graphNode || {}
   const n = runNode || {}
   const rows = [
@@ -32,9 +32,14 @@ export function nodeTipOf(graphNode, runNode) {
   ]
   if ((n.attempts || 0) > 1) rows.push(['重试', `${n.attempts - 1} 次`])
   if (n.error) rows.push(['error', String(n.error).slice(0, 160)])
-  // 节点说明：以**独立段落**呈现（不是 label/value 行）——它是给节点的一句话解释，
-  // 可能较长；塞进行里会把 key 列挤没。
-  return { title: g.id || '—', desc: g.description || '', rows }
+  // **主描述 = agent 的描述**（Agents 页同一份，后端 AGENT_DESCRIPTIONS，可被租户
+  // agent_configs 覆盖）。这是"这个节点在干什么"最直接的一句话。
+  //
+  // 次描述 = 节点自己在 YAML 里写的 description（若 workflow 作者填了）。
+  // 两者是**不同维度**：agent 描述说"这类活是什么"，节点描述说"这一处具体做什么"。
+  //
+  // 都以**独立段落**呈现，不是 label/value 行 —— 可能较长，塞进行里会把 key 列挤没。
+  return { title: g.id || '—', desc: agentDesc || '', nodeDesc: g.description || '', rows }
 }
 
 /** 从图数据里按 id 取节点（图很小，线性找即可）。 */

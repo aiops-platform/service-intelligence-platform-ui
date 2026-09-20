@@ -5,11 +5,12 @@
   数据来自 GET /runs/{id}（B1 补了 inputs / 时间戳 / 节点 error·耗时·attempts）。
 -->
 <script setup>
-import { onActivated, onDeactivated, ref, watch } from 'vue'
+import { onActivated, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRunDetail } from './useRunDetail'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
+import { agentsApi } from '@/api/agentflow'
 import { formatTime } from '@/utils/time'
 
 const route = useRoute()
@@ -33,9 +34,29 @@ function nodeStyle(n, st) {
 const HINT = 'Click a node to inspect its output · params · duration · error。'
 
 /** 悬停 1.5s 的节点提示（内容口径与 Bug Solve 一致，见 nodeTip.js） */
+/**
+ * agent → 描述（Agents 页同一份，后端 `AGENT_DESCRIPTIONS`，可被租户 agent_configs 覆盖）。
+ * 只取一次：图上的节点都指向固定几个 agent，没必要跟着轮询反复拉。
+ * 取不到就留空——提示其余字段照常显示，不因为这一项失败而整个不弹。
+ */
+const agentDesc = ref({})
+onMounted(async () => {
+  try {
+    const list = await agentsApi.list()
+    agentDesc.value = Object.fromEntries(
+      (list || []).map((a) => [a.name, a.description || '']),
+    )
+  } catch {
+    /* 忽略：拿不到就不显示这一行 */
+  }
+})
+
 function nodeTip(nid) {
-  return nodeTipOf(graphNodeById(runData.value?.graph, nid), runData.value?.nodes?.[nid])
+  const g = graphNodeById(runData.value?.graph, nid)
+  return nodeTipOf(g, runData.value?.nodes?.[nid], agentDesc.value?.[g?.agent])
 }
+
+
 
 function fmtMs(ms) {
   if (ms === null || ms === undefined) return '—'

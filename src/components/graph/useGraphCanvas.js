@@ -352,12 +352,15 @@ export function createGraphCanvas(opts) {
     title.className = 'bs-node-tip-title'
     title.textContent = tip.title || nid
     tipEl.appendChild(title)
-    if (tip.desc) {
-      const desc = document.createElement('div')
-      desc.className = 'bs-node-tip-desc'
-      desc.textContent = tip.desc
-      tipEl.appendChild(desc)
-    }
+    ;[['bs-node-tip-desc', tip.desc], ['bs-node-tip-desc2', tip.nodeDesc]].forEach(
+      ([cls, text]) => {
+        if (!text) return          // 空的不渲染，不留空白条
+        const el = document.createElement('div')
+        el.className = cls
+        el.textContent = text
+        tipEl.appendChild(el)
+      },
+    )
     ;(tip.rows || []).forEach(([k, v]) => {
       const row = document.createElement('div')
       row.className = 'bs-node-tip-row'

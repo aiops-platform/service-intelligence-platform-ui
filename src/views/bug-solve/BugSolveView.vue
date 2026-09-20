@@ -10,6 +10,7 @@ import { ref, onMounted, onActivated } from 'vue'
 import { useBugSolveRun, statusClass } from './useBugSolveRun'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
+import { agentsApi } from '@/api/agentflow'
 
 const canvasRef = ref(null)
 const refreshing = ref(false)
@@ -52,12 +53,32 @@ function nodeStyle(n, st) {
  * 悬停 1.5s 的节点提示。字段口径与 Run Detail 一致（见 nodeTip.js）——
  * 同一张 workflow 在两个页面 hover 出来的东西应当一样。
  */
+/**
+ * agent → 描述（Agents 页同一份，后端 `AGENT_DESCRIPTIONS`，可被租户 agent_configs 覆盖）。
+ * 只取一次：图上的节点都指向固定几个 agent，没必要跟着轮询反复拉。
+ * 取不到就留空——提示其余字段照常显示，不因为这一项失败而整个不弹。
+ */
+const agentDesc = ref({})
+onMounted(async () => {
+  try {
+    const list = await agentsApi.list()
+    agentDesc.value = Object.fromEntries(
+      (list || []).map((a) => [a.name, a.description || '']),
+    )
+  } catch {
+    /* 忽略：拿不到就不显示这一行 */
+  }
+})
+
 function nodeTip(nid) {
   // ⚠️ 本页的 composable 暴露的是 currentGraph / currentNodeData，**不是** runData
   // （两者都是 ref；currentNodeData 存的是 `data.nodes` 那个映射）。
   const r = (x) => (x && typeof x === 'object' && 'value' in x ? x.value : x)
-  return nodeTipOf(graphNodeById(r(run.currentGraph), nid), r(run.currentNodeData)?.[nid])
+  const g = graphNodeById(r(run.currentGraph), nid)
+  return nodeTipOf(g, r(run.currentNodeData)?.[nid], agentDesc.value?.[g?.agent])
 }
+
+
 
 const HINT =
   '选择流程后预览图；点击「开始解决问题」运行。节点按状态着色：绿=done 蓝=running 灰=pending 红=failed 橙=cancelled 琥珀=待审批。'

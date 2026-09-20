@@ -6252,6 +6252,13 @@ svg { fill: currentColor; }
     color: var(--text-secondary);
     word-break: break-word;
 }
+/* 节点在 YAML 里自己写的说明：次一级，比 agent 描述更淡 */
+.bs-node-tip-desc2 {
+    margin-bottom: 6px;
+    color: var(--text-tertiary);
+    font-style: italic;
+    word-break: break-word;
+}
 .bs-node-tip-row { display: flex; gap: 8px; }
 .bs-node-tip-key {
     flex: 0 0 62px;
