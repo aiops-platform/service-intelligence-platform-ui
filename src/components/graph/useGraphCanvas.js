@@ -101,6 +101,13 @@ export function createGraphCanvas(opts) {
    */
   function renderGraph(graph, statusMap) {
     if (!svgEl) return
+    // ── 滚动位置：**必须在动 DOM 之前捕获** ────────────────────────
+    // 宿主是**轮询驱动**的，每次数据变化都重画。中途任何让内容尺寸缩水的操作
+    // （历史上是 `removeAttribute('height')`）都会把 scrollTop **夹成 0**，
+    // 之后再捕获就晚了 —— 拿到的是 0，恢复等于没做。
+    // 恢复在函数末尾、`fitGraph()` 之后（尺寸定下来才设得进去）。
+    const keepScrollTop = zoomEl ? zoomEl.scrollTop : 0
+    const keepScrollLeft = zoomEl ? zoomEl.scrollLeft : 0
     const nodes = graph && graph.nodes ? graph.nodes : []
     const edges = graph && graph.edges ? graph.edges : []
     if (hintEl) hintEl.style.display = 'none'
@@ -156,10 +163,14 @@ export function createGraphCanvas(opts) {
     const width = maxCols * NODE_W + (maxCols - 1) * COL_GAP + PAD * 2
     const height = levels.length * LEVEL_GAP + NODE_H + PAD
     svgEl.setAttribute('viewBox', `0 0 ${width} ${height}`)
-    // 尺寸（width/height）由 fitGraph 按缩放算，这里只定 viewBox 与 1:1 基准
+    // 尺寸（width/height）**全部由 fitGraph 的 applyScale 设置**（每次都会覆盖），
+    // 这里只定 viewBox。
+    //
+    // ⚠️ 别在这里 `removeAttribute('width'/'height')`「清一下再设」：
+    // 那会让 SVG **塌成 0 高**（实测 scrollHeight 1205→358），父容器的 scrollTop
+    // 随之被**夹成 0**，且尺寸恢复后**滚动位置不会自己回来** ——
+    // 表现为"轮询一刷新，用户滑下去看的图就弹回顶部"。
     svgEl.style.maxWidth = 'none'
-    svgEl.removeAttribute('width')
-    svgEl.removeAttribute('height')
 
     const pos = {}
     const layerOf = {}
@@ -311,6 +322,15 @@ export function createGraphCanvas(opts) {
     // 每次数据变化都重新 render —— 不在这里重放的话，点击后的流动效果几秒后就自己没了。
     if (flowNode) highlightFlow(flowNode)
     fitGraph()
+    if (zoomEl) {
+      // ⚠️ 先**强制一次布局**再写 scrollTop。
+      // `svgEl.innerHTML = ...` 的瞬间 SVG 内容为空、`applyScale` 又刚改过尺寸，
+      // 此时浏览器的布局还是旧的（内容高度≈0）→ 直接写 scrollTop 会被**夹成 0**，
+      // 恢复等于没做。读一次 scrollHeight 逼出同步布局，钳制区间才是对的。
+      void zoomEl.scrollHeight
+      zoomEl.scrollTop = keepScrollTop
+      zoomEl.scrollLeft = keepScrollLeft
+    }
   }
 
   function reset() {
