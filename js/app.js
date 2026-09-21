@@ -3972,6 +3972,39 @@
     }
 
     // ── Diagnosis Center Page ──────────────────────────────────
+    // ── agentflow 控制面：base + 租户头（**唯一出处**）────────────────────
+    //
+    // ⚠️ **不带 `X-Tenant-ID` 时后端会走 dev 缺省租户 `local`** —— 那里没有本租户的
+    // workflow / MCP 绑定 / agent 配置。表现极具误导性：列表里**看着有东西**，
+    // 因为 otr 与 local 的 workflow **同名不同 id**，标题一模一样，点开才发现是旧副本。
+    // 实测：Workflow Studio 一直看不到新加的节点，就是这么来的。
+    //
+    // 基址优先级与 Bug Solve 页一致（bugSolveBaseUrl > workflowBaseUrl > 默认 8000）；
+    // 租户取 `agentflowTenantId`（与 Vue 侧 `src/api/config.js` 的 resolveTenant 同一个 key）。
+    var AGENTFLOW_BASE = localStorage.getItem('bugSolveBaseUrl')
+        || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+    var AGENTFLOW_TENANT = localStorage.getItem('agentflowTenantId') || 'otr';
+
+    /**
+     * 访问 agentflow 控制面。`path` 以 `/` 开头，`options.body` 传**对象**（自动 JSON）。
+     *
+     * 所有 agentflow 调用都必须经这里 —— 直接 `fetch(base + path)` 会漏掉租户头，
+     * 落到 `local` 租户，症状是"读到了别的租户的数据"，不报错、不 404。
+     */
+    function agentflowFetch(path, options) {
+        var opts = options || {};
+        var headers = { 'X-Tenant-ID': AGENTFLOW_TENANT };
+        if (opts.headers) {
+            for (var k in opts.headers) { if (opts.headers.hasOwnProperty(k)) headers[k] = opts.headers[k]; }
+        }
+        if (opts.body) headers['Content-Type'] = 'application/json';
+        return fetch(AGENTFLOW_BASE + path, {
+            method: opts.method || 'GET',
+            headers: headers,
+            body: opts.body ? JSON.stringify(opts.body) : undefined
+        });
+    }
+
     function initProblems() {
         // 后端地址（同 Monitor Targets）：默认 http://localhost:7070，localStorage 可覆盖。
         var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
@@ -3994,32 +4027,15 @@
         var pcPollTimer = null;    // 5s 自动刷新定时器
         var pcRefreshing = false;  // 请求在途标志：避免轮询堆叠
 
-        // agentflow（Bug Solve 后端）基址，与 Bug Solve 页一致：bugSolveBaseUrl > workflowBaseUrl > 默认 8000
-        var AGENTFLOW_BASE = localStorage.getItem('bugSolveBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
-        // agentflow 侧租户（X-Tenant-ID）。⚠️ 与上面的 TENANT_ID（APM 租户）**故意不同**：
-        // 问题单在 APM 租户（本机 default），而 workflow / MCP server / agent 绑定在 agentflow
-        // 租户（本机 otr）——两侧由 APM 的 APM_AGENTFLOW_TENANT 桥接（起 run 那步在 APM 内完成）。
-        // 本页此前的 agentflow 调用**全都不带这个头**，run 会落到 agentflow 的 dev 缺省租户 local，
-        // 而那里没有任何 MCP 绑定 → agent 拿不到工具。故统一收口到 agentflowFetch。
-        var AGENTFLOW_TENANT = localStorage.getItem('agentflowTenantId') || 'otr';
+        // agentflow 的 base / 租户 / fetch **不在这里声明**了 —— 已上提到模块级
+        // （见本文件里 `AGENTFLOW_BASE` 那一段）。当初的起因是「本页此前的 agentflow 调用
+        // 全都不带租户头，run 会落到 dev 缺省租户 local，而那里没有任何 MCP 绑定 → agent
+        // 拿不到工具」；同一个坑后来在 Workflow Studio 又踩了一次（它读的是 local 的旧
+        // workflow），所以收口到**一处**，不再按页各写一份。
         // 「Analyze」固定用这条日志诊断流程（按 name 解析 id；名字要与 seed 脚本一致）
         var LOG_DIAGNOSE_WF_NAME = 'problem-log-diagnose';
         var pcLogWfId = '';       // 解析后的 workflow id 缓存
         var pcLogWfBusy = false;  // 解析在途（防并发重复拉取）
-
-        function agentflowFetch(path, options) {
-            var opts = options || {};
-            var headers = { 'X-Tenant-ID': AGENTFLOW_TENANT };
-            if (opts.headers) {
-                for (var k in opts.headers) { if (opts.headers.hasOwnProperty(k)) headers[k] = opts.headers[k]; }
-            }
-            if (opts.body) headers['Content-Type'] = 'application/json';
-            return fetch(AGENTFLOW_BASE + path, {
-                method: opts.method || 'GET',
-                headers: headers,
-                body: opts.body ? JSON.stringify(opts.body) : undefined
-            });
-        }
 
         // 解析日志诊断 workflow 的 id（按 name 查 agentflow /workflows）。
         // 找不到时给**可执行**的提示——这条流程是 seed 出来的，库里没有它「Analyze」必然失败。
@@ -7773,8 +7789,10 @@
     }
 
     function initWorkflowStudio() {
-        // 后端地址（可配置）：默认 http://localhost:8000。可用 localStorage 覆盖：workflowBaseUrl。
-        var WS_API_BASE = localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+        // 后端地址与**租户头**都走模块级那份（`AGENTFLOW_BASE` / `agentflowFetch`）。
+        // 这里原先自己声明 `WS_API_BASE` 并用裸 fetch —— **不带 `X-Tenant-ID`**，
+        // 于是整个 Studio 读的是 dev 缺省租户 `local` 的 workflow：与 otr 的**同名不同 id**，
+        // 列表标题一模一样，点开才发现是旧副本（实测：新加的节点在这儿一直看不到）。
 
         var workflows = [];
         var editingId = null;
@@ -7807,7 +7825,7 @@
         });
 
         function loadWorkflows() {
-            fetch(WS_API_BASE + '/workflows').then(function (res) {
+            agentflowFetch('/workflows').then(function (res) {
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 return res.json();
             }).then(function (data) {
@@ -7844,10 +7862,10 @@
             var yamlEl = getEl('wsYaml');
             if (!yamlEl || !yamlEl.value.trim()) { showError('请先粘贴 workflow YAML'); return; }
             clearError();
-            fetch(WS_API_BASE + '/workflows/preview', {
+            // body 传对象，helper 里统一 JSON.stringify（也统一补租户头）
+            agentflowFetch('/workflows/preview', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ yaml: yamlEl.value })
+                body: { yaml: yamlEl.value }
             }).then(function (res) {
                 return res.json().then(function (data) {
                     if (!res.ok) {
@@ -7870,12 +7888,11 @@
             if (!name) { showError('请填写 workflow 名称'); if (nameEl) nameEl.focus(); return; }
             if (!yamlText.trim()) { showError('请粘贴 workflow YAML'); if (yamlEl) yamlEl.focus(); return; }
             clearError();
-            var url = WS_API_BASE + '/workflows' + (editingId ? '/' + editingId : '');
+            var path = '/workflows' + (editingId ? '/' + editingId : '');
             var method = editingId ? 'PUT' : 'POST';
-            fetch(url, {
+            agentflowFetch(path, {
                 method: method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: name, yaml: yamlText })
+                body: { name: name, yaml: yamlText }
             }).then(function (res) {
                 return res.json().then(function (data) {
                     if (!res.ok) {
@@ -7895,7 +7912,7 @@
 
         function edit(wid) {
             clearError();
-            fetch(WS_API_BASE + '/workflows/' + wid).then(function (res) {
+            agentflowFetch('/workflows/' + wid).then(function (res) {
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 return res.json();
             }).then(function (data) {
@@ -7914,7 +7931,7 @@
             workflows.forEach(function (w) { if (w.id === wid) label = w.name; });
             if (!window.confirm('确认删除 workflow「' + label + '」？')) return;
             clearError();
-            fetch(WS_API_BASE + '/workflows/' + wid, { method: 'DELETE' }).then(function (res) {
+            agentflowFetch('/workflows/' + wid, { method: 'DELETE' }).then(function (res) {
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 return res.json();
             }).then(function () {
