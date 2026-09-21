@@ -125,13 +125,25 @@ workflow DAG 由 `GraphCanvas.vue` + `useGraphCanvas.js`（命令式引擎）画
 
 后端的 run 判定是**两层**的，前端必须都用上：
 
-- `status` —— **有没有节点失败**。中断的 run 没有节点失败，所以是 `success`。
-- `outcome` / `halted_at` —— **按图走完**还是**中途证据不足**（`halting`）。
+- `status` —— **有没有节点失败**。它**不等于「有结论」**：
+  中断的 run 没有节点失败（halt 节点自己 DONE、其余 SKIPPED），
+  审批超时的 run 也没有（超时节点是 `rejected-canceled`，终态非失败，下游照常收敛）
+  —— 两种都是 `success`。
+- `outcome` —— **为什么没给出结论**，三档：
+  - `completed` 按图走完
+  - `halted` 中途证据不足，`halted_at` 指停在哪个 halt 节点
+  - `rejected` 审批被否决，`rejected_at` 指哪个门 + `reject_reason`
+    （`timeout` 超时自动拒绝 / `manual` 人工驳回）
+- **误把任一档当成 `success` 都会说反话**：halted 被算成"顺利跑完"，
+  rejected 被算成"事故已解决"。实测：某租户 11 条 Resolved 里 **9 条其实是被否决的**。
 
 - **判据与配色只写一份**（`runStatusOf` / `nodeStatusOf` / `NODE_STATUS_CLASS`）。
   图画布、节点表、详情徽章三处各写一遍，就会出现「图是绿的、表写 done、徽章说中断」。
-- **`displayStatus` 与 `status` 必须分开**：`TERMINAL` 里没有 `halted`，
+- **`displayStatus` 与 `status` 必须分开**：`TERMINAL` 里没有 `halted`/`rejected`，
   拿展示值去判终态，轮询永远停不下来（终态 run 被 2 秒一轮地反复拉）。
+- **节点状态表要把后端在用的取值**都放进去（含 `rejected-canceled`）。
+  漏一条不是"少个颜色"而是**说反话**：它会落到兜底 `bs-node-status-pending`，
+  于是一个被超时否决的审批节点在图上渲染成灰色"还没跑"。
 - **工单的展示状态由 run 派生**（`useTickets.ticketDisplayStatus`）。
   `ticket.status` 只在"没发起过 run"时才有意义 —— 后端只在发起时写一次
   `running`，之后**没有任何代码回写**（`TICKET_RESOLVED`/`TICKET_FAILED` 定义了但从未被写入）。
