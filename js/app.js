@@ -4022,7 +4022,9 @@
         // URL query 的白名单：只接受确实有对应 chip 的值，否则 applyQueryFilters 一律忽略
         // （手敲的 URL 不该能把页面卡在一个没有任何控件能清掉的状态上）。
         var TYPE_FILTERS = ['all', 'metric', 'log'];
-        var STATE_FILTERS = ['all', 'open', 'in_progress', 'resolved', 'closed'];
+        // ⚠️ 这里每加一个值，`legacy-panels.html` 的 chip 行必须同步加一枚
+        // （否则能筛、但没有任何控件能切到它），CSS 也要补一条 `.alert-tag.status-<值>`。
+        var STATE_FILTERS = ['all', 'open', 'in_progress', 'resolved', 'closed', 'escalated'];
         var allProblems = [];
         var pcPollTimer = null;    // 5s 自动刷新定时器
         var pcRefreshing = false;  // 请求在途标志：避免轮询堆叠
@@ -4663,8 +4665,11 @@
 
         // ── 历史计划（真源 = APM evidence 的 diagnose_decision）：spike 的 remediation 单值，
         //    每次重跑即清空，故历史只能落 APM；这里走独立只读端点，不污染 /diagnose 的逐字回传。
-        var DGX_DECISION_LABEL = { reject: '已拒绝', ignore: '已忽略', false_positive: '已误报' };
-        var DGX_DECISION_CLS = { reject: 'reject', ignore: 'ignore', false_positive: 'fp' };
+        // ⚠️ 后端 decision 枚举里还有 `false_positive`（M7 的误报回写链路仍在用），
+        // 只是处理模块不再出那个按钮——历史里仍可能出现，所以这张表不能删它。
+        // 漏登记的 decision 会被 `dgxPlanHistory` **原样印给用户**、chip 兜底成灰色。
+        var DGX_DECISION_LABEL = { reject: '已拒绝', ignore: '已忽略', escalate: '已升级', false_positive: '已误报' };
+        var DGX_DECISION_CLS = { reject: 'reject', ignore: 'ignore', escalate: 'escalate', false_positive: 'fp' };
 
         function loadDiagnoseDecisions(recordId) {
             return apmApi('/v1/problems/' + encodeURIComponent(recordId) + '/diagnose/decisions')
@@ -4860,10 +4865,27 @@
             return html + '</div></section>';
         }
 
-        // 审批条：仅当「问题单可动」且「诊断已到可裁定的终态」且「未在重跑窗口」时出现。
+        // 处理条：仅当「问题单可动」且「诊断已到可裁定的终态」且「未在重跑窗口」时出现。
         // 已 resolved/closed 的记录 / analyzing / dismissed / approved 都不显示 → 不会出现点了报 409 的死按钮。
+        // 唯一的例外是 `escalated`：那条不返回空串，而是返回**结果卡**（见下）——人升级完要看到单号。
         function dgxApproval(snap) {
             var recState = String((pcDiagRec && pcDiagRec.state) || 'pending').toLowerCase();
+            // 已升级：处理卡换成**结果卡**（不是简单消失）——人点完要看到"派到哪去了"。
+            // 单号取自历史里最后一条升级裁定（真源 = 后端 evidence），不是本地记的临时值：
+            // 重开弹窗、换台机器看到的都一样。历史是异步拉的，所以首次渲染可能先无号、
+            // 拉完由 loadDiagnoseDecisions 里的 renderDiagnosis 补上。
+            if (recState === 'escalated') {
+                var hist = (pcDiagHistory && pcDiagHistory.items) || [];
+                var esc = null;
+                for (var k = hist.length - 1; k >= 0; k--) {
+                    if (hist[k] && hist[k].decision === 'escalate') { esc = hist[k]; break; }
+                }
+                var no = (esc && esc.ticket_number) || '';
+                return '<section class="dgx-card dgx-approve"><div class="dgx-label">处理 · DECISION</div>' +
+                    '<div class="dgx-approve-hint">已升级——本次诊断已转成一张修复工单' +
+                    (no ? '，工单号 <span class="dgx-mono">' + dgxEsc(no) + '</span>' : '') +
+                    '。</div></section>';
+            }
             if (recState !== 'pending' && recState !== 'in_progress') return '';
             var st = snap.status;
             if (st !== 'completed' && st !== 'failed' && st !== 'closed_manual') return '';
@@ -4872,13 +4894,19 @@
             var opts = (snap.conclusion && snap.conclusion.recommended_fix) || [];
             var sel = opts[dgxOptSel] || null;
             var hasSteps = !!(sel && sel.steps && sel.steps.length);
-            // 拒绝要求结论已完成且选中方案有 steps。后端按引擎分派：新路径驳回 agentflow 审批节点
-            // 并起新一轮 run，老路径走 spike /remediate。failed/closed_manual 只能忽略/误报。
+            // 拒绝要求结论已完成且选中方案有 steps——后端会把选中的那份方案快照进历史，
+            // 没有 steps 就没东西可留。后端按引擎分派：新路径驳回 agentflow 审批节点并起新一轮 run，
+            // 老路径走 spike /remediate。failed/closed_manual 只能忽略。
             var canReject = (st === 'completed') && hasSteps;
+            // 升级 = 认可诊断 → 平台在 agentflow 建一张修复工单，工单号绑回这条问题单，
+            // 问题单转 escalated 终态。**判据是"诊断给出了方案"，不是"选中那份方案完整"**：
+            // 要派的是整份诊断，与用户当前翻到哪个分页签无关。没有方案就没有可派的活，
+            // 这也正好与下面那句 hint 逐字对齐。
+            var canEscalate = (st === 'completed') && opts.length > 0;
             var hint = sel
                 ? ('当前待处理：方案' + (dgxOptSel + 1) + '「' + sel.title + '」' +
                    (opts.length > 1 ? '（可切换上方分页签）' : ''))
-                : '本次诊断未给出可执行方案，仅可忽略或标记误报。';
+                : '本次诊断未给出可执行方案，仅可忽略。';
 
             var html = '<section class="dgx-card dgx-approve"><div class="dgx-label">处理 · DECISION</div>' +
                 '<div class="dgx-approve-hint">' + dgxEsc(hint) + '</div>';
@@ -4901,14 +4929,21 @@
                         : '') +
                     '<button type="button" class="dgx-btn dgx-btn--ignore dgx-act" data-act="ignore"' +
                     (dgxDeciding ? ' disabled' : '') + '>忽略</button>' +
-                    '<button type="button" class="dgx-btn dgx-btn--fp dgx-act" data-act="fp"' +
-                    (dgxDeciding ? ' disabled' : '') + '>误报</button>' +
+                    // 升级**顶掉的就是原来「误报」的位置**（最右），不是新插一档：
+                    // 布局不变、人的肌肉记忆不用重学。
+                    (canEscalate
+                        ? '<button type="button" class="dgx-btn dgx-btn--escalate dgx-act" data-act="escalate"' +
+                          (dgxDeciding ? ' disabled' : '') + '>升级 · 生成工单</button>'
+                        : '') +
                     '</div>';
             }
             return html + '</section>';
         }
 
-        // 提交决策：reject → 重跑（重启轮询 + 抑制旧快照）；ignore/fp → 关单（关弹框 + 刷新列表）。
+        // 提交决策。三条出口，形状各不相同：
+        //   reject   → 重跑（重启轮询 + 抑制旧快照），**弹窗留着**看新一轮
+        //   escalate → 生成工单（**弹窗也留着**：处理卡消失、换成工单结果，人当场看到单号）
+        //   ignore / false_positive → 关单（关弹框 + 刷新列表）
         // apmApi 已把后端 {code,reason} 的 reason 提成 err.message → 409/400 的中文原因直接展示。
         function submitDiagnosisDecision(decision) {
             if (!pcDiagRec || dgxDeciding) return;
@@ -4945,6 +4980,23 @@
                         loadDiagnoseDecisions(recordId); // 历史已有这一版（带旧步骤与拒因）
                         pollDiagnosis();                 // 立即拉一次并重启 2s 轮询
                         ensureDiagPolling();
+                    } else if (decision === 'escalate') {
+                        var num = (resp && resp.ticket_number) || '';
+                        window._showToast(
+                            num ? ('已升级，工单 ' + num + ' 已生成') : '已升级，工单已生成', 'success');
+                        // ⚠️ **必须就地翻本地 state**：处理卡的显隐读的是 `pcDiagRec.state`
+                        // （dgxApproval 开头），而 `pollDiagnosis` 只重拉诊断快照、**不重拉 record**
+                        // （pcDiagRec 只在 openDiagnosisView 里赋值），`refresh()` 也不回写它。
+                        // 不翻的话升级后那张卡照旧显示、三个按钮全是活的，再点「忽略」撞上后端
+                        // 的 escalated 终态守卫拿 409 —— 一个不该存在的死按钮。
+                        pcDiagRec.state = 'escalated';
+                        // 工单号从**历史**读（`loadDiagnoseDecisions` → evidence），不是从这个响应读：
+                        // 响应只在这一次点击里存在，重开弹窗时只能靠历史。所以这两步缺一不可。
+                        // ⚠️ 也不能指望 `pollDiagnosis` 里的自动重拉——它只在 `rev` 变化时才拉历史，
+                        // 而 escalate 不新增 run（rev = executions.length）→ rev 不变 → 不会重拉。
+                        loadDiagnoseDecisions(recordId);
+                        pollDiagnosis();                 // 重渲染：处理卡消失、工单结果出现
+                        refresh();                       // 列表状态列转 escalated
                     } else {
                         window._showToast(
                             decision === 'false_positive' ? '已标记误报并关闭问题单' : '已忽略并关闭问题单',
@@ -5206,6 +5258,12 @@
                 if (it.feedback) {
                     html += '<div class="dgx-kv"><span class="dgx-k">拒因</span><span class="dgx-v">' +
                         dgxEsc(it.feedback) + '</span></div>';
+                }
+                // 升级那一条带工单号——「这条问题单派到哪去了」的唯一线索。
+                // 与处理结果卡、Problem Detail 的 Resolve Reason 行同源（后端把号也写进了 resolve_reason）。
+                if (it.ticket_number) {
+                    html += '<div class="dgx-kv"><span class="dgx-k">工单</span>' +
+                        '<span class="dgx-v dgx-mono">' + dgxEsc(it.ticket_number) + '</span></div>';
                 }
                 if (it.snapshot && typeof it.snapshot === 'object') {
                     html += dgxHistSnapshot(it.snapshot, it.option_index);
@@ -6283,8 +6341,12 @@
                     else if (act === 'reject-submit') submitDiagnosisDecision('reject');
                     else if (act === 'ignore') {
                         confirmDialog('忽略该诊断并关闭这条问题单？', function () { submitDiagnosisDecision('ignore'); });
-                    } else if (act === 'fp') {
-                        confirmDialog('标记为误报？将记入误报率并关闭这条问题单。', function () { submitDiagnosisDecision('false_positive'); });
+                    } else if (act === 'escalate') {
+                        // 二次确认与「忽略」同款：这一步会把问题单转成终态、且**会真的建出一张工单**
+                        // （不可逆的动作在派单侧），误点的代价比忽略高。
+                        confirmDialog(
+                            '升级该诊断？将生成一张修复工单并把这条问题单置为 escalated。',
+                            function () { submitDiagnosisDecision('escalate'); });
                     } else if (act === 'flow-last') {
                         // 概要条 Flow Diagram：直接看**最后一次执行**的流程图，**只开这一张图**
                         //（silent：不亮下面的 run 查看器，关掉图就回诊断弹框）。
