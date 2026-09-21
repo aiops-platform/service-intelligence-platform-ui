@@ -1020,6 +1020,9 @@
             <button class="filter-chip pc-state-filter" data-filter="in_progress"><span class="chip-dot" style="background:#3b82f6;"></span> In Progress</button>
             <button class="filter-chip pc-state-filter" data-filter="resolved"><span class="chip-dot" style="background:#10b981;"></span> Resolved</button>
             <button class="filter-chip pc-state-filter" data-filter="closed"><span class="chip-dot" style="background:#6b7280;"></span> Closed</button>
+            <!-- Escalated：诊断被认可、已派出修复工单（终态）。配色避开 #10b981 绿（与 Resolved 撞）。
+                 与 js/app.js 的 STATE_FILTERS、css 的 .alert-tag.status-escalated **三处成对**。 -->
+            <button class="filter-chip pc-state-filter" data-filter="escalated"><span class="chip-dot" style="background:#8b5cf6;"></span> Escalated</button>
             <span style="margin-left:12px;"></span>
             <!-- 证据类型：由 Smart Inspection 的徽标下钻带入（/problems?type=metric|log），
                  也可在这里手动切换。判据是「证据存在与否」而不是后端的 detection_type ——

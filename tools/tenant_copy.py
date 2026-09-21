@@ -85,6 +85,14 @@ LEGACY = {
                  "KPIs / 6R / journeys filter the graph"),
     # 图的 aria-label。改写器的属性白名单里有 aria-label，所以能改到（见 REWRITER）。
     "arch_aria": "Estate graph · 22 portfolios with edge layers",
+
+    # Security Ops 面板：case 列表 / agent feed / With-Without-agents 对照条里写死的是
+    # **best-buy 那次告警风暴**（`INC13075702`，1,809 个子事件）。
+    # 这两条是**裸串**而不是整句 —— 见 tenant_pairs() 里那段说明：在这一页里
+    # 这两个串每一次出现都指同一场风暴（逐条核对过：事故号 5 处、数字 4 处），
+    # 所以裸串替换就是全覆盖，含那个渲染成裸数字的 `childEvents` chip。
+    "sec_storm": "INC13075702",
+    "sec_storm_kids": "1,809",
 }
 
 # 拼写数字：用词而不是阿拉伯数字，这样 retail（6 条）不会被从 "Six" 改成 "6" ——
@@ -199,6 +207,27 @@ def tenant_pairs(d):
                       f"{pf} portfolios · click any node to inspect · "
                       f"KPIs / 6R / journeys filter the graph"))
         pairs.append((LEGACY["arch_aria"], f"Estate graph · {pf} portfolios with edge layers"))
+
+    # Security Ops 面板：把写死的那场风暴换成本租户自己的。
+    #
+    # 这一页的 KPI 格「Top alert storm」**读的是 REAL**（运行期从 snapshot 算），
+    # 而它正下方的 case 列表 / agent feed 是写死的 best-buy 数据 —— 于是切到任何
+    # 别的租户，一格之内就会出现「KPI 说 INC-MBR-77104 · 159」+「下面的 case 说
+    # INC13075702 · 1,809 个子事件」这种自相矛盾。这里修的就是这个。
+    #
+    # ⚠ 用**裸串**而不是整句，是因为这两串在本页每一次出现都是同一场风暴：
+    #     事故号 5 处：SEC-1809 的 description / rootCause、SEC-2034 的 description、
+    #                 agent feed 两条 action
+    #     数字   4 处：SEC-1809 的 childEvents（渲染成裸「1,809」chip）、
+    #                 agent feed 一条 action、With/Without-agents 对照条两个 <strong>
+    #   整句替换只能覆盖其中一部分，裸串一次全覆盖；两串互不包含，所以顺序无关。
+    #   逐句列出反而更脆：站点改一个字就静默失配（本文件的原则是「不唯一就跳过」）。
+    #
+    # 保留不动的：`pricing-batch deadlock cascade`（SEC-1809 的 root cause）——
+    #   它在**任何**租户的 estate 里都不是 app，是叙事文案，不是写死的租户数据。
+    if storm_id and storm_kids:
+        pairs.append((LEGACY["sec_storm"], storm_id))
+        pairs.append((LEGACY["sec_storm_kids"], f"{storm_kids:,}"))
 
     out = []
     for a, b in pairs:
@@ -931,6 +960,193 @@ def patch_default_tenant(chunks_dir) -> str:
         return "already"
     f.write_text(DT_RE.sub(lambda m: m.group(1) + DT_DEFAULT + m.group(2), t, count=1),
                  encoding="utf-8", errors="surrogateescape")
+    return "applied"
+
+
+# Security Ops 的 case inspector「Linked app」—— 见 patch_security_ops_linked_app()
+SEC_FILE = "15zvtls0y9kdc.js"
+SEC_APPKEY_FIND = 'appKey:"manhattan wms"'
+SEC_APPKEY_REPL = 'appKey:(i.snapshot.topStorm||{}).appKey'
+
+
+def patch_security_ops_linked_app(chunks_dir) -> str:
+    """
+    把 Security Ops 的 case inspector「Linked app」从写死的 `manhattan wms` 改成
+    **本租户自己的风暴锚点 app**（`snapshot.topStorm.appKey`）。
+
+    ## 为什么必须改
+
+    case 列表是模块级的静态数组，两条 case 写死了 `appKey:"manhattan wms"`：
+
+        {id:"SEC-1809", …, appKey:"manhattan wms", …}   // Alert Triage 那次风暴
+        {id:"SEC-2034", …, appKey:"manhattan wms", …}   // 该风暴的 PIR
+
+    inspector 用 `i.snapshot.apps.find(t=>t.appKey===e.appKey)` 反查，而
+    **`manhattan wms` 只存在于 best-buy-reference 租户**（893 apps 那个，页面就是照着它写的）。
+    其余 11 个租户（含默认租户 `otr`）都查不到，于是渲染时走 `s && (…)` 的短路 ——
+    「Linked app」整块**静默消失**：不报错、不留空态、只是少了那一节。
+
+    这两条 case 讲的就是「Top alert storm」那格 KPI 指向的同一次风暴（KPI 读 REAL、
+    本来就是按租户算的），所以锚到本租户的 `topStorm.appKey` 语义**完全正确**：
+    点开 KPI、点开 case、Linked app 三处指向同一个 app。
+
+    ## 为什么写成运行期派生，而不是把某个租户的值烤死
+
+    `patch_default_tenant` 那类补丁是**静态**换字面量，但这里每个租户的值不同，
+    烤死任何一个都会让其余 11 个错。改写成读 snapshot 的表达式，12 个租户一次成立。
+
+    ## 为什么安全（改坏的话整页白屏，比原问题更糟）
+
+      - 位置：`h` 与 `i.snapshot` **同一条 `let` 声明**（`let u=i.snapshot.apps…,h=[{…}]`），
+        同一作用域，`i` 就是数据模块命名空间 —— 无遮蔽，已用括号配平核过；
+      - 兜底：`(…||{})` 保证 `topStorm` 缺失时得到 `undefined` 而不是抛异常，
+        渲染回落到「没有 Linked app」，与今天的行为一致；
+      - 实测 12 个租户的 `snapshot.topStorm.appKey` **全部存在**，兜底只是保险。
+
+    ## 不动的
+
+    其余三条 case 的 appKey（`anchor-app` / `order management` / `enterprise teradata`
+    / `repair workbench`）在**任何**租户里都不存在，没有语义对得上的映射可做 ——
+    硬凑成别的 app 就是编数据，所以保持原样（那几条的 Linked app 仍然不显示）。
+
+    返回状态字符串：`"applied"` / `"already"` / 其它为跳过原因。
+    """
+    f = chunks_dir / SEC_FILE
+    if not f.is_file():
+        return f"找不到 {SEC_FILE}"
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if SEC_APPKEY_REPL in t:
+        return "already"
+    n = t.count(SEC_APPKEY_FIND)
+    if n != 2:
+        return f"锚点 {n} 处 ≠ 2（站点改版？）"
+    f.write_text(t.replace(SEC_APPKEY_FIND, SEC_APPKEY_REPL),
+                 encoding="utf-8", errors="surrogateescape")
+    return "applied"
+
+
+# FinOps 的 agent 活动 ticker —— 见 patch_finops_ticker()
+FO_FILE = "0s_qofwq310fx.js"
+FO_ANCHOR = 'let S=[{agent:"Cost Sentry"'
+
+# 插在 ticker 数组**之前**的求值序。为什么必须前置：数组里的值是模板字面量，
+# 在模块求值到这里时就要算出来（`S` 在 offset 6054，比 `let P=f()` 早）。
+#
+# 这一整段只依赖**同一作用域里、比它更早**的东西（都核过）：
+#   n.snapshot.apps / n.snapshot.portfolios   数据模块
+#   x(app)    成本模型（offset 1583 之前定义）
+#   f()       成本聚合，带 memo（`if(h)return h`）—— 这里先调一次，后面 `let P=f()` 直接命中缓存
+#   b(money)  金额格式化（offset 2713，函数声明会提升）
+# 三个取值器都带兜底：租户 app 数不足时回落到最后一个 / 零值，不会抛异常。
+FO_PRELUDE = (
+    'let __FS=(function(){'
+    'var a=n.snapshot.apps.map(function(e){return{app:e,cost:x(e)}});'
+    'a.sort(function(e,t){return t.cost.totalBurn-e.cost.totalBurn});'
+    'var g=f(),r=[];'
+    'g.byPortfolio.forEach(function(v,k){'
+    'var p=n.snapshot.portfolios.find(function(e){return e.id===k});'
+    'r.push({label:(p&&p.label)||k,totalBurn:v.totalBurn,appCount:v.appCount})});'
+    'r.sort(function(e,t){return t.totalBurn-e.totalBurn});'
+    'var d={app:{label:"—"},cost:{totalBurn:0,hiddenShare:0,legacyShare:0}};'
+    'return{app:function(i){return a[i]||a[a.length-1]||d},'
+    'port:function(i){return r[i]||r[r.length-1]||{label:"—",totalBurn:0,appCount:0}},'
+    'agg:g}})()'
+)
+
+# 5 条带租户实体的 ticker 文案。替换成**本租户自己的**高成本 app / 组合与真实金额。
+#
+# ⚠️ 只换「名称 + 金额（含两个有精确来源的百分比）」，**不给新的事实**：
+#   原文里没有数据来源的那两处趋势（`+18% MoM` / `trending +12%`）是**去掉**而不是
+#   换个数 —— 把一个编出来的涨跌幅挂到真实 app 名字后面，比不写更糟。
+#   同理 `candidate flagged Retire` 也去掉了（该 app 未必在 6R 的 Retire 名单里）。
+#   三条纯叙事/通用文案（阈值 60%、4 条决策、0.84 confidence）原样不动。
+#
+# 每个 find 在全文都唯一（已核）；**任一不唯一就整组跳过** —— 部分替换会留下
+# 「一半跟租户、一半写死」的混合态，比完全不换更难发现。
+FO_LINES = [
+    (
+        'action:"flagged Manhattan WMS · run cost +18% MoM · 60% in hidden legacy tax"',
+        'action:`flagged ${__FS.app(0).app.label} · run cost '
+        '${b(__FS.app(0).cost.totalBurn)}/mo · '
+        '${Math.round(__FS.app(0).cost.hiddenShare*100)}% in hidden legacy tax`',
+    ),
+    (
+        'action:"estate burn projected $13.4M next month · variance + $0.8M from baseline"',
+        'action:`estate burn ${b(__FS.agg.totalBurn)} monthly · '
+        'hidden legacy ${b(__FS.agg.hiddenLegacy)} of it`',
+    ),
+    (
+        'action:"Retek Merchandising · 70% hidden tax · Replatform unlocks ~$18K/mo"',
+        'action:`${__FS.app(1).app.label} · '
+        '${Math.round(__FS.app(1).cost.hiddenShare*100)}% hidden tax · '
+        'Replatform unlocks ~${b(__FS.app(1).cost.hiddenLegacy)}/mo`',
+    ),
+    (
+        'action:"Selling portfolio · run cost trending +12% · 5 apps driving the spike"',
+        'action:`${__FS.port(0).label} · run cost '
+        '${b(__FS.port(0).totalBurn)}/mo · ${__FS.port(0).appCount} apps`',
+    ),
+    (
+        'action:"Maestro Batch · 84% legacy share · candidate flagged Retire · ~$11K/mo"',
+        'action:`${__FS.app(2).app.label} · '
+        '${Math.round(__FS.app(2).cost.legacyShare*100)}% legacy share · '
+        '~${b(__FS.app(2).cost.totalBurn)}/mo`',
+    ),
+]
+
+
+def patch_finops_ticker(chunks_dir) -> str:
+    """
+    把 FinOps 的 agent 活动 ticker 从**写死的 best-buy 文案**改成读本租户的快照。
+
+    ## 为什么
+
+    那 8 条 ticker 里有 3 个 app 名（`Manhattan WMS` / `Retek Merchandising` /
+    `Maestro Batch`）、1 个组合名（`Selling portfolio`）和一个金额（`$13.4M next month`）。
+    逐个租户核过：`Manhattan WMS` 只在 best-buy-reference，另外三个在**任何**租户里
+    都不存在；而金额与同屏的 KPI「Total estate burn」直接打架 ——
+    **KPI 是按租户算的**（实测默认租户 $1.6M），ticker 却说 $13.4M。
+
+    ## 与 Security Ops 那条补丁的区别（为什么这里可以改）
+
+    那一页的 case 列表是 KPI 计数的**数据源**（`Cases contained today` 直接数它），
+    且同屏 KPI 标着 REAL —— 所以写死值造成的是**功能性的**不一致。
+    这一页的 ticker 自带 tooltip
+    `"Synthetic-but-believable FinOps activity ticker · scripted for the demo"`，
+    是页面**公开声明的剧本文案**，且只驱动自身显示、不喂任何 KPI。
+
+    ⚠️ **但仍然改了** —— 因为同一块屏幕上一个说 $1.6M、另一个说 $13.4M 观感上就是错的。
+    改法上刻意克制：只换名称与金额（外加两个有精确来源的百分比），
+    没有数据来源的趋势词**去掉**而不是编一个（见 `FO_LINES` 上面的说明）。
+
+    ## 为什么写成运行期派生
+
+    金额与百分比都在 JS 里由 `x(app)` / `f()` 算出来，改写器的**文本替换够不着**
+    （它只作用于渲染后的文本节点）。所以这里改的是**数据来源**，不是把某个租户的值烤死。
+
+    返回状态字符串：`"applied"` / `"already"` / 其它为跳过原因。整组原子：
+    任一锚点不唯一就一个都不打。
+    """
+    f = chunks_dir / FO_FILE
+    if not f.is_file():
+        return f"找不到 {FO_FILE}"
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if "__FS" in t:
+        return "already"
+    if t.count(FO_ANCHOR) != 1:
+        return f"锚点 {t.count(FO_ANCHOR)} 处 ≠ 1（站点改版？）"
+    for find, _ in FO_LINES:
+        if t.count(find) != 1:
+            return f"文案锚点不唯一：{find[:48]!r}（{t.count(find)} 处）"
+    for find, repl in FO_LINES:
+        t = t.replace(find, repl)
+    # ⚠️ 插入时必须**吃掉锚点开头的 `let `**，让 `__FS` 并进原来那条 `let` 声明：
+    #       let __FS=…() ,S=[{agent:"Cost Sentry"…}]
+    #    保留 `let` 会拼成 `…() ,let S=[…` —— 即「`let` 出现在声明列表里」，
+    #    严格模式下是 SyntaxError: Unexpected strict mode reserved word。
+    #    实测踩过：**整页白屏**，而构建的「产出校验」只查文件存在性、查不出语法。
+    t = t.replace(FO_ANCHOR, FO_PRELUDE + "," + FO_ANCHOR[len("let "):])
+    f.write_text(t, encoding="utf-8", errors="surrogateescape")
     return "applied"
 
 

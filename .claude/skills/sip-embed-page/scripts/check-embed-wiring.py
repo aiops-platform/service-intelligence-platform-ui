@@ -140,16 +140,30 @@ def scan_fixed_copy(page: dict) -> list:
 
     判据对着改写器的语义写：它在**渲染后的文本**里做子串替换，所以一条候选算「已覆盖」，
     当且仅当某条 LEGACY 原文是它的子串。
+
+    ⚠ 扫的是**产出目录**（`public/_next/`），不是 `vendor/` —— 与 `scan_foreign_appkeys`
+    同一个理由：构建期补丁改的是产出，vendor 永远是站点原样，扫它会对着已经改好的东西
+    误报（FinOps 那轮就报了一条已被补丁覆盖的 `Selling portfolio …`）。
+    改写器的替换发生在**运行时**（渲染后的文本节点），所以走改写器的那些串在产出里
+    仍然是原文 —— 扫产出一样抓得到。
     """
     import tenant_copy
 
-    own = TOOLS / "vendor" / page["vendor_sub"] / "chunks" if page["vendor_sub"] else None
+    own = PUBLIC / "_next" / "static" / "chunks"
+    names = None
+    vown = TOOLS / "vendor" / page["vendor_sub"] / "chunks" if page["vendor_sub"] else None
+    if not own.is_dir():
+        own = vown                                     # 还没构建过 → 退回原始副本
     if not own or not own.is_dir():
-        return None                                  # 该页没有独有 chunk（constellation）→ 跳过
+        return None                                    # 该页没有独有 chunk（constellation）→ 跳过
+    if vown and vown.is_dir() and own != vown:
+        names = {p.name for p in vown.iterdir() if p.is_file()}
 
     covered = list(tenant_copy.LEGACY.values())
     hits = []
     for f in sorted(own.glob("*.js")):
+        if names is not None and f.name not in names:
+            continue                                   # 不是这一页的 chunk
         t = f.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(r'"([^"\\\n]{12,300})"', t):
             s = m.group(1)
@@ -160,6 +174,84 @@ def scan_fixed_copy(page: dict) -> list:
             if any(c in s for c in covered):         # 已被某条 LEGACY 覆盖
                 continue
             hits.append((f.name, s))
+    return hits
+
+
+# 写死的 appKey：`appKey:"manhattan wms"` / `appKey:"pos"` …（属性名带引号，避免误伤
+# `getAppKey(` 之类）。改写器的裸串替换**够不着**它 —— 它不渲染成文本，是数据。
+APPKEY_RE = re.compile(r'appKey:"([^"]{2,80})"')
+# 已改成运行期派生（读 snapshot）的写法，不再算「写死」
+APPKEY_DERIVED = "(i.snapshot.topStorm||{})"
+
+
+def appkeys_by_tenant() -> dict:
+    """每个租户的 estate 里有哪些 appKey。读不到就返回 {}。"""
+    try:
+        import tenant_data
+        _, data, _ = tenant_data.read_bundle(PANEL_CHUNK)
+    except Exception:
+        return {}
+    out = {}
+    for tid, d in data.items():
+        s = d.get("snapshot", {}) or {}
+        out[tid] = {a.get("appKey") for a in (s.get("apps") or []) if a.get("appKey")}
+    return out
+
+
+def scan_foreign_appkeys(page: dict) -> list:
+    """
+    扫该页**写死的 appKey**，逐个租户快照看能不能查到 —— 返回 [(文件, appKey, 命中租户数, 总租户数)]。
+
+    ## 为什么单独查这一条（v2.4.0 接 Security Ops 时补）
+
+    它是**前面所有检查都漏掉**的一类，而且失败方式最隐蔽：
+
+        let s = e.appKey ? i.snapshot.apps.find(t => t.appKey === e.appKey) : null;
+        …  s && (…jsx(…"Linked app"…)…)      ← 查不到就短路
+
+    appKey 落空时那一整节**静默消失** —— 不报错、不留空态、只是少了内容。
+    文案错了是「说了错话」，这个连话都不说。
+
+    两个已有的检查都够不着它：
+      - `scan_fixed_copy()` 要求「带数字 + 房地产名词」，appKey 两样都没有；
+      - `tenant_copy` 的改写器只认**渲染后的文本/属性**，而 appKey 是数据。
+
+    实测代价：Security Ops 的 5 个 appKey 有 4 个在 11/12 个租户里都不存在 ——
+    页面是照着 best-buy-reference 写的，**在作者那个租户上一切正常**，
+    所以很容易一路 ✓ 过去。
+
+    ⚠ 报成 ⚠ 而不是 ✗：appKey 查不到**不一定**是 bug（页面可能有意回落），
+    但必须让人看见，由人判断该改成运行期派生还是保持原样。
+
+    ⚠ 扫的是**产出目录**（`public/_next/`）而不是 `vendor/` —— appKey 是构建期补丁
+    改的（见 `patch_security_ops_linked_app`），vendor 那份永远是站点原样，
+    扫它会对着已经在产出里改好的东西误报。
+    """
+    own = PUBLIC / "_next" / "static" / "chunks"
+    if not own.is_dir():
+        own = TOOLS / "vendor" / page["vendor_sub"] / "chunks" if page["vendor_sub"] else None
+    if not own or not own.is_dir():
+        return None
+    # 只看该页独有的 chunk（产出目录是所有页的并集）
+    names = None
+    vown = TOOLS / "vendor" / page["vendor_sub"] / "chunks" if page["vendor_sub"] else None
+    if vown and vown.is_dir():
+        names = {p.name for p in vown.iterdir() if p.is_file()}
+    per_tenant = appkeys_by_tenant()
+    if not per_tenant:
+        return None
+    n_all = len(per_tenant)
+    hits = []
+    for f in sorted(own.glob("*.js")):
+        if names is not None and f.name not in names:
+            continue                                  # 不是这一页的 chunk
+        t = f.read_text(encoding="utf-8", errors="replace")
+        if APPKEY_DERIVED in t:                       # 该文件已改成派生写法
+            t = t.replace(APPKEY_DERIVED, "")
+        for key in sorted(set(APPKEY_RE.findall(t))):
+            n_ok = sum(1 for keys in per_tenant.values() if key in keys)
+            if n_ok < n_all:                          # 有一个租户查不到就值得看一眼
+                hits.append((f.name, key, n_ok, n_all))
     return hits
 
 
@@ -246,6 +338,19 @@ def check(page_name: str, page: dict, failures: list):
                 print(f"        [{fn}] {s[:110]}")
         else:
             _ok("页面独有 chunk 里没有未覆盖的「数字 + 房地产名词」文案")
+
+    # 6. 页面自己 chunk 里的写死 appKey（数据，不是文本 —— 改写器够不着）
+    if route:
+        ak = scan_foreign_appkeys(page)
+        if ak:
+            _warn(f"写死的 appKey 有 {len(ak)} 个在部分租户的 estate 里查不到 ——")
+            print("        查不到时该处会**静默消失**（`s && (…)` 短路，不报错不留空态）。")
+            print("        要么改成本租户的派生写法（见 tenant_copy 的 SEC_APPKEY_REPL），")
+            print("        要么确认有意回落：")
+            for fn, key, n_ok, n_all in ak:
+                print(f"        [{fn}] appKey:{key!r} 命中 {n_ok}/{n_all} 个租户")
+        elif ak is not None:
+            _ok("页面独有 chunk 里没有「部分租户查不到」的写死 appKey")
 
 
 def check_shared_outputs(pages: dict, failures: list):

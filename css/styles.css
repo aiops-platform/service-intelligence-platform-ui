@@ -4675,6 +4675,16 @@ svg { fill: currentColor; }
 }
 
 /* Confirm Modal：通用确认弹窗（删除等危险操作），窄卡片 + 底部操作按钮 */
+/* 通用确认弹窗必须能盖在**任何**已打开的 `.ap-modal-overlay` 之上。
+   它会被从别的弹框**内部**调起——诊断弹框里的「忽略」与「升级 · 生成工单」都走它做二次确认。
+   两者共用 `.ap-modal-overlay` 的 `z-index: 10000`，而 `#confirmModalOverlay` 在
+   legacy-panels.html 里排在 pcDetail(1753) / pcDiagnose(1764) / pcRun(1775) **之前**，
+   四个又都是 `<body>` 直属兄弟（同一个层叠上下文）→ **同值时后出现的赢** →
+   确认框被整个盖住，连「确认」按钮的点击都落在上层遮罩上（表现就是"弹框看不见 + 点了没反应"）。
+
+   取 11000：高于所有 `.ap-modal-overlay`，仍**低于** `.toast-container` 的 99999——toast 永远最上。 */
+#confirmModalOverlay { z-index: 11000; }
+
 .apm-confirm-msg {
     font-size: 13px;
     color: var(--text-primary);
@@ -4952,6 +4962,9 @@ svg { fill: currentColor; }
 .alert-tag.status-in_progress{ background: #eff6ff; color: #2563eb; }
 .alert-tag.status-closed     { background: #f3f4f6; color: #6b7280; }
 .alert-tag.status-archived   { background: #f3f4f6; color: #9ca3af; }
+/* escalated：诊断被认可、已派出修复工单（终态）。用紫与 Resolved 的绿一眼分得开——
+   它是"派出去等别人做"，不是"已经好了"。**不写这条不会报错**，只是白底黑字像漏了样式。 */
+.alert-tag.status-escalated  { background: #f5f3ff; color: #7c3aed; }
 
 /* 操作列 + 忽略按钮（同 btn-alert-detail 视觉，弱化一点） */
 .pc-actions { white-space: nowrap; }
@@ -7218,6 +7231,14 @@ svg { fill: currentColor; }
     background: rgba(245, 158, 11, 0.08);
 }
 .dgx-btn--fp:hover:not(:disabled) { border-color: #b45309; }
+/* 升级：非破坏性的主动作（照 --fp 的 color / 半透明描边 / 极淡底三件套）。
+   放在本块内是因为 .dgx-btn 基类定义在更靠前处、同权重时后者赢——新类写前面会被整条盖掉。 */
+.dgx-btn--escalate {
+    color: var(--accent-purple);
+    border-color: rgba(139, 92, 246, 0.4);
+    background: rgba(139, 92, 246, 0.08);
+}
+.dgx-btn--escalate:hover:not(:disabled) { border-color: var(--accent-purple); }
 .dgx-btn--ghost { color: var(--text-tertiary); border-color: transparent; background: none; }
 /* 拒绝反馈框 */
 .dgx-fb { display: flex; flex-direction: column; gap: 8px; }
@@ -7280,6 +7301,7 @@ svg { fill: currentColor; }
 .dgx-hist-chip--reject { color: var(--accent-red); background: rgba(239, 68, 68, 0.08); }
 .dgx-hist-chip--ignore { color: var(--text-secondary); background: var(--bg-tertiary); }
 .dgx-hist-chip--fp { color: #b45309; background: rgba(245, 158, 11, 0.1); }
+.dgx-hist-chip--escalate { color: #7c3aed; background: rgba(139, 92, 246, 0.1); }
 .dgx-hist-time { margin-left: auto; flex: none; font-size: 11px; color: var(--text-tertiary); }
 .dgx-hist-body { padding: 10px 12px; border-top: 1px solid var(--border-color); }
 /* 历史条目里的整轮快照：浅底 + 左侧细竖线，一眼区分"这是回看的历史"，不是当前轮次 */

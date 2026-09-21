@@ -50,10 +50,11 @@ export const SLUG_ALIASES = {
  * security-ops）**没有侧边栏**：改造前 `initNavigation` 的 else 分支直接
  * 落到 `page-service-ops` 并把 footer 文案改成域名，这里保持同样语义。
  *
- * ⚠️ 但「没有侧边栏」≠「没有自己的页面」—— 其中三个已经在内嵌页上接了真实内容
- * （constellation / biz-ops / architecture，登记在 `router/index.js` 的
- * `DOMAIN_COMPONENTS`，路由仍由这里的 key 派生）。剩下 finops / security-ops
- * 才是真正的空壳（落到 service-ops 概览）。
+ * ⚠️ 但「没有侧边栏」≠「没有自己的页面」—— 这五个**现在都**在内嵌页上接了真实内容
+ * （登记在 `router/index.js` 的 `DOMAIN_COMPONENTS`，路由仍由这里的 key 派生；
+ * security-ops 与 finops 于 2026-09-21 接入，此前是真空壳）。
+ * 也就是说**已经没有域会走到空壳兜底**（落 service-ops 概览 + 改写标题）了 ——
+ * 机制保留，见下面 `EMPTY_DOMAINS` 的说明。
  * 有侧边栏的域不受影响：它们的 `sidebar` 是对象，走 flattenItems() 那一套。
  *
  * 分组可嵌套（只有 Service Ops › APM › Smart Inspection 这一处）：子分组渲染在
@@ -306,7 +307,7 @@ export const NAV = [
 export const DEFAULT_SLUG = 'service-ops'
 
 /**
- * 5 个无侧边栏的域：**没有侧边栏**（其中 finops / security-ops 也没有自己的页面）。
+ * 5 个无侧边栏的域：**没有侧边栏**（这五个现在都有自己的页面了，见下）。
  *
  * 改造前点它们会走 initNavigation 的 else 分支：隐藏所有侧边栏 → 落到 service-ops 概览
  * → 把该页标题改成域名。
@@ -317,11 +318,14 @@ export const DEFAULT_SLUG = 'service-ops'
  * 进 URL 后一切都从路由派生，且可分享可刷新。
  *
  * ⚠️ 变量名与注释里的「空壳」是**改造前**的语义（那时这 5 个都落到 page-service-ops）。
- * 现在 constellation / biz-ops / architecture 三个域在 `router/index.js` 的
- * `DOMAIN_COMPONENTS` 里各自接了内嵌页，`meta.panelId` 仍指向 page-service-ops
- * 但 `meta.legacy` 是 false，所以那个面板不会被显示 —— 兜底语义只在 finops /
- * security-ops 上还完整成立。名字不改：它是本文件的导出面，且语义边界仍由
- * `!n.sidebar` 精确表达。
+ * 现在这五个域在 `router/index.js` 的 `DOMAIN_COMPONENTS` 里**各自都接了内嵌页**
+ * （security-ops / finops 于 2026-09-21 补齐，是最后两个），`meta.panelId` 仍指向
+ * page-service-ops 但 `meta.legacy` 是 false，所以那个面板不会被显示。
+ *
+ * ★ 于是空壳兜底（`emptyDomainRoutes` 里 `own` 为空时落 service-ops 概览那条分支）
+ * **不再有域走到**。保留而不删的理由：它是「没有侧边栏的域各自一条路由」的通用机制，
+ * 删掉等于假设以后不会再有空壳域；而这 5 个仍是 `!n.sidebar`，语义边界没变。
+ * 名字也不改：`EMPTY_DOMAINS` 是本文件的导出面。
  */
 export const EMPTY_DOMAINS = NAV.filter((n) => !n.sidebar)
 

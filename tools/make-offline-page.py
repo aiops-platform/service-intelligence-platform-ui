@@ -2,12 +2,14 @@
 """
 把部署站的页面做成本地可跑、可交互的离线副本。
 
-四个页面，同一套 Next.js 外壳、同一批 chunk，只是入口路由不同：
+六个页面，同一套 Next.js 外壳、同一批 chunk，只是入口路由不同：
 
     --page constellation   部署站 `/`              → public/constellation-app.html
     --page business-ops    部署站 `/business-ops/`  → public/business-ops/index.html
     --page service-ops     部署站 `/service-ops/`   → public/service-ops/index.html
     --page architecture    部署站 `/architecture/`  → public/architecture/index.html
+    --page security-ops    部署站 `/security-ops/`  → public/security-ops/index.html
+    --page finops          部署站 `/finops/`       → public/finops/index.html
 
 > 除 constellation 外，产出路径都是**目录索引**（`<页>/index.html`）而不是随手起的
 > 文件名 —— 内层用 `usePathname()` 查面板表决定 h1，路径必须精确等于面板表里的
@@ -90,6 +92,10 @@ iframe 里就渲染出 Vue 应用自己了。由 `vite.config.js` 的 `sip-embed
     vendor/service-ops/server.html            ← Service Ops 的服务器原始外壳
     vendor/architecture/server.html           ← Architecture 的服务器原始外壳
     vendor/architecture/chunks/               ← 只有 Architecture 独有的 2 个 chunk
+    vendor/security-ops/server.html           ← Security Ops 的服务器原始外壳
+    vendor/security-ops/chunks/               ← 只有 Security Ops 独有的 1 个 chunk
+    vendor/finops/server.html                 ← FinOps 的服务器原始外壳
+    vendor/finops/chunks/                     ← 只有 FinOps 独有的 1 个 chunk
     vendor/media/*.woff2                      ← 字体（各页共用）
 
 > 除 Constellation 外都**不依赖**下载目录：外壳在自己的 `vendor/<页>/` 下，独有的 chunk
@@ -99,6 +105,7 @@ iframe 里就渲染出 Vue 应用自己了。由 `vite.config.js` 的 `sip-embed
 import argparse
 import re
 import shutil
+import subprocess
 import sys
 import urllib.request
 from pathlib import Path
@@ -136,7 +143,7 @@ main.flex.w-full.flex-col.overflow-hidden { height: 100vh !important; }
 </style>
 """
 
-# 四个页面。产出都进 public/ —— Vite 按根伺服，内层 chunk 走的
+# 六个页面。产出都进 public/ —— Vite 按根伺服，内层 chunk 走的
 # `/_next/…`（turbopack 硬编码的**根绝对路径**）dev 与 build 才对得上。
 PAGES = {
     "constellation": {
@@ -169,6 +176,32 @@ PAGES = {
         # 路径与 Vue 路由**同名**，冲突处置与 service-ops 完全一致（见 vite.config.js）。
         "out": ("architecture", "index.html"),
         "vendor_sub": "architecture",
+        "shared_chunks": True,
+    },
+    "security-ops": {
+        "site_path": "/security-ops/",
+        # ⚠️ 同样不能随意：面板表里是
+        #     `{id:"security-ops", index:7, label:"Security Ops", shortLabel:"Security",
+        #       route:"/security-ops", subtitle:"Vulnerability heatmap · attack surface ·
+        #       freeze risk"}`（**没有 pool**，与 finops 一样），
+        # 对不上时内层 h1 静默变成 "SIP"。
+        # 路径与 Vue 路由**同名**，冲突处置与 architecture / service-ops 完全一致
+        # （见 vite.config.js 的 EMBED_PAGES 与 README 的 nginx 片段）。
+        "out": ("security-ops", "index.html"),
+        "vendor_sub": "security-ops",
+        "shared_chunks": True,
+    },
+    "finops": {
+        "site_path": "/finops/",
+        # ⚠️ 同样不能随意：面板表里是
+        #     `{id:"finops", index:6, label:"FinOps", shortLabel:"FinOps",
+        #       route:"/finops", subtitle:"Cloud trajectory · vendor consolidation ·
+        #       untagged spend"}`（**没有 pool**，与 security-ops 一样），
+        # 对不上时内层 h1 静默变成 "SIP"。
+        # 路径与 Vue 路由**同名**，冲突处置与 architecture / service-ops / security-ops
+        # 完全一致（见 vite.config.js 的 EMBED_PAGES 与 README 的 nginx 片段）。
+        "out": ("finops", "index.html"),
+        "vendor_sub": "finops",
         "shared_chunks": True,
     },
 }
@@ -381,6 +414,21 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
                 print(f"  兜底租户：retail（站点原生）→ {tenant_copy.DT_DEFAULT}")
             elif dt != "already":
                 print(f"  ! 兜底租户未改：{dt}")
+            # Security Ops 的 case inspector「Linked app」—— 写死的 appKey 只存在于
+            # best-buy-reference 租户，其余租户下整块静默消失。改成读本租户的快照。
+            sl = tenant_copy.patch_security_ops_linked_app(chunks_dir)
+            if sl == "applied":
+                print("  Security Ops：Linked app → 本租户的 topStorm.appKey"
+                      "（原为写死的 best-buy app）")
+            elif sl != "already":
+                print(f"  ! Security Ops Linked app 未改：{sl}")
+            # FinOps 的 agent 活动 ticker：写死的 best-buy app / 组合名与金额
+            # → 本租户自己的高成本 app / 组合与真实金额
+            ft = tenant_copy.patch_finops_ticker(chunks_dir)
+            if ft == "applied":
+                print("  FinOps：agent ticker → 本租户的 app / 组合 / 金额（原为写死文案）")
+            elif ft != "already":
+                print(f"  ! FinOps ticker 未改：{ft}")
     except Exception as e:
         print(f"    ! 注入租户文案失败，跳过：{e}")
 
@@ -413,10 +461,32 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
         r"/_next/([A-Za-z0-9._~\-/]+\.(?:js|css|woff2))", html)))
     missing = [r for r in refs if not (out_dir / "_next" / r).is_file()]
 
+    # 7. 语法校验：产出目录里每个 .js 都要能被解析。
+    #
+    # 为什么必须有这一步：`tenant_copy.py` 的补丁是在**字符层面**改 chunk 的，
+    # 改错一个字符仍然写出文件、仍然「产出校验通过」，而浏览器那边是
+    # **整页白屏**（内嵌页的 JS 全在一个 chunk 里）。实测踩过：
+    # 拼接时多留了一个 `let`，拼出「let 出现在声明列表里」→
+    # `SyntaxError: Unexpected strict mode reserved word`，构建输出一切正常。
+    #
+    # 有 node 才查（这是 Vite 项目，正常都有）；没有就跳过并说明，不假装查过。
+    bad_syntax = []
+    if shutil.which("node"):
+        for js in sorted((out_dir / "_next" / "static" / "chunks").glob("*.js")):
+            r = subprocess.run(["node", "--check", str(js)],
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                # node 的 stderr 末尾是版本号，真正的错误行以 `SyntaxError:` 开头
+                msg = next((l.strip() for l in r.stderr.split("\n")
+                            if l.startswith("SyntaxError")), None)
+                bad_syntax.append((js.name, msg or r.stderr.strip().split("\n")[-1]))
+    else:
+        bad_syntax = None
+
     return {"moved": moved, "fonts": copied, "rewritten": n_ref, "navs": n_nav,
             "size": len(html), "overrides": overrides, "stripped": embed_strip,
             "out_file": out_file, "copy": n_copy,
-            "refs": len(refs), "missing": missing}
+            "refs": len(refs), "missing": missing, "bad_syntax": bad_syntax}
 
 
 def main():
@@ -523,6 +593,21 @@ def main():
         print(f"      python3 make-offline-page.py --page {args.page} --refresh")
         return 1
     print(f"  ✓ 产出校验：{r['refs']} 个 /_next/ 引用全部存在")
+
+    # 语法校验（build 步骤 7）。补丁是在字符层面改 chunk 的，改错一个字符照样写出文件，
+    # 「产出校验」是过了的 —— 但浏览器那边整页白屏。所以必须在这里拦。
+    bad = r["bad_syntax"]
+    if bad is None:
+        print("  ⚠ 没找到 node，跳过 JS 语法校验（补丁改错字符会导致白屏，建议装上 node）")
+    elif bad:
+        print(f"\n✗ {len(bad)} 个 chunk 语法错误 —— 页面会**整页白屏**，而构建输出一切正常：")
+        for name, msg in bad:
+            print(f"    {name}: {msg}")
+        print("\n  多半是 tenant_copy.py 里某个补丁拼错了字符串。")
+        print(f"  单独定位：node --check 'public/_next/static/chunks/<文件>'")
+        return 1
+    else:
+        print("  ✓ 语法校验：产出目录的 chunk 全部可解析")
     return 0
 
 
