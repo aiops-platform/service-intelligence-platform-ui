@@ -5108,6 +5108,38 @@
             return s.length > 14 ? s.slice(0, 8) + '…' + s.slice(-4) : s;
         }
 
+        // 「历次执行」里的**最后一次**（= 当前轮）。判定只写这一份，按钮与下钻都用它。
+        //
+        // 后端 fetch_executions 按 evidence 写入顺序返回，**最后一条**打 is_current
+        // （重跑追加在尾部），故这里的优先级是 is_current → 数组末条。
+        // ⚠️ 不能拿「列表里最后一个」当最后一次：dgxExecutions 渲染时把「进行中」置顶，
+        // 渲染顺序与数组顺序不同（最后一次正在跑时，它反而排在第一条）。
+        function dgxLastExecution(snap) {
+            var items = (snap && snap.executions) || [];
+            if (!items.length) return null;
+            for (var i = 0; i < items.length; i++) {
+                if (items[i] && items[i].is_current) return items[i];
+            }
+            return items[items.length - 1];
+        }
+
+        // 概要条右端的 Flow Diagram 入口：打开**最后一次执行**的执行流程图（= 下钻到 run 的
+        // Flow Diagram 二级弹框）。
+        // 判据收在 dgxLastRunId 一处，按钮的显隐与点击处理器共用它 —— 各写一份的话，
+        // 「按钮在、点了没反应」这种死按钮就是这么来的（例如 evidence 缺 run_id 的轮次）。
+        // 没有可开的 run（老 spike 记录没有 agentflow run、或这条单还没 Analyze 过）→
+        // **不渲染按钮**，而不是渲染一个点了报错的死按钮。
+        function dgxLastRunId(snap) {
+            var last = dgxLastExecution(snap);
+            return (last && last.run_id) ? String(last.run_id) : '';
+        }
+
+        function dgxFlowBtn(snap) {
+            if (!dgxLastRunId(snap)) return '';
+            return '<button type="button" class="dgx-btn dgx-flowbtn dgx-act" data-act="flow-last"' +
+                ' title="Open the flow diagram of the latest run">Flow Diagram</button>';
+        }
+
         function dgxExecutions(snap) {
             var items = (snap && snap.executions) || [];
             if (!items.length) return '';
@@ -5205,7 +5237,13 @@
                       dgxEsc(snap.ref || snap.session_id) + '</span>'
                     : '') +
                 (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">耗时 ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
+                // 状态行右端：Flow Diagram 入口 + 更新时间（两者互换过位置，按用户要求：
+                // 按钮在左、时间贴最右）。两者同处一个右对齐簇 —— margin-left:auto 挂在外层
+                // .dgx-head-right 上，而不是各处一个（两个 auto 会平分空白，把「更新」挤到中间去）。
+                '<span class="dgx-head-right">' +
+                dgxFlowBtn(snap) +
                 (snap.updated_at ? '<span class="dgx-updated">更新 ' + dgxEsc(dgxClock(snap.updated_at)) + '</span>' : '') +
+                '</span>' +
                 '</div>' +
                 (snap.issue_title ? '<h2 class="dgx-issue">' + dgxEsc(snap.issue_title) + '</h2>' : '') +
                 '</div>';
@@ -5250,6 +5288,7 @@
         //（record_id → run_id 的桥即 evidence，无需后端新接口；过程详情 GET {agentflow}/runs/{run_id} 轮询）。
         var pcRunRec = null;     // 正在查看的问题记录
         var pcRunId = null;      // 当前轮询的 run_id
+        var pcRunSilent = false; // true = 只开了 Flow Diagram 二级弹框，**没开** run 查看器（见 openProblemRun 的 opts.silent）
         var pcRunTimer = null;   // 2s 轮询 timer（关弹框必清）
         var pcRunSel = null;          // 手动选中的节点
         var pcRunData = null;         // 节点数据 {nid:{status,tokens,cost,params,output}}
@@ -5304,7 +5343,11 @@
         }
 
         // explicitRunId：刚发起的那次 run（此刻 evidence 可能还没回读到列表里，调用方直接传）
-        function openProblemRun(rec, explicitRunId) {
+        // opts.silent —— **只备数据、不亮 run 查看器**：给诊断弹框概要条的 Flow Diagram 用。
+        // 用户要的是那张图，不是又叠一层「Analysis Process」在下面；图弹框由调用方自己 openRunGraph()。
+        // 两者共用本轮所有管道（pcRunId / 2s 轮询 / pcRunGraph），故只差"主弹框亮不亮"这一件事 ——
+        // 收摊的差异见 closeRunGraph()（静默模式下关图即停轮询，否则 2s 轮询会在后台一直跑）。
+        function openProblemRun(rec, explicitRunId, opts) {
             stopRunPolling();
             var ar = findAgentRun(rec);
             var runId = explicitRunId || (ar && ar.run_id);
@@ -5312,8 +5355,14 @@
                 window._showToast('No agent analysis run found for ' + (rec && rec.record_id ? rec.record_id : 'record'), 'error');
                 return;
             }
+            // 先按**上一个**会话的静默标志收摊（closeRunGraph 在静默模式下会停轮询 + 清 pcRun* 状态），
+            // 再设本轮状态。**顺序不能反**：反了的话下面刚赋的 pcRunSilent 会被这次收摊当成"上一轮"
+            // 清掉（closeProblemRun 还会把 pcRunId 清成 null）→ 静默失效、run 查看器照开，
+            // 而且 fetchRunNow 因 pcRunId 为 null 直接空转，图永远停在 Loading。踩过一次。
+            closeRunGraph(); // 若上次残留 Flow Diagram 二级弹框，先收起
             pcRunRec = rec;
             pcRunId = runId;
+            pcRunSilent = !!(opts && opts.silent);
             pcRunData = null;
             pcRunGraph = null;
             pcRunSel = null;
@@ -5322,7 +5371,6 @@
             pcRunSecOpen = null;
             pcRunTraces = {};
             pcRunTraceReq = {};
-            closeRunGraph(); // 若上次残留 Flow Diagram 二级弹框，先收起
             var title = getEl('pcRunTitle');
             if (title) title.textContent = 'Analysis Process - ' + (rec && rec.record_id ? rec.record_id : '');
             setPcRunText('pcRunId', runId);
@@ -5335,9 +5383,11 @@
             var sec = getEl('pcRunApprovalSection');
             if (sec) sec.style.display = 'none';
             renderRunDetail(null);
-            var overlay = getEl('pcRunOverlay');
-            if (overlay) overlay.classList.add('open'); // 先 .open 再拉数据，fit 才能取到尺寸
-            pcRunCanvas.reset();
+            if (!pcRunSilent) {
+                var overlay = getEl('pcRunOverlay');
+                if (overlay) overlay.classList.add('open'); // 先 .open 再拉数据，fit 才能取到尺寸
+            }
+            pcRunCanvas.reset(); // 清掉上一轮的图并亮出 "Loading flow diagram…"（静默模式下这就是图弹框的占位）
             renderRunSteps(); // 清空并显示 "Waiting for run data…" 占位
             fetchRunNow();
             startRunPolling();
@@ -6027,6 +6077,13 @@
         function closeRunGraph() {
             var o = getEl('pcRunGraphOverlay');
             if (o) o.classList.remove('open');
+            // 静默模式（只开了图、没开 run 查看器）：关图即收摊。
+            // 停轮询原本挂在「关 run 查看器」上（closeProblemRun），而这条路径根本没开过它 ——
+            // 不补这一步，关掉图之后那个 2s 轮询会一直在后台跑。
+            if (pcRunSilent) {
+                pcRunSilent = false; // 先清标志：closeProblemRun 内部会再调 closeRunGraph，避免自递归
+                closeProblemRun();
+            }
         }
 
         function closeProblemRun() {
@@ -6212,6 +6269,17 @@
                         confirmDialog('忽略该诊断并关闭这条问题单？', function () { submitDiagnosisDecision('ignore'); });
                     } else if (act === 'fp') {
                         confirmDialog('标记为误报？将记入误报率并关闭这条问题单。', function () { submitDiagnosisDecision('false_positive'); });
+                    } else if (act === 'flow-last') {
+                        // 概要条 Flow Diagram：直接看**最后一次执行**的流程图，**只开这一张图**
+                        //（silent：不亮下面的 run 查看器，关掉图就回诊断弹框）。
+                        // 顺序不能反：openProblemRun 会先 closeRunGraph()（清上一轮残留），
+                        // 它同时负责建 pcRunId/轮询与数据管道，openRunGraph 才有东西可画。
+                        // 数据未到时图弹框先显示 Loading，applyRunView 拿到 run 后补画。
+                        var lastRid = dgxLastRunId(pcDiagLastSnap);
+                        if (lastRid && pcDiagRec) {
+                            openProblemRun(pcDiagRec, lastRid, { silent: true });
+                            openRunGraph();
+                        }
                     }
                     return;
                 }

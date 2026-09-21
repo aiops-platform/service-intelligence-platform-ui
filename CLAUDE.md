@@ -85,6 +85,10 @@ dev 下可用 `__sipApi.setBase('sipAiops', 'http://host:8080/api/sip-aiops')` �
 `css/styles.css` 全局引入、**不做 scoped、不重写**。组件模板**逐字沿用其中的 class 名**。
 
 - 少写一个 class 就掉样式；新加 class 无处定义
+- **给既有类做局部覆盖（元素挂两个类）必须用复合选择器**（`.dgx-btn.dgx-flowbtn`）。
+  本表是"到处追加"的长文件，两个单类**权重相同 → 后写的赢**：新类写在前面时会被
+  后面定义的旧类整条盖掉，且不报错（实测 `.dgx-flowbtn` 的 padding 被 `.dgx-btn` 覆盖，
+  按钮仍是原尺寸、把吸顶条撑高 8px —— 肉眼看不出是"没生效"，只像"没调够"）
 - **样式表也是 id 的消费方**：`styles.css:6081` 有 `#bsZoomFit`。曾因为「反正改用 ref 了」
   删掉 id 而静默丢样式（按钮仍可点，只是变窄）
 - 验证方法：用 `grep -o 'class="[^"]*"'` 对旧面板与新组件做 class 差集，期望为空
