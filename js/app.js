@@ -55,6 +55,25 @@
         return st === 'pending' || st === 'in_progress';
     }
 
+    // 展示状态：**用户看到的那个词**由 state + resolve_reason 一起决定，返回 {cls, label}。
+    //
+    // 【为什么忽略要单独一档】后端两个终态是「有没有给结论」的意思，不是「谁关的」：
+    //   resolved（+reason auto/manual/false_positive）= 已修复/已处理
+    //   closed  （+reason ignored）                  = 人判定不做，即「忽略」
+    // 行上的 Ignore 按钮走 POST /v1/problems/{id}/ignore（后端 close(reason=ignored)）。
+    // 早期它打的是 /resolve + false_positive:true —— 界面上说「忽略」，库里写 resolved、
+    // 顺带记一次误报（污染误报率），三处都在替用户编造结论。
+    //
+    // cls 用于 alert-tag 的 status-<cls>（styles.css 的色板，ignored 与 closed 同为灰）；
+    // 其余状态**原样返回 state**（大小写照旧，与改造前逐字一致），颜色与文案都不变。
+    // 表格与详情模态共用本函数 —— 各写一份就会出现「列里写 ignored、弹框里写 closed」。
+    function problemDisplayStatus(rec) {
+        var st = String((rec && rec.state) || 'pending').toLowerCase();
+        var reason = String((rec && rec.resolve_reason) || '').toLowerCase();
+        if (st === 'closed' && reason === 'ignored') return { cls: 'ignored', label: 'ignored' };
+        return { cls: st, label: (rec && rec.state) ? rec.state : 'pending' };
+    }
+
     function problemHasMetric(p) {
         return !!(p && p.metric_anomalies && p.metric_anomalies.length);
     }
@@ -4259,6 +4278,7 @@
                     var title = problemTitle(p);
                     var sev = (p.severity || 'warning').toLowerCase();
                     var st = (p.state || 'pending').toLowerCase();
+                    var disp = problemDisplayStatus(p);   // 状态列：忽略 →「ignored」（见该函数说明）
                     // 「已发起分析」= 有 agent_run（新路径：Analyze 走 agentflow run）
                     // 或 diagnose_session（老记录：直连 spike）。两者都能进 View diagnosis——
                     // 后端 GET /{id}/diagnose 已按绑定分派引擎，返回同一形状，前端不必分支。
@@ -4268,7 +4288,7 @@
                         '<td>' + escapeHtml(p.service || '-') + '</td>' +
                         '<td>' + escapeHtml(p.domain || '-') + '</td>' +
                         '<td><span class="alert-tag severity-' + sev + '">' + escapeHtml(p.severity || 'warning') + '</span></td>' +
-                        '<td><span class="alert-tag status-' + st + '">' + escapeHtml(p.state || 'pending') + '</span></td>' +
+                        '<td><span class="alert-tag status-' + disp.cls + '">' + escapeHtml(disp.label) + '</span></td>' +
                         '<td>' + (p.occurrence_count || 1) + '</td>' +
                         '<td class="col-time">' + formatTime(p.detected_at || p.first_seen_at) + '</td>' +
                         '<td class="pc-actions">' +
@@ -4343,10 +4363,10 @@
         function buildDetailHtml(rec) {
             var html = '';
             var sev = (rec.severity || 'warning').toLowerCase();
-            var st = (rec.state || 'pending').toLowerCase();
+            var disp = problemDisplayStatus(rec);   // 与表格同一份判据（忽略 →「ignored」）
             html += '<div class="pd-header">' +
                 '<span class="alert-tag severity-' + sev + '">' + escapeHtml(rec.severity || 'warning') + '</span> ' +
-                '<span class="alert-tag status-' + st + '">' + escapeHtml(rec.state || 'pending') + '</span>' +
+                '<span class="alert-tag status-' + disp.cls + '">' + escapeHtml(disp.label) + '</span>' +
                 '<span class="pd-occur">Occurrences: ' + (rec.occurrence_count || 1) + '</span>' +
                 '</div>';
             var summary = (rec.symptom && rec.symptom.summary) ? rec.symptom.summary : '';
@@ -4447,9 +4467,23 @@
             if (overlay) overlay.classList.remove('open');
         }
 
+        // 忽略（列表行上的 Ignore）→ POST /v1/problems/{id}/ignore → 后端 close(reason=ignored)，
+        // 状态列随即显示 ignored。
+        //
+        // 【为什么不打 /resolve】旧实现是 `/resolve` + `{false_positive:true}`，两个后果都是错的：
+        //   ① 后端 /resolve 无条件写 state=resolved —— 用户点的是「忽略」，库里却记「已修复」，
+        //      状态列照实回显 resolved，等于替用户编造结论；
+        //   ② 同一个请求还顺带把这条单记成一次**误报**（fpr_table + 误报率 Gauge）。
+        //      忽略 ≠ 误报：忽略是「先搁置不看」，误报是「这次检测报错了」，后者是 L3 误报率
+        //      闸门的输入。混在一起会让误报率被搁置的单污染。
+        // 【弹框文案只写用户会看到的结果】别在这里补「（不算误报）」之类的澄清 —— 点忽略的人
+        // 脑子里没有「误报」这个概念，只有读过旧文案的人才需要这层对比，对其他人就是读不懂的
+        // 括号。误报有自己的入口与文案：诊断弹框里的「误报」按钮（标记为误报？将记入误报率…）。
+        // 诊断弹框里的「忽略」走 /diagnose/decision（会额外 /dismiss 收尾诊断会话）；本按钮
+        // 服务的是**列表行**，对没绑过诊断的单同样可用，故只用这个轻量端点。
         function confirmIgnore(rec) {
-            confirmDialog('Ignore problem ' + rec.record_id + '? This resolves it and records it as a false positive.', function () {
-                apmApi('/v1/problems/' + encodeURIComponent(rec.record_id) + '/resolve', { method: 'POST', body: { false_positive: true } })
+            confirmDialog('Ignore problem ' + rec.record_id + '? It will be marked as ignored.', function () {
+                apmApi('/v1/problems/' + encodeURIComponent(rec.record_id) + '/ignore', { method: 'POST' })
                     .then(function () {
                         window._showToast('Ignored ' + rec.record_id, 'success');
                         refresh();
