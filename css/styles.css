@@ -8108,6 +8108,10 @@ textarea.cmdb-input { resize: vertical; }
 .alert-tag.status-needs_info       { background: #fffbeb; color: #b45309; }
 .alert-tag.status-canceled         { background: #f3f4f6; color: #6b7280; }
 .alert-tag.status-waiting_approval { background: #fffbeb; color: #d97706; }
+/* 审批被否决（人工驳回 / 超时自动拒绝）：红 —— 这是"没通过"，不是"缺信息"。
+   与上面两个琥珀色刻意分开：琥珀=缺东西，红=被否了。 */
+.alert-tag.status-rejected         { background: #fef2f2; color: #dc2626; }
+.alert-tag.status-rejected-canceled { background: #fef2f2; color: #dc2626; }
 
 /* 时间窗缺时区偏移的告警：比普通 hint 更重，因为它会导致**静默空结果** */
 .ticket-detail-warn {

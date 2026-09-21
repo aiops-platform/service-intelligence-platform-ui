@@ -110,7 +110,7 @@ onActivated(load)
     </div>
 
     <!-- Stats -->
-    <div class="reflow-stats" style="grid-template-columns: repeat(7, 1fr)">
+    <div class="reflow-stats" style="grid-template-columns: repeat(8, 1fr)">
       <div class="kpi-card">
         <div class="kpi-header"><span>Total Tickets</span></div>
         <div><div class="kpi-value" style="color: var(--accent-blue)">{{ counts.all }}</div>
@@ -131,6 +131,13 @@ onActivated(load)
         <div class="kpi-header"><span>待审批</span></div>
         <div><div class="kpi-value" style="color: #d97706">{{ counts.waiting_approval }}</div>
           <div class="kpi-sub">waiting for approval</div></div>
+      </div>
+      <!-- 审批被否决（人工驳回 / 超时自动拒绝）：run 的 status 也是 success，
+           不单列就会被算成 Resolved —— 方案被否了却显示"事故已解决" -->
+      <div class="kpi-card">
+        <div class="kpi-header"><span>审批不通过</span></div>
+        <div><div class="kpi-value" style="color: #dc2626">{{ counts.rejected }}</div>
+          <div class="kpi-sub">approval rejected</div></div>
       </div>
       <!-- 跑完了但没诊断出结果（run 停在 halt 节点）：不会自己往下走了，等人补信息 -->
       <div class="kpi-card">
@@ -208,7 +215,7 @@ onActivated(load)
             <td>
               <!-- 展示状态：run 停在 halt 节点的工单报"缺少必要信息"，不再是 running -->
               <span class="alert-tag" :class="'status-' + ticketDisplayStatus(t)">
-                {{ ticketStatusLabel(ticketDisplayStatus(t)) }}
+                {{ ticketStatusLabel(t) }}
               </span>
             </td>
             <td>
@@ -248,7 +255,7 @@ onActivated(load)
           <h3>
             {{ detail.number || detail.id }}
             <span class="alert-tag" :class="'status-' + ticketDisplayStatus(detail)">
-              {{ ticketStatusLabel(ticketDisplayStatus(detail)) }}
+              {{ ticketStatusLabel(detail) }}
             </span>
           </h3>
           <button class="ap-modal-close" @click="closeDetail">&times;</button>

@@ -6,6 +6,7 @@
  */
 import { ref, computed } from 'vue'
 import { ticketApi, runApi } from '@/api/agentflow'
+import { REJECTED } from '@/utils/runStatus'
 
 /**
  * 还在跑的节点状态。
@@ -22,6 +23,8 @@ const STATUS_FILTERS = [
   { value: 'running', label: 'In Progress' },
   // 停在审批门等人批 —— 不往下走了，与"进行中"必须分开
   { value: 'waiting_approval', label: '待审批' },
+  // 审批被否决：run 的 status 也是 success，不单列会被显示成 resolved
+  { value: 'rejected', label: '审批不通过' },
   // 跑完了但**什么都没诊断出来**：run 停在 halt 节点。与"进行中"必须分开 ——
   // 它不会自己往下走了，等人补信息（服务名 / trace_id）。
   { value: 'needs_info', label: '需要补充信息' },
@@ -48,6 +51,8 @@ export const NEEDS_INFO = 'needs_info'
 /** run 停在审批门（等人批）。展示值直接复用 `waiting_approval` —— 那个类名
  *  `.alert-tag.status-waiting_approval` 早就有了（工单详情里的 run 列表在用）。 */
 export const WAITING_APPROVAL = 'waiting_approval'
+/** 审批被否决（人工驳回 / 超时自动拒绝） */
+export { REJECTED }
 
 /**
  * run **确实在往前走**的状态。
@@ -78,6 +83,10 @@ export function ticketDisplayStatus(t) {
   if (!r) return t?.status || ''
   // 中断优先于一切：run 的 status 是 success，但它什么都没诊断出来
   if (r.outcome === 'halted') return NEEDS_INFO
+  // 审批被否决（人工驳回 / 超时自动拒绝）同样是 status=success —— 见 isRejected。
+  // **必须排在 RUN_TERMINAL_TO_TICKET 之前**：否则会被映射成 resolved，
+  // 也就是"方案被否了"显示成"事故已解决"。
+  if (r.outcome === REJECTED && r.rejected_at) return REJECTED
   // 审批门：不往下走了，等的是**人**。必须排在 RUN_ACTIVE 之前 ——
   // 混进 running 的话，"等你审批"这条最该被看见的信息就没了。
   if (r.status === WAITING_APPROVAL) return WAITING_APPROVAL
@@ -88,7 +97,17 @@ export function ticketDisplayStatus(t) {
 /** 展示状态的文案。表里没有的原样透出（后端加新状态时不该显示成空白）。 */
 const STATUS_LABELS = { needs_info: '缺少必要信息', waiting_approval: '待审批' }
 
-export function ticketStatusLabel(st) {
+/**
+ * 展示状态的文案。**入参是工单**（不是状态字符串）—— 因为否决还要看**理由**。
+ *
+ * 超时和人工驳回在状态上都是"没通过"，但读的人需要知道**有没有人拍过板**：
+ * "没人来处理"和"有人明确否了"是两个完全不同的后续动作。
+ */
+export function ticketStatusLabel(t) {
+  const st = typeof t === 'string' ? t : ticketDisplayStatus(t)
+  if (st === REJECTED) {
+    return t?.latest_run?.reject_reason === 'timeout' ? '审批超时' : '审批不通过'
+  }
   return STATUS_LABELS[st] || st
 }
 
@@ -199,7 +218,7 @@ export function useTickets() {
   const counts = computed(() => {
     const c = {
       all: tickets.value.length, new: 0, running: 0,
-      waiting_approval: 0, needs_info: 0, resolved: 0, failed: 0,
+      waiting_approval: 0, rejected: 0, needs_info: 0, resolved: 0, failed: 0,
     }
     for (const t of tickets.value) {
       const st = ticketDisplayStatus(t)

@@ -28,6 +28,8 @@
 
 /** 中断状态名。**不是** `done`、也**不是** `success` —— 它自己就是一档。 */
 export const HALTED = 'halted'
+/** 审批被否决（人工驳回 / 超时自动拒绝）。同样不是 `success`。 */
+export const REJECTED = 'rejected'
 
 /** 这条 run 是不是**中途中断**（`kind: halt` 被触发）。 */
 export function isHalted(run) {
@@ -35,13 +37,37 @@ export function isHalted(run) {
 }
 
 /**
- * 整条 run 的展示状态：中断的 run 报 `halted`，其余用后端给的原值。
+ * 这条 run 是不是**审批被否决**（`outcome=rejected`）。
+ *
+ * ⚠️ 它**同样**是 `status=success`：审批超时后 sweeper 把节点置成
+ * `rejected-canceled` 再发 resume，下游照常收敛，run 一样跑完。
+ * 实测（run_d8f3a5c560）：`approve-plan` 是"超时自动拒绝"，run 报 success，
+ * 列表显示成 **resolved** —— 方案审批被否了却显示"事故已解决"。
+ */
+export function isRejected(run) {
+  return !!run && run.outcome === REJECTED && !!run.rejected_at
+}
+
+/**
+ * 整条 run 的展示状态：中断报 `halted`、被否决报 `rejected`，其余用后端给的原值。
  *
  * 未知值原样透出（不映射成"其它"）—— 后端加新状态时这里不该变成一句谎话。
  */
 export function runStatusOf(run) {
   if (!run) return ''
-  return isHalted(run) ? HALTED : run.status || ''
+  if (isHalted(run)) return HALTED
+  if (isRejected(run)) return REJECTED
+  return run.status || ''
+}
+
+/**
+ * 否决的**理由**（`timeout` | `manual` | null）。
+ *
+ * 为什么值得单列：超时和人工驳回都落到 `rejected`，但读的人需要知道
+ * **有没有人拍过板** —— "没人来处理"和"有人明确否了"是两个完全不同的后续动作。
+ */
+export function rejectReasonOf(run) {
+  return isRejected(run) ? run.reject_reason || null : null
 }
 
 /**
@@ -56,6 +82,8 @@ export function runStatusOf(run) {
  */
 export function nodeStatusOf(run, nid, rawStatus) {
   if (isHalted(run) && run.halted_at === nid) return HALTED
+  // 否决节点**不改名**（`rejected` / `rejected-canceled` 本身就是准确的状态名），
+  // 只保证它有颜色 —— 见 NODE_STATUS_CLASS 里那条补的映射。
   return rawStatus || 'pending'
 }
 
@@ -73,6 +101,10 @@ export const NODE_STATUS_CLASS = {
   failed: 'bs-node-status-failed',
   cancelled: 'bs-node-status-cancelled',
   rejected: 'bs-node-status-rejected',
+  // ⚠️ 这条原先漏了，后果不是"少个颜色"而是**说反话**：`rejected-canceled`
+  // 会落到 statusClass 的兜底 `bs-node-status-pending` —— 一个被超时否决的审批节点
+  // 在图上渲染成**灰色"还没跑"**。审批超时是本次才发现的状态，所以一直没暴露。
+  'rejected-canceled': 'bs-node-status-rejected',
   waiting_approval: 'bs-node-status-waiting',
   skipped: 'bs-node-status-skipped',
 }
