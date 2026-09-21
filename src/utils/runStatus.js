@@ -128,6 +128,15 @@ export const STATUS_LABELS = {
   pending: '等待中',
   skipped: '已跳过',
   'rejected-canceled': '审批超时',
+  // —— 审批记录级（`GET /runs/{id}` 的 approvals[].status）——
+  //
+  // ⚠️ **这几个是大写的**，是后端的常量原值（`statestore/base.py`），与上面那些
+  // 小写档位不是一回事。别"顺手统一大小写"：这一改就查不到，而兜底是**原样透出**，
+  // 于是界面上会直接印出 `WAITING_APPROVAL` —— 不报错、只是难看（约定 1 的代价）。
+  WAITING_APPROVAL: '待审批',
+  APPROVED: '已通过',
+  REJECTED: '已驳回',
+  TIMED_OUT: '审批超时',
 }
 
 /** 状态的中文文案；表里没有的原样透出（见 STATUS_LABELS 的约定 1）。 */

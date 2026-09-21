@@ -5,12 +5,12 @@
   数据来自 GET /runs/{id}（B1 补了 inputs / 时间戳 / 节点 error·耗时·attempts）。
 -->
 <script setup>
-import { onActivated, onDeactivated, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRunDetail } from './useRunDetail'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
-import { nodeStatusLabel, runStatusLabel } from '@/utils/runStatus'
+import { nodeStatusLabel, runStatusLabel, statusLabel } from '@/utils/runStatus'
 import NodePayload from '@/components/graph/NodePayload.vue'
 import { agentsApi } from '@/api/agentflow'
 import { formatTime } from '@/utils/time'
@@ -22,9 +22,20 @@ const state = useRunDetail(() => String(route.params.runId || ''))
 
 const {
   run: runData, loading, error, status, displayStatus, nodeStatus, running, nodes,
-  totals, detail, detailTab,
+  totals, detail, detailTab, panelTab, setPanelTab, pendingApprovals, approvals,
   stopping, start, stop, stopPolling, approve, reject, selectNode, statusClass,
 } = state
+
+/**
+ * 已处理（非待审批）的审批，给历史区用。
+ *
+ * 待审批走 `pendingApprovals`（它还要 trigger/upstream 两个现算字段用于画卡片），
+ * 这里只挑剩下的 —— 两处**不能合并成一个循环**：待审批要的是卡片，已处理要的是一行，
+ * 硬凑到一起只会让模板里长出一堆 `v-if`。
+ */
+const decidedApprovals = computed(
+  () => approvals.value.filter((a) => a.status !== 'WAITING_APPROVAL'),
+)
 
 /** 节点着色复用 bug-solve 的映射（同一套 .bs-node 样式） */
 function nodeStyle(n, st) {
@@ -182,39 +193,31 @@ watch(
                    :node-tip="nodeTip" @node-click="selectNode" />
       </div>
 
-      <!-- 右：节点详情 / 待审批 -->
+      <!-- 右：节点详情 / 审批 —— 两个可切换页签 -->
       <div class="bs-panel" style="flex: 1; max-width: 460px">
-        <div v-if="(runData?.pending_approvals || []).length" class="bs-approvals-title">待审批</div>
         <!--
-          用 `.bs-approvals` 裹一层：它是**既有**的可滚动容器（max-height + overflow-y
-          auto），legacy 的 `#pcRunApprovals` 用的就是它。此前 Vue 这边把标题和卡片
-          直接挂在 `.bs-panel` 上，审批卡的完整上游载荷能把面板撑到 2435px
-          —— 而面板现在是**固定高**（与图等高），于是它顶破面板、把节点详情挤到只剩 13px。
-          ⚠️ 这个 class 与 legacy 共用，**不要改它的规则**。
+          面板级页签。**不复用 `.bs-tabs` / `.bs-tab`** —— 那两个是 legacy 的
+          Flow Diagram 弹框在用的共用类（`js/app.js:8352`，那里是"输出/输入 Prompt"
+          两档、尺寸也更小），按本仓规矩共用类不改，新行为一律加专属类。
         -->
-        <div v-if="(runData?.pending_approvals || []).length" class="bs-approvals">
-          <div v-for="p in runData?.pending_approvals || []" :key="p.node_id" class="bs-approval-card">
-            <div class="bs-approval-head">
-              <span class="bs-approval-node">{{ p.node_id }}</span>
-              <span v-if="p.trigger" class="bs-trigger">{{ p.trigger }}</span>
-              <span v-else class="bs-trigger bs-trigger-plain">人工审批</span>
-            </div>
-            <div v-if="p.upstream" class="bs-upstreams">
-              <div v-for="(out, u) in p.upstream" :key="u" class="bs-upstream">
-                <div class="bs-upstream-label">{{ u }}</div>
-                <!-- bare：审批卡自己已经是"带边框的卡"，里面再包一层白卡就是套娃
-                     （实测叠到四层：琥珀卡 → 白卡 → 竖线 → 灰卡） -->
-                <NodePayload :value="out" bare />
-              </div>
-            </div>
-            <div class="bs-approval-actions">
-              <button class="btn btn-sm bs-approve-btn" @click="approve(p.node_id)">通过</button>
-              <button class="btn btn-sm bs-reject-btn" @click="reject(p.node_id)">驳回</button>
-            </div>
-          </div>
+        <div class="bs-panel-tabs">
+          <button class="bs-panel-tab" :class="{ active: panelTab === 'detail' }"
+                  @click="setPanelTab('detail')">节点详情</button>
+          <button class="bs-panel-tab" :class="{ active: panelTab === 'approvals' }"
+                  @click="setPanelTab('approvals')">
+            审批
+            <!--
+              待审批徽标。**它必须挂在页签按钮上、而不是卡片区里** —— 这样切到
+              「节点详情」时它照样在（用户的要求就是"切走也要有提示"）。
+              待审批是阻塞态：run 停在那儿等人，漏看就等于这条 run 一直挂着。
+            -->
+            <span v-if="pendingApprovals.length" class="bs-panel-tab-badge"
+                  :title="`${pendingApprovals.length} 项待审批`">{{ pendingApprovals.length }}</span>
+          </button>
         </div>
 
-        <div class="bs-detail">
+        <!-- 页签一：节点详情（v-show 而非 v-if：保住展开状态与滚动位置） -->
+        <div v-show="panelTab === 'detail'" class="bs-detail">
           <template v-if="detail">
             <div class="bs-detail-head">
               <span class="bs-detail-node">{{ detail.nid }}</span>
@@ -244,6 +247,58 @@ watch(
             </div>
           </template>
           <div v-else class="bs-detail-empty">点击图中节点查看详情。</div>
+        </div>
+
+        <!-- 页签二：审批 -->
+        <div v-show="panelTab === 'approvals'" class="bs-panel-approvals">
+          <div v-if="pendingApprovals.length" class="bs-approvals-title">待审批</div>
+          <!--
+            用 `.bs-approvals` 裹一层：它是**既有**的可滚动容器（max-height + overflow-y
+            auto），legacy 的 `#pcRunApprovals` 用的就是它。此前 Vue 这边把标题和卡片
+            直接挂在 `.bs-panel` 上，审批卡的完整上游载荷能把面板撑到 2435px
+            —— 而面板现在是**固定高**（与图等高），于是它顶破面板、把节点详情挤到只剩 13px。
+            ⚠️ 这个 class 与 legacy 共用，**不要改它的规则**。
+          -->
+          <div v-if="pendingApprovals.length" class="bs-approvals">
+            <div v-for="p in pendingApprovals" :key="p.node_id" class="bs-approval-card">
+              <div class="bs-approval-head">
+                <span class="bs-approval-node">{{ p.node_id }}</span>
+                <span v-if="p.trigger" class="bs-trigger">{{ p.trigger }}</span>
+                <span v-else class="bs-trigger bs-trigger-plain">人工审批</span>
+              </div>
+              <div v-if="p.upstream" class="bs-upstreams">
+                <div v-for="(out, u) in p.upstream" :key="u" class="bs-upstream">
+                  <div class="bs-upstream-label">{{ u }}</div>
+                  <!-- bare：审批卡自己已经是"带边框的卡"，里面再包一层白卡就是套娃
+                       （实测叠到四层：琥珀卡 → 白卡 → 竖线 → 灰卡） -->
+                  <NodePayload :value="out" bare />
+                </div>
+              </div>
+              <div class="bs-approval-actions">
+                <button class="btn btn-sm bs-approve-btn" @click="approve(p.node_id)">通过</button>
+                <button class="btn btn-sm bs-reject-btn" @click="reject(p.node_id)">驳回</button>
+              </div>
+            </div>
+          </div>
+          <div v-else class="bs-approval-none">当前没有待审批事项。</div>
+
+          <!--
+            已处理的审批。加这块的理由：后端原先**只返回待审批**，于是批过之后那次
+            审批就从界面上彻底消失了 —— 谁批的、为什么驳回事后查不到，这一页变成
+            一片空白，看着像这条 run 从来没经过人工审批。
+          -->
+          <div v-if="decidedApprovals.length" class="bs-approval-history">
+            <div class="bs-approval-history-title">已处理（{{ decidedApprovals.length }}）</div>
+            <div v-for="a in decidedApprovals" :key="a.node_id" class="bs-approval-history-row">
+              <span class="bs-approval-history-node">{{ a.node_id }}</span>
+              <span class="bs-approval-history-status" :class="'is-' + a.status.toLowerCase()">
+                {{ statusLabel(a.status) }}
+              </span>
+              <span v-if="a.approved_by" class="bs-approval-history-by">{{ a.approved_by }}</span>
+              <span v-if="a.comment" class="bs-approval-history-comment"
+                    :title="a.comment">{{ a.comment }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

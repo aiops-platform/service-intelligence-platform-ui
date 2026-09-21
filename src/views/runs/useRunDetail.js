@@ -38,6 +38,42 @@ export function useRunDetail(getRunId) {
     return nodeStatusOf(run.value, nid, rawStatus)
   }
 
+  // ── 右侧面板的两个页签 ─────────────────────────────────────────────
+  //
+  // 为什么是页签而不是上下堆叠：两块内容都要占满面板高度才有用（节点详情的字段
+  // 列表、审批卡的上游载荷），堆在一起只能各分一半，两边都挤。
+  //
+  // 待审批是**阻塞态**（run 停在那儿等人），所以默认落到它那一页；但**只在第一次
+  // 出现时跳一次**，用户手动切过之后一律不动他的视图 —— 否则「正在看某个节点」
+  // 被后台出现的审批拽走，比不跳更烦人。徽标在任何页签下都在，不跳也不会漏。
+  const panelTab = ref('detail')
+  /** 用户是否自己切过页签（切过就不再替他跳） */
+  const tabTouched = ref(false)
+  /** 本次 run 是否已自动跳过（每个 run 只跳一次，见上） */
+  let autoJumped = false
+
+  const pendingApprovals = computed(() => run.value?.pending_approvals || [])
+
+  /**
+   * 审批历史（含已处理的），**待办的排最前**。
+   *
+   * 页签要回答的第一个问题是「还欠着什么」，不是「以前批过什么」，所以按状态分档
+   * 而不是按库里的 node_id 顺序原样铺开。同档内保持 node_id 序（稳定，不随轮询抖动）。
+   */
+  const approvals = computed(() => {
+    const rank = { WAITING_APPROVAL: 0, REJECTED: 1, TIMED_OUT: 1, APPROVED: 2 }
+    return [...(run.value?.approvals || [])].sort(
+      (a, b) => (rank[a.status] ?? 9) - (rank[b.status] ?? 9)
+        || String(a.node_id).localeCompare(String(b.node_id)),
+    )
+  })
+
+  /** 用户显式切页签（点节点不算「切过」—— 那是对节点表达意图，不是对面板） */
+  function setPanelTab(t) {
+    tabTouched.value = true
+    panelTab.value = t
+  }
+
   const nodes = computed(() => Object.entries(run.value?.nodes || {}))
 
   const totals = computed(() => {
@@ -73,12 +109,29 @@ export function useRunDetail(getRunId) {
     }
   })
 
+  /** 上一次加载的 run_id —— 换 run 时用来复位面板状态（见 load） */
+  let lastRid = ''
+
   async function load() {
     const rid = getRunId()
     if (!rid) return
+    if (rid !== lastRid) {
+      // 换了 run 就复位面板：上一个 run 的页签选择与「已跳过」对本条没有意义。
+      // 放在 load 里而不是 start 里，是因为 start 还会被 onActivated 调用
+      // （keep-alive 回到本页），那时**不该**把用户选的页签重置掉。
+      lastRid = rid
+      autoJumped = false
+      tabTouched.value = false
+      panelTab.value = 'detail'
+    }
     try {
       run.value = await runApi.get(rid)
       error.value = ''
+      // 待审批出现 → 替用户跳到审批页签（每 run 一次；用户已经动过面板就不跳）
+      if (!autoJumped && !tabTouched.value && pendingApprovals.value.length) {
+        autoJumped = true
+        panelTab.value = 'approvals'
+      }
     } catch (err) {
       error.value = err?.message || '加载 run 失败'
     } finally {
@@ -132,6 +185,11 @@ export function useRunDetail(getRunId) {
   function selectNode(nid) {
     selectedNode.value = nid
     detailTab.value = 'output'
+    // 点节点 = 要看它的详情 → 切到详情页签。
+    // 同时标记「用户已动过面板」：他正在看某个节点时，不该被后台出现的审批拽走
+    // （待审批的徽标在任何页签下都看得见，不跳也不会漏）。
+    tabTouched.value = true
+    panelTab.value = 'detail'
   }
 
   return {
@@ -148,6 +206,14 @@ export function useRunDetail(getRunId) {
     totals,
     detail,
     detailTab,
+    /** 右侧面板页签：`detail` | `approvals` */
+    panelTab,
+    /** 切面板页签（用户显式操作，会关掉后续的自动跳转） */
+    setPanelTab,
+    /** 待审批（阻塞态，决定徽标显不显示） */
+    pendingApprovals,
+    /** 全部审批（待办排前）—— 页签里的列表用它，不是 pendingApprovals */
+    approvals,
     selectedNode,
     stopping,
     start,

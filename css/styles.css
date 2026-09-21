@@ -8364,3 +8364,154 @@ textarea.cmdb-input { resize: vertical; }
     border-radius: 6px;
     padding: 10px 12px;
 }
+
+/* ==========================================================================
+   Run 详情 · 右侧面板页签（节点详情 / 审批）
+   ==========================================================================
+   全部是**新类**。`.bs-tabs` / `.bs-tab` 那一套是 legacy 的 Flow Diagram 弹框在用
+   （js/app.js:8352，两档、尺寸更小），`.bs-approvals` 与 legacy `#pcRunApprovals`
+   共用 —— 按本仓规矩共用类不改，覆盖一律按页面 id 限定。
+   -------------------------------------------------------------------------- */
+
+.bs-panel-tabs {
+    display: flex;
+    gap: 4px;
+    flex: 0 0 auto;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.bs-panel-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    margin-bottom: -1px;          /* 下边框压住容器那条，避免双线 */
+    font-size: 12px;
+    font-weight: 600;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.bs-panel-tab.active {
+    color: var(--accent-blue);
+    border-bottom-color: var(--accent-blue);
+}
+
+/* 待审批徽标。
+   用红底 + 呼吸而不是一个灰数字：待审批是**阻塞态**（run 停在那儿等人），
+   漏看等于这条 run 一直挂着。它挂在**页签按钮**上，所以切到「节点详情」时
+   照样在 —— 这就是"切走也要有提示"那部分的实现。
+   动画沿用本表既有的 dot-pulse 形状（三档 box-shadow 扩散）。 */
+.bs-panel-tab-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--accent-red);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    animation: bsApprovalBadgePulse 1.8s ease-in-out infinite;
+}
+
+@keyframes bsApprovalBadgePulse {
+    0%   { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); }
+    70%  { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+/* 动效是"提醒"不是"信息"：徽标本身（红底 + 数字）已经把话说全了，
+   所以关掉动画不丢任何东西。 */
+@media (prefers-reduced-motion: reduce) {
+    .bs-panel-tab-badge { animation: none; }
+}
+
+.bs-approval-none {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    padding: 8px 0;
+}
+
+/* 已处理的审批（谁批的 / 为什么驳回），待审批卡片之下。 */
+.bs-approval-history {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 0 0 auto;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.bs-approval-history-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.bs-approval-history-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    font-size: 11px;
+}
+
+.bs-approval-history-node {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* 配色与 .bs-badge-* 同源（绿=通过、红=驳回、橙=超时），不再另起一套 */
+.bs-approval-history-status {
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.bs-approval-history-status.is-approved      { background: #dcfce7; color: #166534; }
+.bs-approval-history-status.is-rejected      { background: #fee2e2; color: #b91c1c; }
+.bs-approval-history-status.is-timed_out     { background: #ffedd5; color: #c2410c; }
+.bs-approval-history-status.is-waiting_approval { background: #fef3c7; color: #92400e; }
+
+.bs-approval-history-by {
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* 驳回理由可能很长 —— 截断 + title 看全文（不换行撑高整行） */
+.bs-approval-history-comment {
+    min-width: 0;
+    color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* 页签容器的滚动与高度。 */
+#page-run-detail .bs-panel-approvals {
+    flex: 1 1 auto;
+    min-height: 0;                /* 不写这句 flex 子项不收缩，会顶破面板的 height */
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 滚动**上移到页签容器**：`.bs-approvals` 自带的 max-height:320 + overflow-y
+   在页签里会变成"滚动区套滚动区"，滚轮停在内层时看着像卡住。
+   该类与 legacy 共用，故按页面 id 限定覆盖，不动它本身的规则。 */
+#page-run-detail .bs-panel-approvals .bs-approvals {
+    max-height: none;
+    overflow-y: visible;
+}
