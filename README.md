@@ -63,6 +63,10 @@ server {
     # 内嵌页 /architecture/），所以要再来一条。详见 ArchitectureView.vue。
     location = /architecture { try_files /index.html =404; }
 
+    # 同理。Security Ops 也是两边同名（Vue 路由 /security-ops、内嵌页 /security-ops/）。
+    # 详见 SecurityOpsView.vue。
+    location = /security-ops { try_files /index.html =404; }
+
     location / {
         try_files $uri $uri/ /index.html;    # history 模式回退，直达 URL 刷新才不 404
     }

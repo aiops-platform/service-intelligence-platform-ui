@@ -63,15 +63,32 @@ python3 tools/make-offline-page.py --page <name> --refresh
 
 ## 4. 扫写死的文案，补 `tools/tenant_copy.py`
 
-这一页是另一套应用，它有自己的**写死数字**（`893 apps · 22 portfolios` 之类），
-不跟着租户变。页面其余部分读 snapshot、本来就按租户算 —— 于是切租户时
-「标题说 893 apps、正下方 KPI 说 50 apps」。
+这一页是另一套应用，它有自己的**写死数据**，不跟着租户变。页面其余部分读 snapshot、
+本来就按租户算 —— 于是切租户时「标题说 893 apps、正下方 KPI 说 50 apps」。
+
+⚠️ **写死的不只是句子，还有结构化数据。** 两类都要查，第二类更隐蔽：
+
+| 类型 | 例子（Security Ops 实测） | 失败方式 |
+|---|---|---|
+| 文本 | `INC13075702` / `1,809`（事故号与子事件数） | 说了错话 —— 同屏与按租户算的 KPI 自相矛盾 |
+| **数据** | `appKey:"manhattan wms"` | **整节静默消失** |
+
+数据类的机制：inspector 用 `snapshot.apps.find(t=>t.appKey===e.appKey)` 反查，
+查不到时渲染走 `s && (…)` 短路 —— 不报错、不留空态、只是少了那一节。
+实测那 5 个 appKey **在作者那个租户上全都正常**（页面就是照着它写的），
+只有切到别的租户才消失，所以很容易一路 ✓ 过去。
 
 ```bash
-python3 .claude/skills/sip-embed-page/scripts/check-embed-wiring.py <name>   # 「疑似」那几条就是
+python3 .claude/skills/sip-embed-page/scripts/check-embed-wiring.py <name>
+#   「疑似未跟随租户的固定文案」—— 文本类，逐条判断
+#   「写死的 appKey 有 N 个在部分租户的 estate 里查不到」—— 数据类，带 命中 N/M 个租户
 ```
 
-两处要改（`LEGACY` 加原文，`tenant_pairs()` 加替换值）：
+⚠️ **脚本不是全覆盖** —— 它按「数字 + 房地产名词」找文本，`1,809 child events`
+这种（`child events` 不在名词表里）它**不报**。Security Ops 那两个最要紧的写死值
+就是人工读 chunk 才发现的。**不要只信脚本的 ✓。**
+
+文本类两处要改（`LEGACY` 加原文，`tenant_pairs()` 加替换值）：
 
 ```python
 # LEGACY：原文必须是**渲染后的 DOM 文本**（不是 JS 源码里的转义形式）
@@ -83,6 +100,38 @@ if apps and pf and pj:
 
 改写器认**文本节点 + `title` / `placeholder` / `aria-label`**，做子串替换，所以
 `aria-label` 里的数字也改得到；而 `input` 的 `value` 不在白名单里。
+
+**能拆成裸串就拆裸串**：若某个串在该页**每一次出现**都指同一件事
+（Security Ops 的 `INC13075702` 5 处、`1,809` 4 处，全是同一场风暴），
+裸串一条就全覆盖，含渲染成裸数字的 chip；整句列出反而更脆 —— 站点改一个字就静默失配。
+
+⚠️ **但裸串是「全站」生效的** —— `__SIPCOPY__` 每页一份、内容却是同一套
+（`inject()` 按租户出表，**不按页**），所以裸串会一并改到别的页面。
+下裸串之前必须 grep **所有** chunk（不只该页的）看它在别处是什么意思：
+
+```bash
+for f in public/_next/static/chunks/*.js; do
+  grep -o ".\{60\}<裸串>.\{45\}" "$f" | head -5 && echo "  ^^ $(basename $f)"
+done
+```
+
+- 若都指同一件事 → 可以下，而且顺带把别的页面漏掉的同类写死值修一致（值得记进 changelog）；
+- 若**有一处含义不同** → 退回整句替换，或改用 chunk 补丁（运行期派生）。
+
+实测（Security Ops 那两个串）：在 `0t1fyt7wcotiz.js`（Service Ops）、
+`100pim9o6kpoy.js`（Business Ops）、`0wuztp2.9oz~8.js`（数据 bundle）里也出现，
+逐处核对**都是同一场风暴**，所以下了裸串并逐页验过渲染。
+
+数据类要写成**运行期派生**（每个租户的值不同，烤死任何一个都会让其余租户错）：
+
+```python
+# 先确认作用域安全 —— 改坏的话整页白屏，比原问题更糟
+SEC_APPKEY_FIND = 'appKey:"manhattan wms"'
+SEC_APPKEY_REPL = 'appKey:(i.snapshot.topStorm||{}).appKey'   # `||{}` 是兜底，别省
+```
+
+前提：目标位置能访问到数据命名空间（用括号配平核对该表达式与 `i.snapshot`
+是否**同一作用域**、`i` 有没有被遮蔽），且 `count()` 唯一、不唯一就静默跳过。
 
 ## 5. Vue 接线
 
@@ -104,13 +153,16 @@ c 的三处为什么必须成对：`/architecture` 是 Vue 路由、`/architectu
 
 ## 6. 重建**全部**页面
 
-`public/_next/` 与 `__SIPCOPY__` 是四页**共用**的。只重建新那页，另外几页的租户表就停在旧状态。
+`public/_next/` 与 `__SIPCOPY__` 是全部页面**共用**的。只重建新那页，另外几页的租户表就停在旧状态。
 
 ```bash
-for p in constellation business-ops service-ops <name>; do
+for p in constellation business-ops service-ops architecture security-ops; do
   python3 tools/make-offline-page.py --page $p | grep -E '✓ 输出|✗'
 done
 ```
+
+> 这个循环**必须与 `PAGES` 的键一致** —— 漏一页的表现是那一页的 `__SIPCOPY__`
+> 少几条替换对（`git status` 里能看到它的 `index.html` 没动），而构建输出一切正常。
 
 ## 7. 自检 + 人眼确认
 
@@ -153,6 +205,9 @@ HEAD 版对照一次。
 | 漏 `DOMAIN_COMPONENTS` | 那个域还是空壳（落到 service-ops 概览） | 登记一次即可（空壳域不走 MIGRATED） |
 | 只重建了一页 | 另外几页的租户表缺租户 | `public/_next/` 是共用的，全量重建 |
 | 写死数字没进 `LEGACY` | 标题与 KPI 各说各话 | 见第 4 步 |
+| **写死的 appKey 在别的租户里不存在** | **该节静默消失**（`s && (…)` 短路） | 改运行期派生；先核对作用域 |
+| 只信自检脚本的 ✓ | 漏掉「数字 + 非房地产名词」的写死值 | 脚本不全覆盖，人工读一遍 chunk |
+| 裸串替换改到别的页 | 不报错，别的页文案被一起改 | `__SIPCOPY__` 按租户出表不按页；下裸串前 grep 全部 chunk |
 | 改写器兜底租户 ≠ `DT_DEFAULT` | 没设租户时数据走 otr、文案走 retail | 两处同取 `DT_DEFAULT`（已修，别写死字面量） |
 | 手改 `public/` | 下次重建**静默回退** | 一律做成 `tenant_copy.py` 的声明式补丁 |
 
@@ -161,4 +216,5 @@ HEAD 版对照一次。
 - `tools/make-offline-page.py` 文件头 —— 为什么必须起 HTTP、为什么保存的 HTML 不能用、路径为什么不能改
 - `src/components/NextEmbed.vue` 文件头 —— 高度链、两条菜单栏怎么剥、加载检测为什么有三层
 - `src/views/<name>/<Name>View.vue` —— 每个域自己的理由（尤其 `ArchitectureView.vue` / `ServiceOpsView.vue` 把同名冲突写全了）
+- `src/views/security-ops/SecurityOpsView.vue` —— 文件头有「本页哪些写死内容被补掉了、哪些没有」的清单
 - `CLAUDE.md`「内嵌页」一节 —— 必须遵守的不变量

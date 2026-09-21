@@ -2,12 +2,13 @@
 """
 把部署站的页面做成本地可跑、可交互的离线副本。
 
-四个页面，同一套 Next.js 外壳、同一批 chunk，只是入口路由不同：
+五个页面，同一套 Next.js 外壳、同一批 chunk，只是入口路由不同：
 
     --page constellation   部署站 `/`              → public/constellation-app.html
     --page business-ops    部署站 `/business-ops/`  → public/business-ops/index.html
     --page service-ops     部署站 `/service-ops/`   → public/service-ops/index.html
     --page architecture    部署站 `/architecture/`  → public/architecture/index.html
+    --page security-ops    部署站 `/security-ops/`  → public/security-ops/index.html
 
 > 除 constellation 外，产出路径都是**目录索引**（`<页>/index.html`）而不是随手起的
 > 文件名 —— 内层用 `usePathname()` 查面板表决定 h1，路径必须精确等于面板表里的
@@ -169,6 +170,19 @@ PAGES = {
         # 路径与 Vue 路由**同名**，冲突处置与 service-ops 完全一致（见 vite.config.js）。
         "out": ("architecture", "index.html"),
         "vendor_sub": "architecture",
+        "shared_chunks": True,
+    },
+    "security-ops": {
+        "site_path": "/security-ops/",
+        # ⚠️ 同样不能随意：面板表里是
+        #     `{id:"security-ops", index:7, label:"Security Ops", shortLabel:"Security",
+        #       route:"/security-ops", subtitle:"Vulnerability heatmap · attack surface ·
+        #       freeze risk"}`（**没有 pool**，与 finops 一样），
+        # 对不上时内层 h1 静默变成 "SIP"。
+        # 路径与 Vue 路由**同名**，冲突处置与 architecture / service-ops 完全一致
+        # （见 vite.config.js 的 EMBED_PAGES 与 README 的 nginx 片段）。
+        "out": ("security-ops", "index.html"),
+        "vendor_sub": "security-ops",
         "shared_chunks": True,
     },
 }
@@ -381,6 +395,14 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
                 print(f"  兜底租户：retail（站点原生）→ {tenant_copy.DT_DEFAULT}")
             elif dt != "already":
                 print(f"  ! 兜底租户未改：{dt}")
+            # Security Ops 的 case inspector「Linked app」—— 写死的 appKey 只存在于
+            # best-buy-reference 租户，其余租户下整块静默消失。改成读本租户的快照。
+            sl = tenant_copy.patch_security_ops_linked_app(chunks_dir)
+            if sl == "applied":
+                print("  Security Ops：Linked app → 本租户的 topStorm.appKey"
+                      "（原为写死的 best-buy app）")
+            elif sl != "already":
+                print(f"  ! Security Ops Linked app 未改：{sl}")
     except Exception as e:
         print(f"    ! 注入租户文案失败，跳过：{e}")
 

@@ -1,7 +1,7 @@
 <!--
-  Next.js 内嵌页 —— Constellation 与 Business Ops 共用。
+  Next.js 内嵌页 —— Constellation / Business Ops / Service Ops / Architecture / Security Ops 共用。
 
-  两个域背后都是**另一套 Next.js 应用**（部署站 `sip-platform.web.app`），不是本仓的产物。
+  这些域背后都是**另一套 Next.js 应用**（部署站 `sip-platform.web.app`），不是本仓的产物。
   为什么内嵌而不是用 Vue 重写，各域自己的理由写在各自的视图里。
 
   ## 资源怎么来
@@ -12,7 +12,8 @@
       public/business-ops/index.html    入口（这个路径不能改，见 BusinessOpsView.vue）
       public/service-ops/index.html     入口（同上，见 ServiceOpsView.vue）
       public/architecture/index.html    入口（同上，见 ArchitectureView.vue）
-      public/_next/**                   chunk / css / 字体（四页共用）
+      public/security-ops/index.html    入口（同上，见 SecurityOpsView.vue）
+      public/_next/**                   chunk / css / 字体（五页共用）
 
   Vite 的 `public/` 是**按根伺服**的，所以内层的 `/_next/…`（turbopack 硬编码的根绝对
   路径）在 dev 和 build 下都对得上，不需要任何 Vite 插件。`src/` 里也不出现
