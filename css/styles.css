@@ -8125,53 +8125,84 @@ textarea.cmdb-input { resize: vertical; }
     border: 1px solid #fde68a;
 }
 
+/* 节点详情报表面板的高度上限 —— **只放开这两个 Vue 页面**。
+   `.bs-detail` 原带 `max-height: 300px; overflow-y: auto`，于是 952px 的内容
+   只露得出 2 个字段，其余要在一个嵌套滚动区里翻 —— 与"字段都看得见"直接冲突。
+   ⚠️ 不能直接改 `.bs-detail`：legacy `js/app.js` 的 Flow Diagram 弹框用的是同一套
+   类名（同 `.bs-canvas` 那条规矩），所以按页面 id 限定。
+   不限高也不会失控：长字符串默认折叠到 4 行（见 .bs-payload-clamp）。 */
+#page-run-detail .bs-detail,
+#page-bug-solve .bs-detail {
+    max-height: none;
+    overflow: visible;
+}
+
 /* ====== 节点入参 / 输出的按字段展示（NodePayload.vue）====== */
-/* 取代原先的 <pre> 直出 JSON —— 一个上千字的值会把其它字段顶出屏幕，
-   看起来像"这个节点只收到一个输入"（见组件头部的说明）。 */
+/*
+  版式参照 Constellation/Business Ops 的 Inspector 面板 —— 同一套设计语言：
+    · 字段名 = 小号、大写、带字距的 monospace 灰标签（对应那边的 INCIDENTS / PER DAY）
+    · 值在标签**下方**，用正文字体、比标签更深更大
+    · 数字/布尔走等宽 + tabular-nums（对应 450 / 99.00）
+    · 并列的短值用带边框的胶囊（对应 servicenow / cmdb / dynatrace）
+    · 成组的值进卡片
+
+  ⚠️ 类名一律 `bs-payload-*` / `bs-field*` / `bs-chip` / `bs-card`。
+  **`.bs-content` 不能动** —— legacy `js/app.js:8237` 也在用它（那条 `.bs-content pre`
+  是老世界的样式）。与本仓「共用类名只加修饰类」的规矩一致。
+*/
 .bs-payload {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    font-size: 11px;
-    line-height: 1.6;
+    gap: 16px;
 }
 
-/* 嵌套层：左侧一道细线 + 缩进，比纯缩进更容易看出层级 */
+/* 顶层：白卡片。与 Inspector 里那些白底细边框的块一致 */
+.bs-payload-top {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 14px 16px;
+}
+
+/* 嵌套：不套第二层边框（会变成"盒子里的盒子"），改用左侧竖线标层级 */
 .bs-payload-nested {
+    padding-left: 10px;
     border-left: 2px solid var(--border-color);
-    padding-left: 8px;
-    margin-top: 2px;
+    gap: 12px;
 }
 
-.bs-payload-label {
+.bs-field { min-width: 0; }
+
+/* 字段名：Inspector 的标签样式 —— 大写 + 字距 + monospace + 灰 */
+.bs-field-label {
     font-family: var(--font-mono);
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
     color: var(--text-tertiary);
-}
-
-.bs-payload-row {
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
-}
-
-/* 键列固定宽度 + 右对齐：值从同一条竖线开始，扫读时不用左右找 */
-.bs-payload-key {
-    flex: 0 0 96px;
-    font-family: var(--font-mono);
-    font-size: 10.5px;
-    font-weight: 600;
-    color: var(--text-tertiary);
-    text-align: right;
-    padding-top: 1px;
+    margin-bottom: 5px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.bs-payload-val {
-    flex: 1;
+/* 数组项的 #1 / #2 序号：胶囊而不是标签，免得和字段名混在一起 */
+.bs-payload-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+}
+
+/* 值：正文字体，比标签深、比标签大 —— 层级靠这个拉开 */
+.bs-field-value {
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: var(--text-primary);
     min-width: 0;
 }
 
@@ -8179,7 +8210,15 @@ textarea.cmdb-input { resize: vertical; }
     /* 摘要类字段里有换行，保留它们；同时长英文串要能断行 */
     white-space: pre-wrap;
     word-break: break-word;
-    color: var(--text-secondary);
+}
+
+/* 数字 / 布尔：等宽 + 等宽数字，与 Inspector 里的 450 / 99.00 一致。
+   为什么布尔也走等宽：它和数字一样是"读数"而非"读句子"。 */
+.bs-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    letter-spacing: -0.01em;
 }
 
 /* 长值折叠：默认 clamp 到 4 行，展开后不限高 */
@@ -8197,9 +8236,12 @@ textarea.cmdb-input { resize: vertical; }
 }
 
 .bs-payload-toggle {
-    margin-top: 2px;
+    display: block;
+    margin-top: 4px;
     padding: 0;
-    font-size: 10.5px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
     color: var(--accent-blue);
     background: none;
     border: none;
@@ -8214,12 +8256,37 @@ textarea.cmdb-input { resize: vertical; }
     font-style: italic;
 }
 
-.bs-payload-arr {
+/* 标量数组 → 胶囊并列（对应 servicenow / cmdb / dynatrace 那排） */
+.bs-chips {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: flex-start;
 }
 
-.bs-payload-item {
-    min-width: 0;
+.bs-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    word-break: break-all;
+}
+
+/* 对象数组 → 每项一张卡（对应 CROSS-SOURCE INSIGHTS 那两张） */
+.bs-payload-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.bs-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 10px 12px;
 }

@@ -92,32 +92,46 @@ function isLong(v) {
 </script>
 
 <template>
-  <div class="bs-payload" :class="{ 'bs-payload-nested': depth > 0 }">
-    <div v-if="label" class="bs-payload-label">{{ label }}</div>
+  <!--
+    版式参照 Constellation/Business Ops 的 Inspector 面板（同一套设计语言）：
+    字段名是**小号大写字距 monospace 的灰标签**（如 `INCIDENTS` / `PER DAY`），
+    值在其下方用正文字体、比标签更深更大；数字走等宽 + tabular-nums；
+    并列的短值用带边框的胶囊（如 `servicenow` `cmdb`）；成组的值进卡片。
+  -->
+  <div class="bs-payload" :class="depth > 0 ? 'bs-payload-nested' : 'bs-payload-top'">
+    <div v-if="label" class="bs-field-label bs-payload-badge">{{ label }}</div>
 
-    <div v-for="e in entries" :key="e.k" class="bs-payload-row">
-      <div class="bs-payload-key" :title="String(e.k)">{{ e.k }}</div>
-      <div class="bs-payload-val">
-        <!-- 对象 → 递归 -->
+    <div v-for="e in entries" :key="e.k" class="bs-field">
+      <div class="bs-field-label" :title="String(e.k)">{{ e.k }}</div>
+      <div class="bs-field-value">
+        <!-- 对象 → 递归（缩进块，不再是 key: {…} 一坨） -->
         <NodePayload v-if="isObject(e.v)" :value="e.v" :depth="depth + 1" />
 
         <!-- 数组 -->
-        <div v-else-if="Array.isArray(e.v)" class="bs-payload-arr">
+        <template v-else-if="Array.isArray(e.v)">
           <div v-if="!e.v.length" class="bs-payload-empty">（空）</div>
-          <div v-for="(it, i) in e.v" :key="i" class="bs-payload-item">
-            <NodePayload v-if="isObject(it)" :value="it" :depth="depth + 1" :label="`#${i + 1}`" />
-            <!-- 数组里的长字符串同样折叠：`notable[].error_message` 就是这种 -->
-            <template v-else-if="isLong(it)">
-              <div class="bs-payload-text bs-payload-clamp"
-                   :class="{ open: expanded.has(`${e.k}[${i}]`) }">{{ it }}</div>
-              <button type="button" class="bs-payload-toggle"
-                      @click="toggle(`${e.k}[${i}]`)">
-                {{ expanded.has(`${e.k}[${i}]`) ? '收起' : `展开（${it.length} 字符）` }}
-              </button>
+          <!-- 全是短标量 → 胶囊并列，比竖排一列省得多 -->
+          <div v-else-if="!e.v.some(isObject)" class="bs-chips">
+            <template v-for="(it, i) in e.v" :key="i">
+              <span v-if="!isLong(it)" class="bs-chip">{{ fmt(it) }}</span>
+              <!-- 数组里的长字符串同样折叠：`notable[].error_message` 就是这种 -->
+              <template v-else>
+                <div class="bs-payload-text bs-payload-clamp"
+                     :class="{ open: expanded.has(`${e.k}[${i}]`) }">{{ it }}</div>
+                <button type="button" class="bs-payload-toggle" @click="toggle(`${e.k}[${i}]`)">
+                  {{ expanded.has(`${e.k}[${i}]`) ? '收起' : `展开（${it.length} 字符）` }}
+                </button>
+              </template>
             </template>
-            <span v-else class="bs-payload-text">{{ fmt(it) }}</span>
           </div>
-        </div>
+          <!-- 含对象 → 每项一张带序号的卡片 -->
+          <div v-else class="bs-payload-items">
+            <div v-for="(it, i) in e.v" :key="i" class="bs-card">
+              <NodePayload v-if="isObject(it)" :value="it" :depth="depth + 1" :label="`#${i + 1}`" />
+              <span v-else class="bs-payload-text">{{ fmt(it) }}</span>
+            </div>
+          </div>
+        </template>
 
         <!-- 长文本：默认折叠，点开看全文 -->
         <template v-else-if="isLong(e.v)">
@@ -129,8 +143,13 @@ function isLong(v) {
           </button>
         </template>
 
-        <!-- 普通标量 -->
-        <span v-else class="bs-payload-text" :class="{ 'bs-payload-empty': isEmpty(e.v) }">
+        <!-- 标量。数字/布尔走等宽 —— 与 Inspector 里的 450 / 99.00 一致 -->
+        <span v-else
+              class="bs-payload-text"
+              :class="{
+                'bs-payload-empty': isEmpty(e.v),
+                'bs-num': typeof e.v === 'number' || typeof e.v === 'boolean',
+              }">
           {{ fmt(e.v) }}
         </span>
       </div>
