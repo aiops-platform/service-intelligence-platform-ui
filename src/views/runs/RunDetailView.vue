@@ -10,6 +10,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useRunDetail } from './useRunDetail'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
+import { nodeStatusLabel, runStatusLabel } from '@/utils/runStatus'
 import { agentsApi } from '@/api/agentflow'
 import { formatTime } from '@/utils/time'
 
@@ -108,9 +109,9 @@ watch(
         </span>
       </h1>
       <div style="display: flex; align-items: center; gap: 12px">
-        <!-- 展示状态：halted 的 run 不再是绿色的 success（见 utils/runStatus） -->
+        <!-- 展示状态：halted / rejected 的 run 不再是绿色的 success（见 utils/runStatus） -->
         <span class="alert-tag" :class="'status-' + displayStatus">
-          {{ displayStatus || '…' }}
+          {{ runData ? runStatusLabel(runData) : '…' }}
         </span>
         <button v-if="running" class="btn btn-outline" :disabled="stopping" @click="stop">
           {{ stopping ? '停止中…' : '停止' }}
@@ -205,7 +206,9 @@ watch(
           <template v-if="detail">
             <div class="bs-detail-head">
               <span class="bs-detail-node">{{ detail.nid }}</span>
-              <span class="bs-badge" :class="'bs-badge-' + detail.status">{{ detail.status }}</span>
+              <span class="bs-badge" :class="'bs-badge-' + detail.status">
+                {{ nodeStatusLabel(detail.status) }}
+              </span>
               <span class="bs-detail-meta">
                 {{ fmtMs(detail.durationMs) }} · tokens {{ detail.tokens }} · cost {{ detail.cost }}
                 <template v-if="detail.attempts > 1"> · 重试 {{ detail.attempts - 1 }}</template>
@@ -242,7 +245,7 @@ watch(
             <td>{{ (runData?.graph?.nodes || []).find((g) => g.id === nid)?.agent || '—' }}</td>
             <td>
               <span class="alert-tag" :class="'status-' + nodeStatus(nid, n.status)">
-                {{ nodeStatus(nid, n.status) }}
+                {{ nodeStatusLabel(nodeStatus(nid, n.status)) }}
               </span>
             </td>
             <td class="col-time">{{ fmtMs(n.duration_ms) }}</td>

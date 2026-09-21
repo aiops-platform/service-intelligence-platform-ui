@@ -6,7 +6,7 @@
  */
 import { ref, computed } from 'vue'
 import { ticketApi, runApi } from '@/api/agentflow'
-import { REJECTED } from '@/utils/runStatus'
+import { REJECTED, runStatusLabel, statusLabel } from '@/utils/runStatus'
 
 /**
  * 还在跑的节点状态。
@@ -18,9 +18,9 @@ import { REJECTED } from '@/utils/runStatus'
 const ACTIVE_NODE_STATUSES = new Set(['running', 'pending', 'waiting_approval'])
 
 const STATUS_FILTERS = [
-  { value: 'all', label: 'All' },
-  { value: 'new', label: 'New' },
-  { value: 'running', label: 'In Progress' },
+  { value: 'all', label: '全部' },
+  { value: 'new', label: '新建' },
+  { value: 'running', label: '进行中' },
   // 停在审批门等人批 —— 不往下走了，与"进行中"必须分开
   { value: 'waiting_approval', label: '待审批' },
   // 审批被否决：run 的 status 也是 success，不单列会被显示成 resolved
@@ -28,8 +28,8 @@ const STATUS_FILTERS = [
   // 跑完了但**什么都没诊断出来**：run 停在 halt 节点。与"进行中"必须分开 ——
   // 它不会自己往下走了，等人补信息（服务名 / trace_id）。
   { value: 'needs_info', label: '需要补充信息' },
-  { value: 'resolved', label: 'Resolved' },
-  { value: 'failed', label: 'Failed' },
+  { value: 'resolved', label: '已解决' },
+  { value: 'failed', label: '失败' },
 ]
 
 /**
@@ -94,21 +94,27 @@ export function ticketDisplayStatus(t) {
   return RUN_TERMINAL_TO_TICKET[r.status] || t?.status || ''
 }
 
-/** 展示状态的文案。表里没有的原样透出（后端加新状态时不该显示成空白）。 */
-const STATUS_LABELS = { needs_info: '缺少必要信息', waiting_approval: '待审批' }
-
 /**
- * 展示状态的文案。**入参是工单**（不是状态字符串）—— 因为否决还要看**理由**。
+ * 展示状态的**中文**文案。**入参是工单**（不是状态字符串）。
  *
- * 超时和人工驳回在状态上都是"没通过"，但读的人需要知道**有没有人拍过板**：
- * "没人来处理"和"有人明确否了"是两个完全不同的后续动作。
+ * 文案统一来自 `@/utils/runStatus` 的 `STATUS_LABELS`；这里只多一个分支：
+ * 否决要看**理由**才能定文案（超时 / 人工驳回）。
+ *
+ * ⚠️ 除了那个分支，**一律从工单自己的展示状态出发**，不能直接甩给 run 的文案：
+ * 同一件事在两级叫法不同 —— run 说「中断」（技术视角，停在 halt 节点），
+ * 工单说「缺少必要信息」（业务视角，等人补服务名 / trace_id）。
+ * 实测踩过：改成 `runStatusLabel(t.latest_run)` 后，列表里 6 条
+ * "缺少必要信息" 一起变成了"中断"。
+ *
+ * 传字符串进来也兼容（旧调用点），走纯查表。
  */
 export function ticketStatusLabel(t) {
-  const st = typeof t === 'string' ? t : ticketDisplayStatus(t)
+  if (typeof t === 'string') return statusLabel(t)
+  const st = ticketDisplayStatus(t)
   if (st === REJECTED) {
     return t?.latest_run?.reject_reason === 'timeout' ? '审批超时' : '审批不通过'
   }
-  return STATUS_LABELS[st] || st
+  return statusLabel(st)
 }
 
 /** 默认时间窗：最近 1 小时。v5.5 §7.1 要求窗口由调用方下发，不能留给平台猜。 */

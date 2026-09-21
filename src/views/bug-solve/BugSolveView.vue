@@ -8,6 +8,7 @@
 <script setup>
 import { ref, onMounted, onActivated } from 'vue'
 import { useBugSolveRun, statusClass } from './useBugSolveRun'
+import { nodeStatusLabel, statusLabel } from '@/utils/runStatus'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
 import { agentsApi } from '@/api/agentflow'
@@ -174,7 +175,7 @@ onActivated(loadWorkflows)
           </div>
           <div class="bs-stat">
             <span class="bs-stat-label">状态</span
-            ><span class="bs-stat-value" id="bsStatus">{{ runStatus || '—' }}</span>
+            ><span class="bs-stat-value" id="bsStatus">{{ runStatus ? statusLabel(runStatus) : '—' }}</span>
           </div>
           <div class="bs-stat">
             <span class="bs-stat-label">当前节点</span
@@ -225,7 +226,7 @@ onActivated(loadWorkflows)
           <template v-if="detail">
             <div class="bs-detail-head">
               <span class="bs-detail-node">{{ detail.nid }}</span>
-              <span class="bs-badge" :class="'bs-badge-' + detail.status">{{ detail.status }}</span>
+              <span class="bs-badge" :class="'bs-badge-' + detail.status">{{ nodeStatusLabel(detail.status) }}</span>
               <span class="bs-detail-meta">tokens {{ detail.tokens }} · cost {{ detail.cost }}</span>
             </div>
             <div class="bs-tabs">

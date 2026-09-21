@@ -8,7 +8,7 @@
 import { ref, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTickets } from './useTickets'
-import { runStatusOf } from '@/utils/runStatus'
+import { runStatusLabel, runStatusOf, statusLabel } from '@/utils/runStatus'
 import { formatTimeAgo } from '@/utils/time'
 
 const router = useRouter()
@@ -324,7 +324,7 @@ onActivated(load)
                   <!-- 走 runStatusOf 而不是 r.status：停在 halt 节点的 run 也是
                        success，直接显示会与列表列（缺少必要信息）自相矛盾 -->
                   <span class="alert-tag" :class="'status-' + runStatusOf(r)">
-                    {{ runStatusOf(r) }}
+                    {{ runStatusLabel(r) }}
                   </span>
                   <span v-if="activeNodeCount(r)" class="alert-tag status-waiting_approval">
                     {{ activeNodeCount(r) }} 个节点进行中
@@ -332,8 +332,9 @@ onActivated(load)
                   <span class="ticket-run-id">{{ r.run_id }}</span>
                 </div>
                 <div class="ticket-run-meta">
-                  <span v-for="[s, n] in nodeBreakdown(r)" :key="s" class="ticket-run-node">
-                    {{ s }} <b>{{ n }}</b>
+                  <span v-for="[s, n] in nodeBreakdown(r)" :key="s" class="ticket-run-node"
+                        :title="s">
+                    {{ statusLabel(s) }} <b>{{ n }}</b>
                   </span>
                   <span v-if="formatDuration(r.created_at, r.updated_at)" class="ticket-run-dur">
                     耗时 {{ formatDuration(r.created_at, r.updated_at) }}

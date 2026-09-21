@@ -9,6 +9,8 @@
  * 拼 HTML 就是 XSS 口子。
  */
 
+import { statusLabel } from '@/utils/runStatus'
+
 function fmtMs(ms) {
   if (ms === null || ms === undefined) return '—'
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
@@ -25,7 +27,9 @@ export function nodeTipOf(graphNode, runNode, agentDesc) {
   const rows = [
     ['agent', g.agent || '—'],
     ['kind', g.kind || 'agent'],
-    ['status', n.status || 'pending'],
+    // 状态也用中文：这张表在 Run Detail 与 Bug Solve 两处共用，
+    // 与页面上的节点状态文案必须一致（否则同一个节点两个地方叫两个名字）
+    ['status', statusLabel(n.status || 'pending')],
     ['耗时', fmtMs(n.duration_ms)],
     ['tokens', n.tokens ?? 0],
     ['cost', typeof n.cost === 'number' ? n.cost.toFixed(4) : '0.0000'],

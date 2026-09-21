@@ -88,6 +88,82 @@ export function nodeStatusOf(run, nid, rawStatus) {
 }
 
 /**
+ * 状态 → **中文文案**。run 级与节点级共用这一张表。
+ *
+ * ## 为什么收在一处
+ *
+ * 同一个状态会在四个地方露出文字：工单列表列、工单详情的 run 行、详情的节点分布、
+ * Run 详情的节点表。各写一份的结果是同一个状态在不同页面叫不同名字 ——
+ * 这一轮已经因为"分散判定"踩过一次（图是绿的、表写 done、徽章说中断）。
+ *
+ * ## 两条约定
+ *
+ * 1. **表里没有的原样透出**（`statusLabel` 的兜底）。后端加新状态时，
+ *    界面会显示那串英文原名，而**不是**悄悄显示成空白或"其它"—— 宁可难看，
+ *    也不要让人以为看懂了。
+ * 2. `rejected` 与 `rejected-canceled` **必须分开**：
+ *    前者是**人明确驳回**，后者是**超时自动拒绝**（没人来处理）。
+ *    两者后续动作完全不同（一个有明确反馈对象，一个要先找人）。
+ */
+export const STATUS_LABELS = {
+  // —— run 级 ——
+  success: '成功',
+  failed: '失败',
+  cancelled: '已取消',
+  canceled: '已取消',
+  running: '进行中',
+  queued: '排队中',
+  paused: '已暂停',
+  completed: '已完成',
+  // —— 工单级 ——
+  new: '新建',
+  resolved: '已解决',
+  // —— 派生（run 与工单共用）——
+  halted: '中断',
+  rejected: '审批不通过',
+  needs_info: '缺少必要信息',
+  waiting_approval: '待审批',
+  // —— 节点级 ——
+  done: '完成',
+  pending: '等待中',
+  skipped: '已跳过',
+  'rejected-canceled': '审批超时',
+}
+
+/** 状态的中文文案；表里没有的原样透出（见 STATUS_LABELS 的约定 1）。 */
+export function statusLabel(st) {
+  return STATUS_LABELS[st] || st || ''
+}
+
+/**
+ * 节点状态的中文文案。
+ *
+ * 与 `statusLabel` 同一张表 —— 单独留一个名字是为了**调用点自解释**：
+ * 「这里渲染的是节点状态，不是 run 状态」，读代码的人不用去查表里有没有歧义。
+ *
+ * 最要紧的一条：`rejected-canceled` → **审批超时**。
+ * 这串后端原名（"被取消的驳回"）既拗口又说不清是谁做的决定 ——
+ * 而它真正要说的是「**审批超时，自动按不通过处理**」。
+ */
+export function nodeStatusLabel(st) {
+  return statusLabel(st)
+}
+
+/**
+ * run 的**中文**展示文案。
+ *
+ * `rejected` 要再看一眼理由才能定文案 —— 超时（`timeout`）与人工驳回
+ * （`manual`）在状态上是同一个词，但读的人需要知道**有没有人拍过板**。
+ */
+export function runStatusLabel(run) {
+  const st = runStatusOf(run)
+  if (st === REJECTED) {
+    return rejectReasonOf(run) === 'timeout' ? '审批超时' : '审批不通过'
+  }
+  return statusLabel(st)
+}
+
+/**
  * 节点状态 → 着色类名。
  *
  * ⚠️ 类名是 `css/styles.css` 的消费方（`.bs-node-status-*`），改名会**静默掉样式**
