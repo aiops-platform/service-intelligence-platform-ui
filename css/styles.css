@@ -16,6 +16,8 @@
     --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
     --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+    /* 图区高度（唯一真源）。.bs-graph-fit 与右侧详情面板都用它 —— 见 .bs-graph-fit 的说明 */
+    --bs-graph-h: clamp(360px, 62vh, 820px);
 }
 
 * {
@@ -6087,7 +6089,9 @@ svg { fill: currentColor; }
  * Vue 侧一直缺。以前有滚轮/拖拽能自救，改成"固定 fit"之后才成为致命伤。
  */
 .bs-graph-fit {
-    height: clamp(360px, 62vh, 820px);
+    /* 抽成变量：右侧节点详情要与图**等高**（下沿对齐），两处必须用同一个值 ——
+       各写一份的话改了一处另一处就静默错位。 */
+    height: var(--bs-graph-h);
 }
 .bs-graph-fit .bs-zoom {
     flex: 1 1 auto;
@@ -8125,13 +8129,35 @@ textarea.cmdb-input { resize: vertical; }
     border: 1px solid #fde68a;
 }
 
-/* 节点详情报表面板的高度上限 —— **只放开这两个 Vue 页面**。
-   `.bs-detail` 原带 `max-height: 300px; overflow-y: auto`，于是 952px 的内容
-   只露得出 2 个字段，其余要在一个嵌套滚动区里翻 —— 与"字段都看得见"直接冲突。
-   ⚠️ 不能直接改 `.bs-detail`：legacy `js/app.js` 的 Flow Diagram 弹框用的是同一套
-   类名（同 `.bs-canvas` 那条规矩），所以按页面 id 限定。
-   不限高也不会失控：长字符串默认折叠到 4 行（见 .bs-payload-clamp）。 */
-#page-run-detail .bs-detail,
+/*
+ * 节点详情报表面板 —— 按页面分别处理，因为**两个页面的布局不一样**：
+ *
+ *   Run 详情   详情在**右侧栏**（.bs-panel）→ 与图并排，要求下沿对齐
+ *   Bug Solve  详情在**图下方**（.bs-main 内）→ 本来就在流里，没有对齐问题
+ *
+ * ⚠️ `.bs-detail` 与 legacy `js/app.js` 的 Flow Diagram 弹框共用（15 处），
+ *    所以只按页面 id 限定，不改 `.bs-detail` 本身（同 `.bs-canvas` 那条规矩）。
+ */
+
+/* Run 详情：右侧栏**与图等高** —— 下沿对齐。
+   高度用同一个变量，图改了这里跟着改，不会错位。
+   注意是 `height` 而不是 `max-height`：内容比图短时若只给上限，面板会缩到内容高，
+   下沿又对不齐了；等高才是"对齐"的充要条件。 */
+#page-run-detail .bs-panel {
+    height: var(--bs-graph-h);
+}
+
+/* 面板它是 flex 列（上面可能有"待审批"卡片），详情吃掉剩余空间并在内部滚动。
+   `min-height: 0` 不可省：flex 子项的默认下限是内容高度，不写这句它不会收缩，
+   会顶破上面的 height。 */
+#page-run-detail .bs-detail {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+}
+
+/* Bug Solve：详情在图下方，放开上限即可（长字符串本来就会折叠到 4 行） */
 #page-bug-solve .bs-detail {
     max-height: none;
     overflow: visible;
