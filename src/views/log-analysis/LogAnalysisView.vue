@@ -67,7 +67,7 @@ onActivated(() => {
 <template>
   <div id="page-log-analysis" class="page-panel" style="display: block">
     <div class="breadcrumb">
-      Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability
+      Service Ops <span class="breadcrumb-sep">&rsaquo;</span> APM
       <span class="breadcrumb-sep">&rsaquo;</span> <strong>Log Analysis</strong>
     </div>
     <div class="flex justify-between items-center page-header">

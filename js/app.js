@@ -34,8 +34,8 @@
         return text.substring(0, maxLen) + '...[truncated]';
     }
 
-    // ── Problem Record 判定（Smart Inspection 与 Problem Center 共用）─────
-    // 【为什么放顶层】Smart Inspection 徽标上的数字必须**等于**点进 Problem Center 后看到
+    // ── Problem Record 判定（Smart Inspection 与 Diagnosis Center 共用）─────
+    // 【为什么放顶层】Smart Inspection 徽标上的数字必须**等于**点进 Diagnosis Center 后看到
     // 的行数（验收锚点是 #pcRowCount）。这个不变式只有在两侧用**同一套**判定时才成立 ——
     // 各写一份的话，今天能对上纯属巧合，后端一改就静默漂移。所以谓词共享，而不是各自
     // 塞进 initSmartInspection / initProblems 的闭包。
@@ -43,7 +43,7 @@
     // 术语沿用后端（aiops-apm-anomaly-detector）：
     //   - 未解决 = state ∈ {pending, in_progress}。**白名单**而非「排除 resolved/closed/
     //     archived」—— 后端将来加状态时，白名单让两侧**一样地**不计入；黑名单会一边算
-    //     一边不算。当前 5 个状态下两种写法等价，且与 Problem Center 的 "Open" chip 逐字相同。
+    //     一边不算。当前 5 个状态下两种写法等价，且与 Diagnosis Center 的 "Open" chip 逐字相同。
     //   - 类型由证据派生、不入库（后端 router/problems.py 的 _detection_type 也是这么算的）：
     //     metric_anomalies / log_anomalies 谁非空就是谁。**不要**改用 detection_type 等值判断
     //     —— 它的取值是 log/metric/combined/unknown，combined 记录在等值判断下两种筛选都
@@ -78,7 +78,7 @@
      * 该记录是否属于某服务。
      *
      * 两种都要认：
-     *   1. **整串相等** —— Problem Center 的下拉框（#pcServiceFilter）是拿 p.service 的原始值
+     *   1. **整串相等** —— Diagnosis Center 的下拉框（#pcServiceFilter）是拿 p.service 的原始值
      *      建的 option，所以用户可能选中的就是 "gateway-service,order-service" 这一整串；
      *   2. **成员匹配** —— 徽标按单个服务名下钻时要能找到合并记录。
      *
@@ -1414,12 +1414,12 @@
         var isLoading = false;
 
         // ── 问题计数（Alerts / Log Anomalies 两列的数据源）──────────
-        // 两列的数字来自 Problem Center 的数据源（APM :7070），不再是 agentflow 的
+        // 两列的数字来自 Diagnosis Center 的数据源（APM :7070），不再是 agentflow 的
         // alertCount —— 后者线上三个服务**全是 null**，所以两列此前实际都显示 "-"。
         //
         // problemTally: { [serviceName]: { metric: n, log: n } }，只统计**未解决**的问题。
         //   判定全部走 js/app.js 顶层的共享谓词（problemIsOpen / problemHasMetric /
-        //   problemHasLog / problemServiceNames）—— 与 Problem Center 的筛选同一套，
+        //   problemHasLog / problemServiceNames）—— 与 Diagnosis Center 的筛选同一套，
         //   这样徽标数字才等于点进去后 #pcRowCount 的行数。
         // null 表示**从未成功拉到过**（渲染成 "-"，不是 0：不知道 ≠ 没有）。
         var problemTally = null;
@@ -1599,7 +1599,7 @@
          * 用共享谓词把问题列表汇总成 { 服务名: {metric, log} }，只计未解决的。
          *
          * 一条 combined 记录（指标+日志证据都有）在**两列各计一次** —— 这是有意的，也正是
-         * Problem Center 里 Metric / Log 两个 chip 都会列出它的原因，两边因此对得上。
+         * Diagnosis Center 里 Metric / Log 两个 chip 都会列出它的原因，两边因此对得上。
          */
         function buildProblemTally(items) {
             var tally = {};
@@ -1664,7 +1664,7 @@
                 problemServiceNames(p).forEach(function (n) { tokens[n] = true; });
             });
             var tokenList = Object.keys(tokens);
-            console.info('[sip] Smart Inspection × Problem Center 服务名对照：',
+            console.info('[sip] Smart Inspection × Diagnosis Center 服务名对照：',
                 '页面服务 ' + Object.keys(pageNames).length + ' 个',
                 '| 问题里的服务名 ' + tokenList.length + ' 个',
                 '| 两边都没匹配上的：', tokenList.filter(function (n) { return !pageNames[n]; }));
@@ -1724,7 +1724,7 @@
         }
 
         /**
-         * 问题数徽标。kind ∈ {'metric','log'}，决定点击后跳到 Problem Center 的哪个类型筛选。
+         * 问题数徽标。kind ∈ {'metric','log'}，决定点击后跳到 Diagnosis Center 的哪个类型筛选。
          *
          * - count 为 null（问题数据从未成功拉到）→ 灰 "-"，**不带任何属性**，因此不可点：
          *   不能拿「不知道」冒充「没有」，也不该让一个没有内容的徽标可点。
@@ -1766,7 +1766,7 @@
                     '<td>' + renderMetricCell(s.mem, s.memBaseline) + '</td>' +
                     '<td><span class="si-metric-val" style="font-family:SF Mono,monospace;font-size:11px;white-space:nowrap;">' + fmtText(s.disk) + '</span></td>' +
                     // 两列都来自 problemTally（该服务未解决的指标类 / 日志类问题数），
-                    // 点徽标下钻到 Problem Center 的对应筛选。
+                    // 点徽标下钻到 Diagnosis Center 的对应筛选。
                     '<td>' + alertBadge(problemCount(s.name, 'metric'), s.name, 'metric') + '</td>' +
                     '<td>' + alertBadge(problemCount(s.name, 'log'), s.name, 'log') + '</td>' +
                     '<td>' + statusBadge(s.status) + '</td>' +
@@ -2353,8 +2353,8 @@
         }
 
         // ── Event Bindings ────────────────────────────────────────
-        // 问题数徽标点击 → Problem Center，带上「该服务 + 该类型 + 只看未解决」的预筛选。
-        // 经接缝 S3 变成 /problems?service=X&type=metric&state=open，由 Problem Center 的
+        // 问题数徽标点击 → Diagnosis Center，带上「该服务 + 该类型 + 只看未解决」的预筛选。
+        // 经接缝 S3 变成 /problems?service=X&type=metric&state=open，由 Diagnosis Center 的
         // applyQueryFilters() 消费（那边的类型/状态判据与这里同一套共享谓词，所以点进去
         // 的行数 == 徽标上的数字）。
         //
@@ -2479,7 +2479,7 @@
         // 原先这里查的是全文档 `legacyRoot().querySelectorAll('.filter-chip')`，于是每组 chip
         // 都被**追加了第二个** click，且因为 init() 里 initFilterChips 排在最后（见文件末尾），
         // 它总是在持有者之后执行 —— 持有者刚 add('active')，这里立刻 toggle 掉，症状是
-        // Problem Center 的 severity/state chip 点完根本不亮。「All」分支更糟：它会清掉
+        // Diagnosis Center 的 severity/state chip 点完根本不亮。「All」分支更糟：它会清掉
         // **全文档**所有 .filter-chip 的 active，包括别的面板的组。
         const chips = legacyRoot().querySelectorAll('#page-service-ops .filter-chip');
         chips.forEach(function (chip) {
@@ -3952,7 +3952,7 @@
         };
     }
 
-    // ── Problem Center Page ──────────────────────────────────
+    // ── Diagnosis Center Page ──────────────────────────────────
     function initProblems() {
         // 后端地址（同 Monitor Targets）：默认 http://localhost:7070，localStorage 可覆盖。
         var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
@@ -5802,7 +5802,7 @@
                 body: {
                     node_id: nodeId,
                     by: by,
-                    comment: action === 'reject' ? 'rejected from Problem Center' : ''
+                    comment: action === 'reject' ? 'rejected from Diagnosis Center' : ''
                 }
             }).then(function (res) {
                 if (!res.ok) return res.json().then(function (d) { throw new Error((d && d.detail) || ('HTTP ' + res.status)); });

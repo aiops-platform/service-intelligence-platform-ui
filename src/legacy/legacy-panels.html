@@ -782,7 +782,7 @@
     <!-- ====== Smart Inspection Page ====== -->
     <div id="page-smart-inspection" class="page-panel" style="display:none;">
         <div class="breadcrumb">
-            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> <strong>Smart Inspection</strong>
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> APM <span class="breadcrumb-sep">&rsaquo;</span> <strong>Smart Inspection</strong>
         </div>
         <div class="flex justify-between items-center page-header">
             <h1 class="page-title">Smart Inspection <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">App Indicators</span></h1>
@@ -884,7 +884,7 @@
     <!-- ====== Metrics Analysis Page ====== -->
     <div id="page-metrics-analysis" class="page-panel" style="display:none;">
         <div class="breadcrumb">
-            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> <strong>Metrics Analysis</strong>
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> APM <span class="breadcrumb-sep">&rsaquo;</span> <strong>Metrics Analysis</strong>
         </div>
         <div class="flex justify-between items-center page-header">
             <h1 class="page-title">Metrics Analysis <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">CPU / Memory Alerts</span></h1>
@@ -969,10 +969,10 @@
     <!-- ====== Log Analysis Page ====== -->
     <div id="page-problems" class="page-panel" style="display:none;">
         <div class="breadcrumb">
-            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> <strong>Problem Center</strong>
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> APM <span class="breadcrumb-sep">&rsaquo;</span> Smart Inspection <span class="breadcrumb-sep">&rsaquo;</span> <strong>Diagnosis Center</strong>
         </div>
         <div class="flex justify-between items-center page-header">
-            <h1 class="page-title">Problem Center <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">Detected Problems</span></h1>
+            <h1 class="page-title">Diagnosis Center <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">Detected Problems</span></h1>
             <div style="display:flex;align-items:center;gap:12px;">
                 <button class="si-refresh-btn" id="pcRefreshBtn" title="Refresh data">
                     <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
@@ -1064,7 +1064,7 @@
     <!-- ====== Monitor Targets Page ====== -->
     <div id="page-monitor-targets" class="page-panel" style="display:none;">
         <div class="breadcrumb">
-            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> APM <span class="breadcrumb-sep">&rsaquo;</span> <strong>Monitor Targets</strong>
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> APM <span class="breadcrumb-sep">&rsaquo;</span> Smart Inspection <span class="breadcrumb-sep">&rsaquo;</span> <strong>Monitor Targets</strong>
         </div>
         <div class="flex justify-between items-center page-header">
             <h1 class="page-title">Monitor Targets <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">configure once, auto-scheduled</span></h1>
@@ -1111,7 +1111,7 @@
     <!-- ===== Domain Rules ===== -->
     <div id="page-domain-config" class="page-panel" style="display:none;">
         <div class="breadcrumb">
-            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> Observability <span class="breadcrumb-sep">&rsaquo;</span> APM <span class="breadcrumb-sep">&rsaquo;</span> <strong>Domain Rules</strong>
+            Service Ops <span class="breadcrumb-sep">&rsaquo;</span> APM <span class="breadcrumb-sep">&rsaquo;</span> Smart Inspection <span class="breadcrumb-sep">&rsaquo;</span> <strong>Domain Rules</strong>
         </div>
         <div class="flex justify-between items-center page-header">
             <h1 class="page-title">Domain Rules <span style="font-size:12px;color:var(--text-tertiary);margin-left:10px;">per-domain detection rules, form-editable</span></h1>
@@ -1757,7 +1757,7 @@
     </div>
 </div>
 
-<!-- Problem Center Diagnosis Modal：「Analyze」绑定诊断会话后查看诊断内容（轮询后端 /diagnose） -->
+<!-- 诊断模态（Diagnosis Center 的 Analyze）：「Analyze」绑定诊断会话后查看诊断内容（轮询后端 /diagnose） -->
 <div class="ap-modal-overlay" id="pcDiagnoseOverlay">
     <div class="ap-modal">
         <div class="ap-modal-header">
@@ -1768,7 +1768,7 @@
     </div>
 </div>
 
-<!-- Problem Center Run Viewer Modal：in_progress 问题查看 agentflow run 实时分析过程（复用 Bug Solve 的 .bs-* 样式） -->
+<!-- Diagnosis Center Run Viewer Modal：in_progress 问题查看 agentflow run 实时分析过程（复用 Bug Solve 的 .bs-* 样式） -->
 <div class="ap-modal-overlay" id="pcRunOverlay">
     <div class="ap-modal">
         <div class="ap-modal-header">

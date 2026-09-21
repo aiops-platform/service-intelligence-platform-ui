@@ -111,9 +111,13 @@ function captureOriginalHeader() {
 
 watch(() => route.fullPath, syncDomainHeader)
 
-// 折叠状态：改造前是纯本地状态、初始全展开（index.html 里各分组都带 expanded）
+// 折叠状态：改造前是纯本地状态、初始全展开（index.html 里各分组都带 expanded）。
+// 这里列的是**分组键**（nav.js 里的 group.key，不是 slug）：改名前叫 observability 的
+// 那个分组现在是 apm；smart-inspection 是它的子分组，不默认展开就看不见底下三个页面。
+// 顺带清掉历史遗留的 'ticket-workspace' —— 该分组的键一直是 ticket-workspace-svc，
+// 那条从写下来就没生效过。
 const expanded = ref(
-  new Set(['knowledge-studio', 'ticket-workspace', 'ticket-workspace-svc', 'observability', 'apm', 'agent-fleet']),
+  new Set(['knowledge-studio', 'ticket-workspace-svc', 'apm', 'smart-inspection', 'agent-fleet']),
 )
 provide('expandedGroups', {
   has: (key) => expanded.value.has(key),

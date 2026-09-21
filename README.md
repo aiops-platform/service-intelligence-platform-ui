@@ -165,12 +165,22 @@ catch-all 重定向回 `/service-ops` —— 这是有意的，留着可直达�
 > （`NAV` 的成员资格 + `EMPTY_DOMAINS` 的派生 + 渲染时的过滤），而「从 `NAV` 摘掉」
 > 本身已经同时表达了全部三者。
 
-## Observability — Metrics Analysis / Log Analysis（已隐藏）
+## APM — Metrics Analysis / Log Analysis（已隐藏）
 
-Service Ops 域侧边栏 `Observability` 分组下的 **Metrics Analysis** 与 **Log Analysis**
-两个入口已按要求隐藏（2026-09-18），该分组现只剩 `Smart Inspection` 与 `Problem Center`。
+> 分组名原为 `Observability`，2026-09-21 改名为 `APM`（同时摘掉二级 APM 分组、
+> 把 Problem Center / Monitor Targets / Domain Rules 收进 `Smart Inspection` 下一级）。
+> 见 `changelogs/v2.2.18-service-ops-nav-apm-regroup.md`。
+>
+> 同一天稍后 **Problem Center 这个菜单项改名为 `Diagnosis Center`**（URL 仍是 `/problems`，
+> 实体名仍是 problem）—— 见 `changelogs/v2.2.19-…md`。本节正文里出现的 `Diagnosis Center`
+> 与那次改版前的 `Problem Center` 是同一页。
+>
+> 本节其余结论都不受这两次改动影响。
 
-做法还是**只摘导航，不删页面** —— `src/router/nav.js` 的 `observability` 分组里去掉两个叶子。
+**Metrics Analysis** 与 **Log Analysis** 两个入口已按要求隐藏（2026-09-18）。
+按改版后的结构，它们若恢复，会成为 `APM` 分组下的两个叶子，与 `Smart Inspection` 子分组平级。
+
+做法还是**只摘导航，不删页面** —— `src/router/nav.js` 的 `apm` 分组里去掉两个叶子。
 侧边栏由 `NAV` 直接渲染所以菜单立刻少两项；`flattenItems()` 是路由表的唯一来源，
 叶子没了路由也就没了，直接输 `/metrics-analysis` / `/log-analysis` 会落进 catch-all 回到
 `/service-ops`（同上面两次）。
@@ -188,11 +198,14 @@ Service Ops 域侧边栏 `Observability` 分组下的 **Metrics Analysis** 与 *
 > `log-analysis` 是**已迁到 Vue 的视图**。`MIGRATED` / `VIEW_COMPONENTS` 那两条现在
 > 暂时没有消费方，但**刻意保留** —— 它们是「已迁移」的唯一登记口，且两处必须成对。
 
-**恢复方式**：把这两行放回 `nav.js` 的 `observability.items`：
+**恢复方式**：在 `nav.js` 的 `apm` 分组上**新增** `items`（该分组改版后只剩 `groups`，
+没有 `items` 键了 —— 见 `changelogs/v2.2.18-…md`）：
 
 ```js
-{ slug: 'metrics-analysis', label: 'Metrics Analysis' },
-{ slug: 'log-analysis', label: 'Log Analysis' },
+items: [
+  { slug: 'metrics-analysis', label: 'Metrics Analysis' },
+  { slug: 'log-analysis', label: 'Log Analysis' },
+],
 ```
 
 > ⚠️ **与上两次隐藏的一处实质区别**：Metrics Analysis **不是只有菜单能到**。
@@ -204,33 +217,33 @@ Service Ops 域侧边栏 `Observability` 分组下的 **Metrics Analysis** 与 *
 > （另一列的 Log Anomalies 徽标不受影响：该列数据源已下线、恒为 `-`，渲染出的 class 是
 > `null-alert`，`js/app.js:2113` 选的是 `.si-alert-badge.has-alerts`，本来就选不中。）
 >
-> **↑ 这一条已于 2026-09-18 失效**：上面那两个徽标现在都下钻到 Problem Center，
+> **↑ 这一条已于 2026-09-18 失效**：上面那两个徽标现在都下钻到 Diagnosis Center，
 > 详见下一节。
 
 ## Smart Inspection 的两个问题数列（2026-09-18 改）
 
 `Alerts` 与 `Log Anomalies` 两列不再读 agentflow 的 `alertCount`（线上三个服务全是 `null`，
-所以两列此前实际都显示 `-`），改为从 **Problem Center 的数据源**实时汇总：
+所以两列此前实际都显示 `-`），改为从 **Diagnosis Center 的数据源**实时汇总：
 
 | 列 | 含义 |
 |---|---|
 | `Alerts` | 该服务**指标类问题**的未解决数 |
 | `Log Anomalies` | 该服务**日志类问题**的未解决数 |
 
-两列都**排除已解决**。点任一徽标（含 `0`）跳到 Problem Center，并带上三个 query：
+两列都**排除已解决**。点任一徽标（含 `0`）跳到 Diagnosis Center，并带上三个 query：
 
 ```
 /problems?service=<服务名>&type=<metric|log>&state=open
 ```
 
-**核心不变式：徽标上的数字 == 点进去后 Problem Center 的行数**（`#pcRowCount`）。
+**核心不变式：徽标上的数字 == 点进去后 Diagnosis Center 的行数**（`#pcRowCount`）。
 为守住它，两侧共用 `js/app.js` 顶层的同一组谓词（`problemIsOpen` / `problemHasMetric` /
 `problemHasLog` / `problemMatchesService` / `problemMatchesType` / `fetchProblemRecords`），
 而不是各写一份 —— 各写一份今天能对上纯属巧合，后端一改就静默漂移。
 
 几个容易踩的点：
 
-- **「未解决」是白名单** `state ∈ {pending, in_progress}`，与 Problem Center 自己的 "Open"
+- **「未解决」是白名单** `state ∈ {pending, in_progress}`，与 Diagnosis Center 自己的 "Open"
   chip 逐字相同。刻意不写「排除 resolved/closed/archived」的黑名单：后端将来加状态时，
   白名单让两侧*一样地*不计入，黑名单会一边算一边不算。
 - **类型按证据存在与否判断**（`metric_anomalies` / `log_anomalies` 谁非空），**不要**改用后端的
@@ -244,6 +257,6 @@ Service Ops 域侧边栏 `Observability` 分组下的 **Metrics Analysis** 与 *
 - 问题计数走**独立的 15s 定时器**（`/v1/problems?limit=500` 响应很肥，不挤进 5s 的服务轮询）。
 - 记录数超 500 时两侧读的是同一份截断列表，因此**一样地**少算，不变式仍成立。
 
-Problem Center 侧相应新增了一组 `All Types / Metric / Log` chip，以及
+Diagnosis Center 侧相应新增了一组 `All Types / Metric / Log` chip，以及
 `applyQueryFilters()` 消费上述 query（读 `location.search`，因为 `router.afterEach` 只把
 `meta.panelId` 递给 `__SIP_SHOW_PAGE`，query 到不了 legacy 面板）。
