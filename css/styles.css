@@ -4675,6 +4675,16 @@ svg { fill: currentColor; }
 }
 
 /* Confirm Modal：通用确认弹窗（删除等危险操作），窄卡片 + 底部操作按钮 */
+/* 通用确认弹窗必须能盖在**任何**已打开的 `.ap-modal-overlay` 之上。
+   它会被从别的弹框**内部**调起——诊断弹框里的「忽略」与「升级 · 生成工单」都走它做二次确认。
+   两者共用 `.ap-modal-overlay` 的 `z-index: 10000`，而 `#confirmModalOverlay` 在
+   legacy-panels.html 里排在 pcDetail(1753) / pcDiagnose(1764) / pcRun(1775) **之前**，
+   四个又都是 `<body>` 直属兄弟（同一个层叠上下文）→ **同值时后出现的赢** →
+   确认框被整个盖住，连「确认」按钮的点击都落在上层遮罩上（表现就是"弹框看不见 + 点了没反应"）。
+
+   取 11000：高于所有 `.ap-modal-overlay`，仍**低于** `.toast-container` 的 99999——toast 永远最上。 */
+#confirmModalOverlay { z-index: 11000; }
+
 .apm-confirm-msg {
     font-size: 13px;
     color: var(--text-primary);
