@@ -26,6 +26,11 @@ const FLOW_COLOR = '#3b82f6'
 //: 高亮时给线加的类名（样式在 css/styles.css 的 .bs-edge-flow）
 const FLOW_CLS = 'bs-edge-flow'
 
+//: **入向**流动色（与 styles.css 的 --accent-orange 一致）。点击节点时，
+//: "谁流到我"用这个色，与"我流向谁"的蓝分开 —— 见 highlightFlow 的说明。
+const FLOW_IN_COLOR = '#f59e0b'
+const FLOW_IN_CLS = 'bs-edge-flow-in'
+
 //: fit 的**可读下限**。装不下时不再继续缩小，改为让容器滚动。
 //: 节点字号 11px —— 缩到 0.4 只剩 4.4px，等于看不见（实测就是这条导致"图显示空白"）。
 //: 0.8 → 8.8px，仍可读，同时保留"大图缩小一点"的收益。
@@ -276,7 +281,10 @@ export function createGraphCanvas(opts) {
       '<path d="M 0 0 L 10 5 L 0 10 z" fill="#8b8fa3"></path></marker>' +
       // 高亮态箭头：与流动线同色——否则线变了色、箭头还是灰的
       `<marker id="${markerId}Flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">` +
-      `<path d="M 0 0 L 10 5 L 0 10 z" fill="${FLOW_COLOR}"></path></marker></defs>`
+      `<path d="M 0 0 L 10 5 L 0 10 z" fill="${FLOW_COLOR}"></path></marker>` +
+      // 入向高亮箭头（琥珀）—— 只有节点的**入主干**带箭头，所以只有它用得上
+      `<marker id="${markerId}In" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">` +
+      `<path d="M 0 0 L 10 5 L 0 10 z" fill="${FLOW_IN_COLOR}"></path></marker></defs>`
 
     // 主干：每个有出/入边的节点各一根，只画一次（这就是"合并"的落点）
     nodes.forEach((n) => {
@@ -446,11 +454,11 @@ export function createGraphCanvas(opts) {
     if (onNodeClick) onNodeClick(nid)
   }
 
-  /** 清掉上一次的流动高亮（含把箭头换回灰色）。 */
+  /** 清掉上一次的流动高亮（出入两种色都清，含把箭头换回灰色）。 */
   function clearFlow() {
     if (!svgEl) return
-    svgEl.querySelectorAll('.' + FLOW_CLS).forEach((p) => {
-      p.classList.remove(FLOW_CLS)
+    svgEl.querySelectorAll(`.${FLOW_CLS}, .${FLOW_IN_CLS}`).forEach((p) => {
+      p.classList.remove(FLOW_CLS, FLOW_IN_CLS)
       const orig = p.getAttribute('data-flow-marker')
       if (orig) {
         p.setAttribute('marker-end', orig)
@@ -471,6 +479,23 @@ export function createGraphCanvas(opts) {
    *
    * 色值 / 类名与 styles.css 的 `.bs-edge-flow` 成对；改一处要改两处。
    */
+  /**
+   * 给一批路径上流动高亮，并把**带箭头的那些**换成对应颜色的箭头。
+   *
+   * 箭头必须一起换：只改线色不改箭头，会得到"蓝色的线 + 灰色的箭头"。
+   * 原色记在 `data-flow-marker` 上，`clearFlow` 靠它还原。
+   */
+  function paintFlow(paths, cls, markerSuffix) {
+    paths.forEach((p) => {
+      p.classList.add(cls)
+      const m = p.getAttribute('marker-end')
+      if (m) {
+        p.setAttribute('data-flow-marker', m)
+        p.setAttribute('marker-end', `url(#${markerId}${markerSuffix})`)
+      }
+    })
+  }
+
   function highlightFlow(nid) {
     flowNode = nid
     clearFlow()
@@ -479,6 +504,8 @@ export function createGraphCanvas(opts) {
       const safe = String(val).replace(/["\\]/g, '\\$&')
       return svgEl.querySelectorAll(`[data-${attr}="${safe}"]`)
     }
+
+    // ===== 出的线（蓝）：这个节点流向谁 =====
     const targets = new Set()
     q('from', nid).forEach((p) => {
       p.classList.add(FLOW_CLS)
@@ -496,6 +523,24 @@ export function createGraphCanvas(opts) {
         }
       })
     })
+
+    // ===== 入的线（琥珀）：谁流到这个节点 =====
+    //
+    // 与出向是**镜像**的三段（同一张图反过来看）：
+    //   1. 到这个节点的分支（`data-to`）
+    //   2. 这个节点自己的入主干（`data-in`）—— 带箭头，是"流进来"的最后一段
+    //   3. **各来源节点的出主干**（`data-out`）—— 少了这段，流动在来源节点下方就断了
+    //
+    // 单列一色而不复用蓝色：一个中间节点同时有进有出，同色的话两个方向糊在一起，
+    // 分不出"哪条是喂给我的、哪条是我喂出去的"。
+    const sources = new Set()
+    q('to', nid).forEach((p) => {
+      p.classList.add(FLOW_IN_CLS)
+      const from = p.getAttribute('data-from')
+      if (from) sources.add(from)
+    })
+    paintFlow(q('in', nid), FLOW_IN_CLS, 'In')
+    sources.forEach((s) => paintFlow(q('out', s), FLOW_IN_CLS, 'In'))
   }
 
   /**

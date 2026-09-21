@@ -6193,6 +6193,7 @@ svg { fill: currentColor; }
  *
  * 与 useGraphCanvas.js 的 FLOW_CLS / FLOW_COLOR 成对；改一处要改两处。
  */
+/* 点击节点后，**出的线**（这个节点流向谁）——蓝色 */
 .bs-edge-flow {
     stroke: var(--accent-blue);
     stroke-width: 2;
@@ -6200,13 +6201,26 @@ svg { fill: currentColor; }
     animation: bsEdgeFlow 0.7s linear infinite;
 }
 
+/* **入的线**（谁流到这个节点）——琥珀。
+   为什么必须换色而不是同色：中间节点同时有进有出，同色的话两个方向糊成一片，
+   分不出"哪条是喂给我的、哪条是我喂出去的"。 */
+.bs-edge-flow-in {
+    stroke: var(--accent-orange);
+    stroke-width: 2;
+    stroke-dasharray: 6 6;
+    animation: bsEdgeFlow 0.7s linear infinite;
+}
+
+/* 虚线朝**下**跑 = 朝目标节点跑。出入两向用同一个 keyframes：
+   本仓的边一律自上而下，所以"向下流动"对入向而言就是"流进这个节点"。 */
 @keyframes bsEdgeFlow {
     to { stroke-dashoffset: -12; }
 }
 
 /* 尊重系统的"减少动态效果"：去掉滚动，只留高亮色 */
 @media (prefers-reduced-motion: reduce) {
-    .bs-edge-flow {
+    .bs-edge-flow,
+    .bs-edge-flow-in {
         animation: none;
         stroke-dasharray: none;
     }
