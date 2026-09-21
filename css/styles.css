@@ -8360,16 +8360,32 @@ textarea.cmdb-input { resize: vertical; }
     overflow-y: auto;
 }
 
-/* 通过 / 驳回**钉在卡片底部**：上游载荷再长也不该把按钮滚出视野 ——
-   否则用户要在一段几百字的计划里翻到底才能点到"通过"。
+/* ⚠️ 但在 Run 详情的**审批页签**里，这条上限必须放开。
+   页签化之后滚动已经上移到 `.bs-panel-approvals`，再套一层 180px 的内层滚动，
+   结果是**把最该看的字段藏起来**：实测 `diff` 确实渲染了，却落在盒内第 190px 处
+   —— 屏幕上根本看不见（而面板下方还空着 102px）。审批人看不到 diff 就点「通过」，
+   这个页面等于没起作用。
+   按页面 id 限定：Bug Solve 那边不是滚动容器（详情在图下方、本就放开上限），
+   停用会直接把整页拉长，所以那边保持原样。 */
+#page-run-detail .bs-panel-approvals .bs-upstream .bs-payload {
+    max-height: none;
+    overflow-y: visible;
+}
+
+/* 通过 / 驳回**钉在卡片顶部**。
+   按钮在模板里也移到了标题之下、载荷之前 —— 两处一起改才成立：
+   只挪位置不加 sticky，滚下去一样够不着；只加 sticky 不挪位置，
+   按钮会停在卡片底部，仍是"翻到底才看得到"。
+   上游载荷再长，按钮都在视野里。
    仅限两个 Vue 页面：`.bs-approval-actions` 与 legacy js/app.js 共用。 */
 #page-run-detail .bs-approval-actions,
 #page-bug-solve .bs-approval-actions {
     position: sticky;
-    bottom: 0;
+    top: 0;
     z-index: 1;
-    padding-top: 6px;
-    /* 与 .bs-approval-card 的底同色，避免滚动内容从按钮下方透出来 */
+    padding: 6px 0;
+    /* 与 .bs-approval-card 的底同色：吸顶时盖住从下面滚过去的载荷，
+       否则两段文字会叠在一起 */
     background: #fffbeb;
 }
 

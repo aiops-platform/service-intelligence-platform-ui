@@ -266,6 +266,15 @@ watch(
                 <span v-if="p.trigger" class="bs-trigger">{{ p.trigger }}</span>
                 <span v-else class="bs-trigger bs-trigger-plain">人工审批</span>
               </div>
+              <!--
+                按钮放在**窗口上部**（紧跟标题）：待批的东西可能很长（一份计划、
+                一段 diff），按钮跟在后面就要翻到底才点得到。放上面 + sticky，
+                滚多远都够得着。
+              -->
+              <div class="bs-approval-actions">
+                <button class="btn btn-sm bs-approve-btn" @click="approve(p.node_id)">通过</button>
+                <button class="btn btn-sm bs-reject-btn" @click="reject(p.node_id)">驳回</button>
+              </div>
               <div v-if="p.upstream" class="bs-upstreams">
                 <div v-for="(out, u) in p.upstream" :key="u" class="bs-upstream">
                   <div class="bs-upstream-label">{{ u }}</div>
@@ -273,10 +282,6 @@ watch(
                        （实测叠到四层：琥珀卡 → 白卡 → 竖线 → 灰卡） -->
                   <NodePayload :value="out" bare />
                 </div>
-              </div>
-              <div class="bs-approval-actions">
-                <button class="btn btn-sm bs-approve-btn" @click="approve(p.node_id)">通过</button>
-                <button class="btn btn-sm bs-reject-btn" @click="reject(p.node_id)">驳回</button>
               </div>
             </div>
           </div>
