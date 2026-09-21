@@ -69,6 +69,8 @@ export function useBugSolveRun({ getCanvas }) {
       return runNid + agent
     }
     if (runStatus.value === 'waiting_approval') return '待审批'
+    // paused 走不到 TERMINAL，不单列会落到下面的"排队中…"——那是错的，它没在排队
+    if (runStatus.value === 'paused') return '已暂停'
     if (TERMINAL[runStatus.value]) return '—'
     return '排队中…'
   })

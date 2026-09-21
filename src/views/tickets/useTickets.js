@@ -51,6 +51,9 @@ export const NEEDS_INFO = 'needs_info'
 /** run 停在审批门（等人批）。展示值直接复用 `waiting_approval` —— 那个类名
  *  `.alert-tag.status-waiting_approval` 早就有了（工单详情里的 run 列表在用）。 */
 export const WAITING_APPROVAL = 'waiting_approval'
+/** run 被人工暂停（等人 resume）。后端能产生，但前端目前**没有暂停入口** ——
+ *  所以这一档是防御性的：真出现时显示成「已暂停」，而不是悄悄算成"进行中"。 */
+export const PAUSED = 'paused'
 /** 审批被否决（人工驳回 / 超时自动拒绝） */
 export { REJECTED }
 
@@ -90,6 +93,10 @@ export function ticketDisplayStatus(t) {
   // 审批门：不往下走了，等的是**人**。必须排在 RUN_ACTIVE 之前 ——
   // 混进 running 的话，"等你审批"这条最该被看见的信息就没了。
   if (r.status === WAITING_APPROVAL) return WAITING_APPROVAL
+  // 暂停同理：也是"等人"（等人 resume）。不单列的话它会掉进下面的兜底
+  // `t?.status`，而工单自己的状态是 running —— 于是显示成"进行中"。
+  // 注：`paused` **不在** RUN_ACTIVE 里，所以这个分支必须在兜底之前。
+  if (r.status === PAUSED) return PAUSED
   if (RUN_ACTIVE.has(r.status)) return 'running'
   return RUN_TERMINAL_TO_TICKET[r.status] || t?.status || ''
 }
