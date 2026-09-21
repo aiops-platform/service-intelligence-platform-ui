@@ -9,6 +9,7 @@
 import { ref, onMounted, onActivated } from 'vue'
 import { useBugSolveRun, statusClass } from './useBugSolveRun'
 import { nodeStatusLabel, statusLabel } from '@/utils/runStatus'
+import NodePayload from '@/components/graph/NodePayload.vue'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
 import { agentsApi } from '@/api/agentflow'
@@ -248,7 +249,11 @@ onActivated(loadWorkflows)
               </button>
             </div>
             <div class="bs-content">
-              <pre>{{ detailTab === 'output' ? detail.outputHtml : detail.promptHtml }}</pre>
+              <div v-if="detail.isRunning && detailTab === 'output'" class="bs-payload-empty">
+                （执行中…）
+              </div>
+              <NodePayload v-else
+                           :value="detailTab === 'output' ? detail.output : detail.params" />
             </div>
           </template>
           <div v-else class="bs-detail-empty">点击图中节点查看详情。</div>

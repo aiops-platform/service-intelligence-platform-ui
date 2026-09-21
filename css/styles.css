@@ -8124,3 +8124,102 @@ textarea.cmdb-input { resize: vertical; }
     color: #92400e;
     border: 1px solid #fde68a;
 }
+
+/* ====== 节点入参 / 输出的按字段展示（NodePayload.vue）====== */
+/* 取代原先的 <pre> 直出 JSON —— 一个上千字的值会把其它字段顶出屏幕，
+   看起来像"这个节点只收到一个输入"（见组件头部的说明）。 */
+.bs-payload {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 11px;
+    line-height: 1.6;
+}
+
+/* 嵌套层：左侧一道细线 + 缩进，比纯缩进更容易看出层级 */
+.bs-payload-nested {
+    border-left: 2px solid var(--border-color);
+    padding-left: 8px;
+    margin-top: 2px;
+}
+
+.bs-payload-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+}
+
+.bs-payload-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+/* 键列固定宽度 + 右对齐：值从同一条竖线开始，扫读时不用左右找 */
+.bs-payload-key {
+    flex: 0 0 96px;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-align: right;
+    padding-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bs-payload-val {
+    flex: 1;
+    min-width: 0;
+}
+
+.bs-payload-text {
+    /* 摘要类字段里有换行，保留它们；同时长英文串要能断行 */
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-secondary);
+}
+
+/* 长值折叠：默认 clamp 到 4 行，展开后不限高 */
+.bs-payload-clamp {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.bs-payload-clamp.open {
+    display: block;
+    -webkit-line-clamp: none;
+    overflow: visible;
+}
+
+.bs-payload-toggle {
+    margin-top: 2px;
+    padding: 0;
+    font-size: 10.5px;
+    color: var(--accent-blue);
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.bs-payload-toggle:hover { text-decoration: underline; }
+
+/* 空值：灰 + 斜体，与"值就是空串"区分开 */
+.bs-payload-empty {
+    color: var(--text-tertiary);
+    font-style: italic;
+}
+
+.bs-payload-arr {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bs-payload-item {
+    min-width: 0;
+}

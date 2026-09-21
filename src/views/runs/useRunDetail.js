@@ -63,8 +63,13 @@ export function useRunDetail(getRunId) {
       durationMs: n.duration_ms,
       attempts: n.attempts || 0,
       error: n.error,
-      output: n.output === undefined || n.output === null ? '(无输出)' : JSON.stringify(n.output, null, 2),
-      params: JSON.stringify(n.params || {}, null, 2),
+      // **传对象本身**，交给 NodePayload 按字段渲染。
+      // 原先是这里 JSON.stringify 成一个大块，再由 <pre> 直出 —— 一个上千字的
+      // 摘要会把其余字段顶出屏幕，读的人以为这个节点只收到一个输入。
+      output: n.output === undefined ? null : n.output,
+      params: n.params || {},
+      /** 节点尚未跑出结果（渲染用；与 status 分开，避免和状态文案混淆） */
+      isRunning: n.status === 'running',
     }
   })
 

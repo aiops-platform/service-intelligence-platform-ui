@@ -84,14 +84,12 @@ export function useBugSolveRun({ getCanvas }) {
       status: st,
       tokens: n.tokens || 0,
       cost: typeof n.cost === 'number' ? n.cost.toFixed(4) : '0.0',
-      // running 节点 output 尚未产出 —— 实时自动跟随时给「正在执行」反馈
-      outputHtml:
-        st === 'running'
-          ? '(执行中…)'
-          : n.output !== undefined && n.output !== null
-            ? JSON.stringify(n.output, null, 2)
-            : '(无输出)',
-      promptHtml: JSON.stringify(n.params || {}, null, 2),
+      // **传对象本身**，交给 NodePayload 按字段渲染（原先 JSON.stringify 成一个大块
+      // 再由 <pre> 直出，一个上千字的摘要就会把其余字段顶出屏幕）。
+      output: n.output === undefined ? null : n.output,
+      params: n.params || {},
+      /** running 节点 output 尚未产出 —— 实时自动跟随时给「正在执行」反馈 */
+      isRunning: st === 'running',
     }
   })
 

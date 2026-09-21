@@ -11,6 +11,7 @@ import { useRunDetail } from './useRunDetail'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
 import { nodeStatusLabel, runStatusLabel } from '@/utils/runStatus'
+import NodePayload from '@/components/graph/NodePayload.vue'
 import { agentsApi } from '@/api/agentflow'
 import { formatTime } from '@/utils/time'
 
@@ -193,7 +194,7 @@ watch(
           <div v-if="p.upstream" class="bs-upstreams">
             <div v-for="(out, u) in p.upstream" :key="u" class="bs-upstream">
               <div class="bs-upstream-label">{{ u }}</div>
-              <pre>{{ JSON.stringify(out, null, 2) }}</pre>
+              <NodePayload :value="out" />
             </div>
           </div>
           <div class="bs-approval-actions">
@@ -224,7 +225,11 @@ watch(
                       @click="detailTab = 'params'">输入 Params</button>
             </div>
             <div class="bs-content">
-              <pre>{{ detailTab === 'output' ? detail.output : detail.params }}</pre>
+              <div v-if="detail.isRunning && detailTab === 'output'" class="bs-payload-empty">
+                （执行中…）
+              </div>
+              <NodePayload v-else
+                           :value="detailTab === 'output' ? detail.output : detail.params" />
             </div>
           </template>
           <div v-else class="bs-detail-empty">点击图中节点查看详情。</div>
