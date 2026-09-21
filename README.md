@@ -67,6 +67,10 @@ server {
     # 详见 SecurityOpsView.vue。
     location = /security-ops { try_files /index.html =404; }
 
+    # 同理。FinOps 也是两边同名（Vue 路由 /finops、内嵌页 /finops/）。
+    # 详见 FinOpsView.vue。
+    location = /finops { try_files /index.html =404; }
+
     location / {
         try_files $uri $uri/ /index.html;    # history 模式回退，直达 URL 刷新才不 404
     }

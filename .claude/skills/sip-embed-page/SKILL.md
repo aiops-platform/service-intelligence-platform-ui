@@ -133,6 +133,28 @@ SEC_APPKEY_REPL = 'appKey:(i.snapshot.topStorm||{}).appKey'   # `||{}` 是兜底
 前提：目标位置能访问到数据命名空间（用括号配平核对该表达式与 `i.snapshot`
 是否**同一作用域**、`i` 有没有被遮蔽），且 `count()` 唯一、不唯一就静默跳过。
 
+### 4b. ★ chunk 补丁改完必须过语法校验
+
+补丁是在**字符层面**改 chunk 的 —— 拼错一个字符照样写出文件、照样「产出校验通过」，
+而浏览器那边是**整页白屏**（内嵌页的 JS 都在一个 chunk 里）。
+
+```bash
+node --check public/_next/static/chunks/<改过的那个>.js
+```
+
+**实测踩过**（FinOps 那次）：把值并进原有的 `let` 声明时多留了一个 `let` ——
+
+```js
+let __FS=(function(){…})(),let S=[{…}]   // ← let 出现在声明列表里
+// SyntaxError: Unexpected strict mode reserved word → 整页白屏
+```
+
+构造新声明时**吃掉锚点里的 `let `**（`FO_ANCHOR[len("let "):]`）才是对的。
+
+`make-offline-page.py` 现在会自动跑这一步（产出目录每个 chunk 都过一遍 `node --check`，
+失败则**非零退出**），所以正常构建就能拦住。但它只在有 node 时生效 —— 报
+「没找到 node，跳过」时就是没查过，别当成通过。
+
 ## 5. Vue 接线
 
 ```bash
@@ -208,6 +230,8 @@ HEAD 版对照一次。
 | **写死的 appKey 在别的租户里不存在** | **该节静默消失**（`s && (…)` 短路） | 改运行期派生；先核对作用域 |
 | 只信自检脚本的 ✓ | 漏掉「数字 + 非房地产名词」的写死值 | 脚本不全覆盖，人工读一遍 chunk |
 | 裸串替换改到别的页 | 不报错，别的页文案被一起改 | `__SIPCOPY__` 按租户出表不按页；下裸串前 grep 全部 chunk |
+| **chunk 补丁改错一个字符** | **整页白屏**，而「产出校验」是过的 | 跑 `node --check`；构建现已内置这步 |
+| 没加 `EMBED_PAGES` 就去看 `/x/` | 兜底渲染出**别的页面**（h1 却对） | 先接完三处再看页面，别被 h1 骗了 |
 | 改写器兜底租户 ≠ `DT_DEFAULT` | 没设租户时数据走 otr、文案走 retail | 两处同取 `DT_DEFAULT`（已修，别写死字面量） |
 | 手改 `public/` | 下次重建**静默回退** | 一律做成 `tenant_copy.py` 的声明式补丁 |
 

@@ -60,13 +60,14 @@ function sipLegacyBuildCopy() {
  * 没有 AppHeader / AppFooter / 侧边栏，Vue 应用根本不启动，用户卡在没有导航的页面上。
  *
  * 所以只拦尾斜杠结尾的请求：iframe 的 src 本来就写 `/service-ops/`，
- * 而 `/service-ops` 落到 SPA 兜底，Vue 应用照常启动。`/architecture` 与 `/security-ops` 同理。
+ * 而 `/service-ops` 落到 SPA 兜底，Vue 应用照常启动。`/architecture`、`/security-ops`、
+ * `/finops` 同理。
  *
- * ⚠️ 生产端要同步：通用 `try_files $uri $uri/ /index.html` 会把这三个无斜杠路径
+ * ⚠️ 生产端要同步：通用 `try_files $uri $uri/ /index.html` 会把这四个无斜杠路径
  * 经 `$uri/` 解成目录索引，同样吐内嵌页 —— nginx 需在通用规则**之前**各补一条
  * `location = /<页> { try_files /index.html =404; }`。见 README 的 nginx 片段。
  */
-const EMBED_PAGES = ['/business-ops', '/service-ops', '/architecture', '/security-ops']
+const EMBED_PAGES = ['/business-ops', '/service-ops', '/architecture', '/security-ops', '/finops']
 
 function sipEmbedPageIndex() {
   // dev 读源目录 public/，preview 读产物 dist/ —— configResolved 里才拿得到这两个值

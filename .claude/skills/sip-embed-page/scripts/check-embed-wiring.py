@@ -140,16 +140,30 @@ def scan_fixed_copy(page: dict) -> list:
 
     判据对着改写器的语义写：它在**渲染后的文本**里做子串替换，所以一条候选算「已覆盖」，
     当且仅当某条 LEGACY 原文是它的子串。
+
+    ⚠ 扫的是**产出目录**（`public/_next/`），不是 `vendor/` —— 与 `scan_foreign_appkeys`
+    同一个理由：构建期补丁改的是产出，vendor 永远是站点原样，扫它会对着已经改好的东西
+    误报（FinOps 那轮就报了一条已被补丁覆盖的 `Selling portfolio …`）。
+    改写器的替换发生在**运行时**（渲染后的文本节点），所以走改写器的那些串在产出里
+    仍然是原文 —— 扫产出一样抓得到。
     """
     import tenant_copy
 
-    own = TOOLS / "vendor" / page["vendor_sub"] / "chunks" if page["vendor_sub"] else None
+    own = PUBLIC / "_next" / "static" / "chunks"
+    names = None
+    vown = TOOLS / "vendor" / page["vendor_sub"] / "chunks" if page["vendor_sub"] else None
+    if not own.is_dir():
+        own = vown                                     # 还没构建过 → 退回原始副本
     if not own or not own.is_dir():
-        return None                                  # 该页没有独有 chunk（constellation）→ 跳过
+        return None                                    # 该页没有独有 chunk（constellation）→ 跳过
+    if vown and vown.is_dir() and own != vown:
+        names = {p.name for p in vown.iterdir() if p.is_file()}
 
     covered = list(tenant_copy.LEGACY.values())
     hits = []
     for f in sorted(own.glob("*.js")):
+        if names is not None and f.name not in names:
+            continue                                   # 不是这一页的 chunk
         t = f.read_text(encoding="utf-8", errors="replace")
         for m in re.finditer(r'"([^"\\\n]{12,300})"', t):
             s = m.group(1)

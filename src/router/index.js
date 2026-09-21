@@ -117,11 +117,12 @@ const STANDALONE_PAGES = [
 /**
  * 空壳域里**已经接了真实组件**的。
  *
- * 四个都是内嵌 SIP 部署站那份 Next.js 页面：
+ * 五个都是内嵌 SIP 部署站那份 Next.js 页面：
  *   constellation  → 星座图（见 src/views/constellation/ConstellationView.vue）
  *   biz-ops        → Business Ops 概览
  *   architecture   → Architecture 面板（2026-09-21 接入，此前是空壳）
  *   security-ops   → Security Ops 面板（同上日期接入，此前是空壳）
+ *   finops         → FinOps 面板（同上日期接入，此前是空壳）
  *
  * ⚠️ 注意这里**不适用** nav.js 里那条「MIGRATED 与 VIEW_COMPONENTS 两处必须同时改」的规矩：
  * 那条针对的是**侧边栏叶子**（会经 flattenItems() 产出路由）。空壳域不在任何侧边栏里，
@@ -130,21 +131,24 @@ const STANDALONE_PAGES = [
  * ⚠️ 这里跟的是**域的 key**，不是 slug —— 所以 Business Ops 是 `biz-ops`（它的 slug
  * 集合为空：摘掉侧边栏后没有任何叶子指向它），落在 `/biz-ops` 这个 URL 上。
  *
- * ⚠️ architecture 与 security-ops 这两条与上面两条有个不同：**它们的 key 与内嵌页路径同名**
- * （都是 `/architecture` / `/security-ops`）。dev 下靠 `sip-embed-page-index` 插件只拦带尾斜杠的请求
- * 来分流，生产 nginx 也要各补一条 `location = /architecture` / `location = /security-ops`
- * —— 与 Service Ops 同一套处置，详见 `src/views/architecture/ArchitectureView.vue`、
- * `src/views/security-ops/SecurityOpsView.vue` 与 README。
+ * ⚠️ architecture / security-ops / finops 这三条与上面两条有个不同：**它们的 key 与内嵌页
+ * 路径同名**（都是 `/architecture`、`/security-ops`、`/finops`）。dev 下靠
+ * `sip-embed-page-index` 插件只拦带尾斜杠的请求来分流，生产 nginx 也要各补一条
+ * `location = /<页>` —— 与 Service Ops 同一套处置，详见各自的 View 与 README。
  *
- * 其余 1 个空壳域（finops）仍是空壳。
+ * ★ 本文件登记齐后，`NAV` 里 5 个 `sidebar: null` 的域**全部**有了自己的页面 ——
+ * 空壳兜底（落 service-ops 概览 + 改写标题）不再有域走到。但 `emptyDomainRoutes`
+ * 与 `EMPTY_DOMAINS` 仍然保留：它们是「没有侧边栏的域各自一条路由」的通用机制，
+ * 去掉就等于假设以后不会再有空壳域。
  * （空壳域原有 5 个：Value Pool 已于 2026-09-17 从 NAV 摘除，见 nav.js 数组末尾；
- *   architecture 与 security-ops 于 2026-09-21 接上本文件里的组件。）
+ *   其余五个于 2026-09-21 起陆续接上本文件里的组件。）
  */
 const DOMAIN_COMPONENTS = {
   constellation: () => import('@/views/constellation/ConstellationView.vue'),
   'biz-ops': () => import('@/views/business-ops/BusinessOpsView.vue'),
   architecture: () => import('@/views/architecture/ArchitectureView.vue'),
   'security-ops': () => import('@/views/security-ops/SecurityOpsView.vue'),
+  finops: () => import('@/views/finops/FinOpsView.vue'),
 }
 
 /**
