@@ -11,7 +11,8 @@
       public/constellation-app.html     入口
       public/business-ops/index.html    入口（这个路径不能改，见 BusinessOpsView.vue）
       public/service-ops/index.html     入口（同上，见 ServiceOpsView.vue）
-      public/_next/**                   chunk / css / 字体（三页共用）
+      public/architecture/index.html    入口（同上，见 ArchitectureView.vue）
+      public/_next/**                   chunk / css / 字体（四页共用）
 
   Vite 的 `public/` 是**按根伺服**的，所以内层的 `/_next/…`（turbopack 硬编码的根绝对
   路径）在 dev 和 build 下都对得上，不需要任何 Vite 插件。`src/` 里也不出现

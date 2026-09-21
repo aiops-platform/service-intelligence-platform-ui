@@ -151,8 +151,8 @@ workflow DAG 由 `GraphCanvas.vue` + `useGraphCanvas.js`（命令式引擎）画
 
 ## 内嵌页（`public/` 下的 Next.js 离线副本）
 
-Constellation / Business Ops / Service Ops 三个域都是**另一套 Next.js 应用**的离线副本，
-由 `NextEmbed.vue` 用同源 iframe 嵌进来。几条改之前必须知道的：
+Constellation / Business Ops / Service Ops / Architecture 四个域都是**另一套 Next.js 应用**的
+离线副本，由 `NextEmbed.vue` 用同源 iframe 嵌进来。几条改之前必须知道的：
 
 - **产物由 `tools/make-offline-page.py` 生成，绝不手改 `public/`。**
   构建每次都从 `tools/vendor/` 重新铺 `public/_next/`，手改没有任何工具会写回去 ——
@@ -168,6 +168,16 @@ Constellation / Business Ops / Service Ops 三个域都是**另一套 Next.js �
   （跨源不算，那是正常的第三方嵌入）。
 - **路径不能随便改**：内层用 `usePathname()` 查面板表决定 h1，对不上时**静默**变成
   `"SIP"`（不报错、不白屏）。详见各视图与 `vite.config.js` 的 `sipEmbedPageIndex`。
+- **与 Vue 路由同名的内嵌页要三处成对**（现有 service-ops 与 architecture 两例）：
+  `vite.config.js` 的 `EMBED_PAGES` 只拦**带尾斜杠**的请求、生产 nginx 各补一条
+  `location = /<页> { try_files /index.html =404; }`、组件在 `router/index.js` 的
+  `DOMAIN_COMPONENTS` 登记。少一处就表现为「刷新后拿到裸的内嵌页，没有导航」。
+- **改写器的兜底租户必须与 `patch_default_tenant` 同值**（都是 `DT_DEFAULT`）。
+  两处不一致时「没设过租户」会数据走 otr、文案走 retail，同一页两套数字。
+
+> 接第 5 个内嵌页（或重建、排查现有的）走 `.claude/skills/sip-embed-page/`：
+> 分步流程 + 坑位速查，外加一个把上面这些不变量机械校验一遍的脚本
+> （`scripts/check-embed-wiring.py`，有 ✗ 时非零退出）。
 
 ## 项目约定
 
@@ -180,5 +190,5 @@ Constellation / Business Ops / Service Ops 三个域都是**另一套 Next.js �
 - changelog 文件放在 `changelogs/` 目录下
 - 命名格式：`v{MAJOR}.{MINOR}.{PATCH}-{slug}.md`
 - 模板和必须包含的内容见 `CONTRIBUTING.md` 第 48-90 行
-- 当前版本号：`v2.0.0`
+- 当前版本号：`v2.3.1`
 - 已有的 changelog 文件保留不动，只新增不修改历史文件

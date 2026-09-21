@@ -59,6 +59,10 @@ server {
     # 详见 src/views/service-ops/ServiceOpsView.vue 与 vite.config.js。
     location = /service-ops { try_files /index.html =404; }
 
+    # 同理。Architecture 与 Service Ops 一样**两边同名**（Vue 路由 /architecture、
+    # 内嵌页 /architecture/），所以要再来一条。详见 ArchitectureView.vue。
+    location = /architecture { try_files /index.html =404; }
+
     location / {
         try_files $uri $uri/ /index.html;    # history 模式回退，直达 URL 刷新才不 404
     }

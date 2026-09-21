@@ -17,10 +17,15 @@ Constellation 页面有一批文案是写死在客户端代码里的，锚定在
 
 租户是**运行时**选的：
 
-    ?tenant=<id>  →  localStorage["sip-active-tenant"]  →  兜底 "retail"
+    ?tenant=<id>  →  localStorage["sip-active-tenant"]  →  兜底 DT_DEFAULT（站点原生是 "retail"）
 
 构建时烤死任何一个租户的值，切到别的租户就是错的。所以改成：
 构建时把**每个租户**的文案算好注入 `window.__SIPCOPY__`，运行时按 active tenant 改写 DOM。
+
+> ⚠️ 那个兜底有**两个消费方**：内嵌页自己的取数（`patch_default_tenant` 把它从
+> 站点原生的 `retail` 改成了 `otr`）和本文件的改写器。两者必须是同一个值 ——
+> 否则「没设过租户」时数据按 otr 渲染、文案按 retail 改写，同一页出现两套数字。
+> 现在两边都取 `DT_DEFAULT`（改写器里是 `__DT_DEFAULT__` 占位符，由 inject() 填）。
 
 ## 改成 DOM 改写而不是补丁 JS
 
@@ -64,6 +69,22 @@ LEGACY = {
     # 拼写形式的数字（不是阿拉伯数字）—— 光扫 \d+ 会漏掉这类
     "six_card": "Six journeys · click to inspect · column headers sort",
     "all_six": "All six journeys · the full estate",
+
+    # ── Architecture 面板（/architecture）────────────────────────────────
+    # 这三条同样是**写死的 data-sicg 数字**，且都是 DOM 里的文本/属性，走同一套改写器。
+    # 页面其余部分（KPI 四格、6R 分布、Tech stack、Wave plan）都读 snapshot，本来就是
+    # 按租户算的 —— 只有这三处不跟着变，于是切到别的租户会出现
+    # 「标题说 893 apps / 22 portfolios，正下方的 KPI 说 50 apps / 11 portfolios」。
+    # 字面量在页面自己的 chunk `01d8-2wl~-f7r.js` 里（PanelContainer 的 description
+    # 与 Estate graph 小节），**不在** server.html 的 RSC payload 里 —— 但改写器只认
+    # 渲染后的 DOM 文本/属性，源码在哪儿都无所谓。
+    "arch_desc": ("893 apps · 22 portfolios · 6 journeys · the estate as one canvas. "
+                  "Architecture decisions, modernization wave plan, ADR drift — "
+                  "agent-augmented."),
+    "arch_sub": ("22 portfolios · click any node to inspect · "
+                 "KPIs / 6R / journeys filter the graph"),
+    # 图的 aria-label。改写器的属性白名单里有 aria-label，所以能改到（见 REWRITER）。
+    "arch_aria": "Estate graph · 22 portfolios with edge layers",
 }
 
 # 拼写数字：用词而不是阿拉伯数字，这样 retail（6 条）不会被从 "Six" 改成 "6" ——
@@ -165,6 +186,19 @@ def tenant_pairs(d):
                       f"{_word(pj)} journeys · click to inspect · column headers sort"))
         pairs.append((LEGACY["all_six"],
                       f"All {_word(pj).lower()} journeys · the full estate"))
+
+    # Architecture 面板：三段写死的 sicg 数字换成该租户自己的三个数。
+    # 三个数缺一不可 —— 只换一部分会拼出「50 apps · 22 portfolios · 2 journeys」这种
+    # 自相矛盾的句子，比不换更糟，所以整条一起产出。
+    if apps and pf and pj:
+        pairs.append((LEGACY["arch_desc"],
+                      f"{apps} apps · {pf} portfolios · {pj} journeys · the estate as one "
+                      f"canvas. Architecture decisions, modernization wave plan, ADR drift — "
+                      f"agent-augmented."))
+        pairs.append((LEGACY["arch_sub"],
+                      f"{pf} portfolios · click any node to inspect · "
+                      f"KPIs / 6R / journeys filter the graph"))
+        pairs.append((LEGACY["arch_aria"], f"Estate graph · {pf} portfolios with edge layers"))
 
     out = []
     for a, b in pairs:
@@ -913,7 +947,13 @@ REWRITER = r"""
       var t = localStorage.getItem('sip-active-tenant');
       if (t && MAP[t]) return t;
     } catch (e) {}
-    return 'retail';
+    /* ★ 兜底必须与内嵌页**数据**的兜底是同一个值（见 patch_default_tenant）。
+       这里原来写死 'retail'，而 patch_default_tenant 把数据兜底改成了 'otr' ——
+       于是「没设过租户」这个最常见的情况下，数据按 otr 渲染、文案按 retail 改写：
+       标题写「282 apps · 9 portfolios · 6 journeys」，正下方的 KPI 写 50 apps。
+       站点自带的兜底两处都是 retail，所以原样搬过来时看不出问题；改成 otr 之后就
+       只剩这一处没跟上。占位符由 inject() 填成 DT_DEFAULT，单一真源。 */
+    return '__DT_DEFAULT__';
   }
   function sub(s, pairs) {
     for (var i = 0; i < pairs.length; i++) {
@@ -997,7 +1037,9 @@ def inject(html: str, all_tenants: dict) -> tuple:
     blob = (
         "<script>window.__SIPCOPY__="
         + json.dumps(m, ensure_ascii=False).replace("</", "<\\/")
-        + ";</script>" + REWRITER
+        # 改写器的兜底租户跟 patch_default_tenant 用**同一个常量** —— 两处不一致时
+        # 会出现「数据 otr / 文案 retail」，见 activeId() 里的说明。
+        + ";</script>" + REWRITER.replace("__DT_DEFAULT__", DT_DEFAULT)
     )
     html = re.sub(r"(</head>)", blob + r"\1", html, count=1)
     return html, n

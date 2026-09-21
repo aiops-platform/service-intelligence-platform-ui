@@ -2,10 +2,16 @@
 """
 把部署站的页面做成本地可跑、可交互的离线副本。
 
-两个页面，同一套 Next.js 外壳、同一批 chunk，只是入口路由不同：
+四个页面，同一套 Next.js 外壳、同一批 chunk，只是入口路由不同：
 
-    --page constellation   部署站 `/`            → public/constellation-app.html
-    --page business-ops    部署站 `/business-ops` → public/business-ops/index.html
+    --page constellation   部署站 `/`              → public/constellation-app.html
+    --page business-ops    部署站 `/business-ops/`  → public/business-ops/index.html
+    --page service-ops     部署站 `/service-ops/`   → public/service-ops/index.html
+    --page architecture    部署站 `/architecture/`  → public/architecture/index.html
+
+> 除 constellation 外，产出路径都是**目录索引**（`<页>/index.html`）而不是随手起的
+> 文件名 —— 内层用 `usePathname()` 查面板表决定 h1，路径必须精确等于面板表里的
+> `route`。理由见各自在 PAGES 里的注释。
 
 **默认完全离线** —— 所有需要的东西都在 `vendor/` 和 `*_files/` 里，不碰网络。
 只有显式加 `--refresh` 才会去线上更新缓存。
@@ -77,14 +83,17 @@ iframe 里就渲染出 Vue 应用自己了。由 `vite.config.js` 的 `sip-embed
 
 ## 目录
 
-    <保存的页面>.html + <保存的页面>_files/   ← Chrome 保存的，提供 JS/CSS
+    <保存的页面>.html + <保存的页面>_files/   ← Chrome 保存的，提供 JS/CSS（分享池）
     vendor/server.html                        ← Constellation 的服务器原始外壳
     vendor/business-ops/server.html           ← Business Ops 的服务器原始外壳
     vendor/business-ops/chunks/               ← 只有 Business Ops 独有的 3 个 chunk
-    vendor/media/*.woff2                      ← 字体（两页共用）
+    vendor/service-ops/server.html            ← Service Ops 的服务器原始外壳
+    vendor/architecture/server.html           ← Architecture 的服务器原始外壳
+    vendor/architecture/chunks/               ← 只有 Architecture 独有的 2 个 chunk
+    vendor/media/*.woff2                      ← 字体（各页共用）
 
-> Business Ops **不依赖**下载目录：外壳和它独有的 3 个 chunk 都在 `vendor/business-ops/`，
-> 其余 chunk 与 Constellation 共用（md5 逐字节相同），从 `*_files/` 拿。
+> 除 Constellation 外都**不依赖**下载目录：外壳在自己的 `vendor/<页>/` 下，独有的 chunk
+> 也在那儿，其余 chunk 与 Constellation 共用（md5 逐字节相同），从 `*_files/` 拿。
 """
 
 import argparse
@@ -127,7 +136,7 @@ main.flex.w-full.flex-col.overflow-hidden { height: 100vh !important; }
 </style>
 """
 
-# 三个页面。产出都进 public/ —— Vite 按根伺服，内层 chunk 走的
+# 四个页面。产出都进 public/ —— Vite 按根伺服，内层 chunk 走的
 # `/_next/…`（turbopack 硬编码的**根绝对路径**）dev 与 build 才对得上。
 PAGES = {
     "constellation": {
@@ -151,6 +160,15 @@ PAGES = {
         # 路径对不上时内层 h1 会**静默**变成 "SIP"（不报错、不白屏）。
         "out": ("service-ops", "index.html"),
         "vendor_sub": "service-ops",
+        "shared_chunks": True,
+    },
+    "architecture": {
+        "site_path": "/architecture/",
+        # ⚠️ 同样不能随意：面板表里是 `route:"/architecture"`（subtitle 6R classification ·
+        # modernization queues，pool VP4），对不上时内层 h1 静默变成 "SIP"。
+        # 路径与 Vue 路由**同名**，冲突处置与 service-ops 完全一致（见 vite.config.js）。
+        "out": ("architecture", "index.html"),
+        "vendor_sub": "architecture",
         "shared_chunks": True,
     },
 }

@@ -47,8 +47,14 @@ export const SLUG_ALIASES = {
  * 顶部 8 个域 + 各自侧边栏（原 9 个，Value Pool 已摘，见数组末尾的说明）。
  *
  * sidebar 为 null 的 5 个（constellation / biz-ops / architecture / finops /
- * security-ops）是**空壳**：改造前 `initNavigation` 的 else 分支直接
+ * security-ops）**没有侧边栏**：改造前 `initNavigation` 的 else 分支直接
  * 落到 `page-service-ops` 并把 footer 文案改成域名，这里保持同样语义。
+ *
+ * ⚠️ 但「没有侧边栏」≠「没有自己的页面」—— 其中三个已经在内嵌页上接了真实内容
+ * （constellation / biz-ops / architecture，登记在 `router/index.js` 的
+ * `DOMAIN_COMPONENTS`，路由仍由这里的 key 派生）。剩下 finops / security-ops
+ * 才是真正的空壳（落到 service-ops 概览）。
+ * 有侧边栏的域不受影响：它们的 `sidebar` 是对象，走 flattenItems() 那一套。
  *
  * 分组可嵌套（只有 Service Ops › APM › Smart Inspection 这一处）：子分组渲染在
  * 父分组同一个 `.sidebar-children` 容器内，与改造前的 DOM 结构一致。
@@ -300,15 +306,22 @@ export const NAV = [
 export const DEFAULT_SLUG = 'service-ops'
 
 /**
- * 5 个无侧边栏的「空壳」域：没有自己的页面。
+ * 5 个无侧边栏的域：**没有侧边栏**（其中 finops / security-ops 也没有自己的页面）。
  *
  * 改造前点它们会走 initNavigation 的 else 分支：隐藏所有侧边栏 → 落到 service-ops 概览
  * → 把该页标题改成域名。
  *
- * 这里给每个空壳域**一条自己的路由**（`/constellation` 等，面板仍指向 page-service-ops），
- * 而不是在组件里存一个"当前选的域"的覆盖状态 —— 否则高亮域与 URL 两套真源会打架：
- * 早期实现用 domainOverride 覆盖，结果被 watch(activeSlug) 清掉，出现「标题是 FinOps
- * 但侧边栏是 Service Ops」的错位。进 URL 后一切都从路由派生，且可分享可刷新。
+ * 这里给每个域**一条自己的路由**（`/constellation` 等），而不是在组件里存一个"当前选的域"
+ * 的覆盖状态 —— 否则高亮域与 URL 两套真源会打架：早期实现用 domainOverride 覆盖，
+ * 结果被 watch(activeSlug) 清掉，出现「标题是 FinOps 但侧边栏是 Service Ops」的错位。
+ * 进 URL 后一切都从路由派生，且可分享可刷新。
+ *
+ * ⚠️ 变量名与注释里的「空壳」是**改造前**的语义（那时这 5 个都落到 page-service-ops）。
+ * 现在 constellation / biz-ops / architecture 三个域在 `router/index.js` 的
+ * `DOMAIN_COMPONENTS` 里各自接了内嵌页，`meta.panelId` 仍指向 page-service-ops
+ * 但 `meta.legacy` 是 false，所以那个面板不会被显示 —— 兜底语义只在 finops /
+ * security-ops 上还完整成立。名字不改：它是本文件的导出面，且语义边界仍由
+ * `!n.sidebar` 精确表达。
  */
 export const EMPTY_DOMAINS = NAV.filter((n) => !n.sidebar)
 

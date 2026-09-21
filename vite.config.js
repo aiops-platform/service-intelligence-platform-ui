@@ -52,21 +52,21 @@ function sipLegacyBuildCopy() {
  * 为什么不能换个路径绕开：内层页面用 `usePathname()` 查面板表决定 h1，路径必须精确是
  * `/business-ops` / `/service-ops`。详见 src/views/business-ops/BusinessOpsView.vue。
  *
- * ## 只拦「带尾斜杠」的请求（`/service-ops` 必须留给 SPA）
+ * ## 只拦「带尾斜杠」的请求（`/service-ops`、`/architecture` 必须留给 SPA）
  *
  * Business Ops 那边 Vue 路由叫 `/biz-ops`、内嵌页在 `/business-ops/`，**两边不同名**，
- * 所以怎么拦都不打架。Service Ops 两边**同名**：一旦把 `/service-ops` 也拦下来，
- * 直接访问或刷新 `/service-ops`（书签、外链、F5）拿到的是那个裸的内嵌页 ——
+ * 所以怎么拦都不打架。Service Ops 与 Architecture 两边**同名**：一旦把 `/service-ops`
+ * 也拦下来，直接访问或刷新 `/service-ops`（书签、外链、F5）拿到的是那个裸的内嵌页 ——
  * 没有 AppHeader / AppFooter / 侧边栏，Vue 应用根本不启动，用户卡在没有导航的页面上。
  *
  * 所以只拦尾斜杠结尾的请求：iframe 的 src 本来就写 `/service-ops/`，
- * 而 `/service-ops` 落到 SPA 兜底，Vue 应用照常启动。
+ * 而 `/service-ops` 落到 SPA 兜底，Vue 应用照常启动。`/architecture` 同理。
  *
- * ⚠️ 生产端要同步：通用 `try_files $uri $uri/ /index.html` 会把 `/service-ops`
- * 经 `$uri/` 解成目录索引，同样吐内嵌页 —— nginx 需在通用规则**之前**补一条
- * `location = /service-ops { try_files /index.html =404; }`。见 README 的 nginx 片段。
+ * ⚠️ 生产端要同步：通用 `try_files $uri $uri/ /index.html` 会把这两个无斜杠路径
+ * 经 `$uri/` 解成目录索引，同样吐内嵌页 —— nginx 需在通用规则**之前**各补一条
+ * `location = /<页> { try_files /index.html =404; }`。见 README 的 nginx 片段。
  */
-const EMBED_PAGES = ['/business-ops', '/service-ops']
+const EMBED_PAGES = ['/business-ops', '/service-ops', '/architecture']
 
 function sipEmbedPageIndex() {
   // dev 读源目录 public/，preview 读产物 dist/ —— configResolved 里才拿得到这两个值
