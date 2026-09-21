@@ -185,21 +185,32 @@ watch(
       <!-- 右：节点详情 / 待审批 -->
       <div class="bs-panel" style="flex: 1; max-width: 460px">
         <div v-if="(runData?.pending_approvals || []).length" class="bs-approvals-title">待审批</div>
-        <div v-for="p in runData?.pending_approvals || []" :key="p.node_id" class="bs-approval-card">
-          <div class="bs-approval-head">
-            <span class="bs-approval-node">{{ p.node_id }}</span>
-            <span v-if="p.trigger" class="bs-trigger">{{ p.trigger }}</span>
-            <span v-else class="bs-trigger bs-trigger-plain">人工审批</span>
-          </div>
-          <div v-if="p.upstream" class="bs-upstreams">
-            <div v-for="(out, u) in p.upstream" :key="u" class="bs-upstream">
-              <div class="bs-upstream-label">{{ u }}</div>
-              <NodePayload :value="out" />
+        <!--
+          用 `.bs-approvals` 裹一层：它是**既有**的可滚动容器（max-height + overflow-y
+          auto），legacy 的 `#pcRunApprovals` 用的就是它。此前 Vue 这边把标题和卡片
+          直接挂在 `.bs-panel` 上，审批卡的完整上游载荷能把面板撑到 2435px
+          —— 而面板现在是**固定高**（与图等高），于是它顶破面板、把节点详情挤到只剩 13px。
+          ⚠️ 这个 class 与 legacy 共用，**不要改它的规则**。
+        -->
+        <div v-if="(runData?.pending_approvals || []).length" class="bs-approvals">
+          <div v-for="p in runData?.pending_approvals || []" :key="p.node_id" class="bs-approval-card">
+            <div class="bs-approval-head">
+              <span class="bs-approval-node">{{ p.node_id }}</span>
+              <span v-if="p.trigger" class="bs-trigger">{{ p.trigger }}</span>
+              <span v-else class="bs-trigger bs-trigger-plain">人工审批</span>
             </div>
-          </div>
-          <div class="bs-approval-actions">
-            <button class="btn btn-sm bs-approve-btn" @click="approve(p.node_id)">通过</button>
-            <button class="btn btn-sm bs-reject-btn" @click="reject(p.node_id)">驳回</button>
+            <div v-if="p.upstream" class="bs-upstreams">
+              <div v-for="(out, u) in p.upstream" :key="u" class="bs-upstream">
+                <div class="bs-upstream-label">{{ u }}</div>
+                <!-- bare：审批卡自己已经是"带边框的卡"，里面再包一层白卡就是套娃
+                     （实测叠到四层：琥珀卡 → 白卡 → 竖线 → 灰卡） -->
+                <NodePayload :value="out" bare />
+              </div>
+            </div>
+            <div class="bs-approval-actions">
+              <button class="btn btn-sm bs-approve-btn" @click="approve(p.node_id)">通过</button>
+              <button class="btn btn-sm bs-reject-btn" @click="reject(p.node_id)">驳回</button>
+            </div>
           </div>
         </div>
 

@@ -8328,6 +8328,29 @@ textarea.cmdb-input { resize: vertical; }
     word-break: break-all;
 }
 
+/* 审批卡里的上游载荷：**必须有高度上限**。
+   原设计是 `.bs-upstream pre { max-height: 120px; overflow-y: auto }` ——
+   把 `<pre>` 换成 NodePayload 之后那条规则不再命中，载荷于是**无上限增长**：
+   实测把审批卡撑到 2435px，顶破了固定高的面板、把节点详情挤到只剩 13px。
+   这条只匹配新组件（legacy 那边是 <pre>，没有 .bs-payload），所以不用按页面限定。*/
+.bs-upstream .bs-payload {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+/* 通过 / 驳回**钉在卡片底部**：上游载荷再长也不该把按钮滚出视野 ——
+   否则用户要在一段几百字的计划里翻到底才能点到"通过"。
+   仅限两个 Vue 页面：`.bs-approval-actions` 与 legacy js/app.js 共用。 */
+#page-run-detail .bs-approval-actions,
+#page-bug-solve .bs-approval-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    padding-top: 6px;
+    /* 与 .bs-approval-card 的底同色，避免滚动内容从按钮下方透出来 */
+    background: #fffbeb;
+}
+
 /* 对象数组 → 每项一张卡（对应 CROSS-SOURCE INSIGHTS 那两张） */
 .bs-payload-items {
     display: flex;

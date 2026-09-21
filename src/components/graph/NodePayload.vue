@@ -27,8 +27,9 @@
 
   ## 空值
 
-  `null` / `undefined` 显示 `—`（灰），空数组/空对象显示「（空）」。
-  **不显示成空字符串**：那分不清"没有这个字段"与"字段是空串"。
+  **三种"空"渲染成三种不同的东西**，否则读的人分不清是哪种：
+  `—`（没有值）/ `（空字符串）`（值是空串）/ `（空）`（空数组、空对象）。
+  早期把空串直接渲染成空白，看上去与"没有这个字段"完全一样。
 -->
 
 <script setup>
@@ -44,6 +45,15 @@ const props = defineProps({
   depth: { type: Number, default: 0 },
   /** 数组项 / 子块的小标题，如 `#1` */
   label: { type: String, default: '' },
+  /**
+   * 顶层**不要**套那张白底卡。
+   *
+   * 默认（false）会包一层白卡 —— 那是给"节点详情"面板用的：那里底是白的，
+   * 白卡 + 细边框给内容一个边界。但嵌进**别人已经有边框的卡**里时就不能再包了，
+   * 否则是"卡里套卡"（实测：审批卡的琥珀底里嵌一张白卡，再嵌 `bs-card`，
+   * 叠到四层，看着就是"样式乱了"）。
+   */
+  bare: { type: Boolean, default: false },
 })
 
 /** 超过这个字符数的字符串默认折叠 */
@@ -74,10 +84,21 @@ const entries = computed(() =>
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
-/** 值 → 展示文本。`null` 单独走样式，这里只处理能直接显示成一行文本的。 */
+/**
+ * 值 → 展示文本。
+ *
+ * **三种"空"必须渲染成三种不同的东西**，否则读的人分不清是哪种：
+ *   - `null` / `undefined` → `—`                （**没有这个值**）
+ *   - `''` / 纯空白        → `（空字符串）`      （有字段，值是空的）
+ *   - `[]` / `{}`          → `（空）`            （在数组/对象分支里出）
+ *
+ * 实测踩过：`''` 直接返回空串 → 渲染成一个 0 高度的 span，**屏幕上什么都没有**，
+ * 看上去和"系统没返回这个字段"一模一样（审批卡的 `comment` = `''` 时就是这样）。
+ * 组件头部那条约定说的就是这个，但第一版的实现反了。
+ */
 function fmt(v) {
   if (v === null || v === undefined) return '—'
-  if (typeof v === 'string') return v
+  if (typeof v === 'string') return v.trim() === '' ? '（空字符串）' : v
   return String(v)
 }
 
@@ -98,7 +119,8 @@ function isLong(v) {
     值在其下方用正文字体、比标签更深更大；数字走等宽 + tabular-nums；
     并列的短值用带边框的胶囊（如 `servicenow` `cmdb`）；成组的值进卡片。
   -->
-  <div class="bs-payload" :class="depth > 0 ? 'bs-payload-nested' : 'bs-payload-top'">
+  <div class="bs-payload"
+       :class="depth > 0 ? 'bs-payload-nested' : (bare ? '' : 'bs-payload-top')">
     <div v-if="label" class="bs-field-label bs-payload-badge">{{ label }}</div>
 
     <div v-for="e in entries" :key="e.k" class="bs-field">
