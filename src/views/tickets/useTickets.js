@@ -58,6 +58,15 @@ export const PAUSED = 'paused'
 export { REJECTED }
 
 /**
+ * 刚建出来、**还没发起过任何 run**。
+ *
+ * 它是唯一一个"工单自己的 `status` 说了算"的展示态（其余全由 `latest_run` 派生，见上）。
+ * 后端一发起 run 就把它置成 `running`（`run_ticket` 的 `set_status`），所以
+ * **`new` ⟺ 一次 run 都没跑过** —— 这也是列表里"给不给「发起诊断」按钮"的判据。
+ */
+export const NEW = 'new'
+
+/**
  * run **确实在往前走**的状态。
  *
  * ⚠️ `waiting_approval` **不在**这里：它不动了，在等人。混进"进行中"等于把一个

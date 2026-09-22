@@ -11,7 +11,9 @@
 <script setup>
 import { ref, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
-import { useTickets } from './useTickets'
+// `NEW` 与其余展示态常量同源；这里单独取出是因为模板里要拿它当判据
+// （「发起诊断」按钮只出现在「新建」的工单上，见模板里的说明）
+import { NEW, useTickets } from './useTickets'
 import { runStatusLabel, runStatusOf, statusLabel } from '@/utils/runStatus'
 import { severityClass, severityLabel } from '@/utils/severity'
 import { formatTimeAgo } from '@/utils/time'
@@ -252,13 +254,29 @@ onActivated(load)
             </td>
             <td class="col-time">{{ formatTimeAgo(t.created_at) }}</td>
             <td>
+              <!--
+                **只有「新建」的工单给这个按钮** —— 即一次 run 都还没跑过的。
+                跑过的单要么在 Run 列里已经能点进去看，要么已收敛到某个终态；
+                在列表里再摆一个「发起诊断」既没用（点进去还是得先看现状），
+                又会让人以为"每一条都还没跑过"—— 那一列全是同样的按钮，信息量为零。
+
+                ⚠️ 判据是**展示状态**（`ticketDisplayStatus`）而不是 `t.status`：
+                后者只在没跑过时才是 `new`，而展示状态还管着 halted / 审批否决那些派生档。
+                这里两者恰好等价（`new` ⟺ 没 run），但用展示状态是**同一份判据**，
+                不会在以后加派生档时悄悄跑偏。
+
+                重跑走详情里的「再跑一次」（`rerunFromDetail`）—— 那是"看过现状之后"的动作，
+                放在列表里就等于鼓励人盲点。
+              -->
               <button
+                v-if="ticketDisplayStatus(t) === NEW"
                 class="btn btn-yellow btn-sm"
                 :disabled="runningId === t.id"
                 @click.stop="diagnose(t)"
               >
                 {{ runningId === t.id ? '发起中…' : '发起诊断' }}
               </button>
+              <span v-else style="color: var(--text-tertiary)">—</span>
             </td>
           </tr>
           <tr v-if="!loading && visible.length === 0" class="alert-empty-row">
