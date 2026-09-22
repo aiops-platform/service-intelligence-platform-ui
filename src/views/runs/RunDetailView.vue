@@ -23,7 +23,8 @@ const state = useRunDetail(() => String(route.params.runId || ''))
 const {
   run: runData, loading, error, status, displayStatus, nodeStatus, running, nodes,
   totals, detail, detailTab, panelTab, setPanelTab, pendingApprovals, approvals,
-  stopping, start, stop, stopPolling, approve, reject, selectNode, statusClass,
+  stopping, pausing, resuming, pausingNote, executorAlive, looksStranded,
+  start, stop, pause, resume, stopPolling, approve, reject, selectNode, statusClass,
 } = state
 
 /**
@@ -125,11 +126,32 @@ watch(
         <span class="alert-tag" :class="'status-' + displayStatus">
           {{ runData ? runStatusLabel(runData) : '…' }}
         </span>
+        <!--
+          「已无执行者」提示。僵尸 run 与正在跑的 run 在状态上**是同一个词**
+          `running` —— 只有执行租约能把它们分开。不显示这一条的话，运维只能靠
+          "这条怎么半天没动"去猜。
+          `executorAlive === false` 才显示：`null` 是**判不了**（没接线租约或查询失败），
+          不能当"没有"用。
+        -->
+        <span v-if="looksStranded" class="alert-tag status-rejected"
+              title="状态说在跑，但这台机器上已没有任何执行者。点「暂停」可直接置为暂停，再点「恢复」从断点续跑。">
+          已无执行者
+        </span>
+        <button v-if="status === 'running'" class="btn btn-outline" :disabled="pausing" @click="pause">
+          {{ pausing ? '暂停中…' : '暂停' }}
+        </button>
+        <button v-if="status === 'paused'" class="btn btn-outline" :disabled="resuming" @click="resume">
+          {{ resuming ? '恢复中…' : '恢复' }}
+        </button>
         <button v-if="running" class="btn btn-outline" :disabled="stopping" @click="stop">
           {{ stopping ? '停止中…' : '停止' }}
         </button>
         <button class="btn btn-outline" @click="router.back()">返回</button>
       </div>
+    </div>
+
+    <div v-if="pausingNote" class="ai-summary-card" style="margin: 8px 0">
+      <div class="one-liner">{{ pausingNote }}</div>
     </div>
 
     <div v-if="error" class="si-error-bar" style="display: flex">

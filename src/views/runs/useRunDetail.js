@@ -19,6 +19,10 @@ export function useRunDetail(getRunId) {
   const selectedNode = ref(null)
   const detailTab = ref('output')
   const stopping = ref(false)
+  const pausing = ref(false)
+  const resuming = ref(false)
+  /** 上一次暂停的说明（区分"跑完这节点就停"与"它其实早停了、已直接置暂停"） */
+  const pausingNote = ref('')
 
   /** 后端原值（`success` / `failed` …）。**判终态/轮询用这个**，不要用下面的展示值。 */
   const status = computed(() => run.value?.status || '')
@@ -164,6 +168,53 @@ export function useRunDetail(getRunId) {
     }
   }
 
+  /**
+   * 这条 run **还有执行者吗**：`true` / `false` / `null` = 不知道。
+   *
+   * 判据在后端（执行租约），前端只呈现。**三态都要区分**：
+   * `null` 是"判不了"（没接线 lock 或查询失败），不能当 `false` 用 ——
+   * 那会在后端抖一下的时候把真在跑的 run 说成僵尸。
+   */
+  const executorAlive = computed(() =>
+    run.value?.executor_alive === undefined ? null : run.value.executor_alive)
+
+  /** 僵尸：状态说在跑，但**明确没有**执行者 —— 它不会自己再动了 */
+  const looksStranded = computed(
+    () => status.value === 'running' && executorAlive.value === false)
+
+  async function pause() {
+    const rid = getRunId()
+    if (!rid) return
+    pausing.value = true
+    try {
+      const out = await runApi.pause(rid)
+      // 后端在"明确没有执行者"时会走强制路径（直接置 paused）。这个区别对使用者
+      // 有意义：一种是"跑完这个节点就停"，一种是"它其实早停了"。
+      pausingNote.value = out?.forced
+        ? '这条 run 已无执行者，已直接置为暂停。点「恢复」可从断点续跑。'
+        : '已请求暂停，当前节点跑完即停。'
+      await load()
+    } catch (err) {
+      error.value = err?.message || '暂停失败'
+    } finally {
+      pausing.value = false
+    }
+  }
+
+  async function resume() {
+    const rid = getRunId()
+    if (!rid) return
+    resuming.value = true
+    try {
+      await runApi.resume(rid)
+      await load()
+    } catch (err) {
+      error.value = err?.message || '恢复失败'
+    } finally {
+      resuming.value = false
+    }
+  }
+
   async function approve(nodeId) {
     try {
       await runApi.approve(getRunId(), nodeId)
@@ -216,8 +267,17 @@ export function useRunDetail(getRunId) {
     approvals,
     selectedNode,
     stopping,
+    pausing,
+    resuming,
+    pausingNote,
+    /** `true`/`false`/`null`（未知）—— 判据在后端，前端只呈现 */
+    executorAlive,
+    /** 状态说在跑、但明确没有执行者 —— 僵尸 */
+    looksStranded,
     start,
     stop,
+    pause,
+    resume,
     /** 只停轮询，不停止 run（离开本页时用） */
     stopPolling: poller.stop,
     approve,

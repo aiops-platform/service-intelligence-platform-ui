@@ -67,6 +67,18 @@ export const runApi = {
 
   stop: (id) => agentflow.post(`/runs/${id}/stop`),
 
+  /**
+   * 暂停 / 恢复成对使用。
+   *
+   * `pause` 在**明确没有执行者**时走后端的强制路径（直接置 paused），响应带 `forced`
+   * —— 那是僵尸 run 的出路：它卡在 `running`，发命令没人接，不挪到 `paused` 就永远卡着。
+   *
+   * `resume` 从 checkpoint 续跑。CAS 只从 `paused`/`waiting_approval` 接，
+   * 所以**终态与 halt 之后恢复会被拒** —— 这是设计如此，不是缺陷。
+   */
+  pause: (id) => agentflow.post(`/runs/${id}/pause`),
+  resume: (id) => agentflow.post(`/runs/${id}/resume`),
+
   /** 审批 / 驳回：body 均为 {node_id} */
   approve: (id, nodeId) => agentflow.post(`/runs/${id}/approve`, { node_id: nodeId }),
   reject: (id, nodeId) => agentflow.post(`/runs/${id}/reject`, { node_id: nodeId }),
