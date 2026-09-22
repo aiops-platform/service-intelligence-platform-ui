@@ -4601,6 +4601,7 @@
         var dgxRerunPending = false; // 拒绝后抑制旧 completed 快照重新渲染出审批条
         var dgxRerunCount = 0;    // 拒绝时的 reanalyze_count（重跑起跳观测点）
         var pcDiagHistory = { items: [], rev: 0 }; // 历史计划（真源 = APM evidence）；rev = 已拉取时的 reanalyze_count
+        var dgxTicket = null;     // 当前记录的工单：派单号 + 回传的处置结论（见 dgxTicketOf）；没派过单 → null
 
         // 取记录里最新一条 diagnose_session evidence（record_id → session_id 的桥）
         function findDiagnoseSession(rec) {
@@ -4661,6 +4662,7 @@
                 return;
             }
             pcDiagRec = rec;
+            dgxTicket = dgxTicketOf(rec);   // 工单（派单号 + 回传的处置结论）；没派过单 → null
             // 换记录 → 复位全部交互状态（审批条/反馈框/历史/分页签/链路）
             dgxOptSel = 0;
             dgxChainOpen = false;
@@ -4686,6 +4688,7 @@
             stopDiagPolling();
             pcDiagRec = null;
             pcDiagLastSnap = null;
+            dgxTicket = null;   // 处理卡的判据（见 dgxTicketCard）—— 一并清掉，别留给下一条记录
             var overlay = getEl('pcDiagnoseOverlay');
             if (overlay) overlay.classList.remove('open');
         }
@@ -4723,6 +4726,26 @@
                 });
         }
 
+        // 列表每 5s 静默重拉一次 —— 弹框开着时**搭这趟车**同步（不额外发请求）。
+        // 这期间后端会改的两样东西都在记录上：工单回传（ticket_status）与 state
+        // （escalated → resolved 正是 agentflow 回传那一下改的），而前端手里那份还是
+        // 开弹框时的旧对象——不搭车的话，弹框开着的时候回传到了也看不见。
+        function syncOpenDiagnosis() {
+            if (!pcDiagRec || !pcDiagLastSnap) return;   // 弹框没开（或还没渲染过）→ 与本处无关
+            var fresh = null;
+            for (var i = 0; i < allProblems.length; i++) {
+                if (allProblems[i] && allProblems[i].record_id === pcDiagRec.record_id) { fresh = allProblems[i]; break; }
+            }
+            if (!fresh) return;                          // 被筛掉/删了 → 保持现状，不清空弹框
+            var tk = dgxTicketOf(fresh);
+            var same = String(fresh.state || '').toLowerCase() === String(pcDiagRec.state || '').toLowerCase() &&
+                dgxSameTicket(tk, dgxTicket);
+            pcDiagRec = fresh;                           // 换成本轮记录：state 可能已被回传改成 resolved
+            if (same) return;                            // 没变就不重渲染：renderDiagnosis 会重建整块 DOM
+            dgxTicket = tk;                              // （滚动位置与展开的历史计划都会被重置）
+            renderDiagnosis(pcDiagLastSnap);
+        }
+
         // ── 历史计划（真源 = APM evidence 的 diagnose_decision）：spike 的 remediation 单值，
         //    每次重跑即清空，故历史只能落 APM；这里走独立只读端点，不污染 /diagnose 的逐字回传。
         // ⚠️ 后端 decision 枚举里还有 `false_positive`（M7 的误报回写链路仍在用），
@@ -4739,6 +4762,44 @@
                     if (pcDiagLastSnap) renderDiagnosis(pcDiagLastSnap);
                 })
                 .catch(function () { /* 历史拉取失败不阻断主视图 */ });
+        }
+
+        // ── 工单回传：升级派出去的那张工单，修完之后把处置结论送回来 ─────────────────
+        // 链路（`aiops-apm-anomaly-detector/router/problems.py` + design-v5.8 §13）：escalate 派单
+        // → agentflow 跑修复工作流 → 跑完 POST 回 `/v1/problems/ticket-status` → 落成一条 evidence，
+        // 本文件读的就是它。三个 `status`：
+        //   resolved      修复已落地 —— 顺带把问题单从 escalated 改成 resolved
+        //   failed        修复没走完   ┐ 只追加证据，问题单**仍挂 escalated** 等人处理
+        //   insufficient  没定位到可改项 ┘
+        // 前端**只能从记录里读这条**：`GET /{id}/diagnose` 那个快照是诊断引擎的视图模型，
+        // 不含回传（后端有意不混）。记录来自列表的 5s 轮询，故回传到达后最多 5s 就显出来 ——
+        // 搭车刷新见 refresh() → syncOpenDiagnosis()。
+        // 一轮跑完一条，重跑就再来一条：卡上取**最后一条**，那是工单现在的状态。
+        var DGX_TICKET_STATUS = { resolved: '已修复', failed: '修复未完成', insufficient: '证据不足' };
+
+        // 记录 → 工单对象；没派过单返回 null（处理卡这时才走审批按钮那条路）。
+        function dgxTicketOf(rec) {
+            var number = problemTicketNumber(rec);   // 派单号：真源 = escalate 裁定的 evidence
+            var ev = (rec && rec.evidence) || [];
+            var last = null;
+            for (var i = 0; i < ev.length; i++) {
+                if (ev[i] && ev[i].type === 'ticket_status') last = ev[i];
+            }
+            if (!last && !number) return null;
+            return {
+                number: String((last && last.ticket_id) || number || ''),
+                status: String((last && last.status) || ''),
+                description: String((last && last.description) || ''),
+                reported_at: (last && last.reported_at) || ''
+            };
+        }
+
+        // 前后两次是不是同一份工单（含回传内容）——只用来判断**要不要重渲染**：
+        // renderDiagnosis 是重建整块 DOM，白重渲染会把滚动位置和展开的历史计划一起重置。
+        function dgxSameTicket(a, b) {
+            if (!a || !b) return !a && !b;
+            return a.number === b.number && a.status === b.status &&
+                a.description === b.description && a.reported_at === b.reported_at;
         }
 
         // 渲染小工具（dgx = diaGnosis eXperience）
@@ -4925,27 +4986,39 @@
             return html + '</div></section>';
         }
 
+        // 工单卡：**派过单**的记录出这张（不是"state === 'escalated'"才出）——人派完单要看到单号，
+        // 工单修完回传了还要看到结论。
+        // ⚠️ 判据必须是「记录里有没有工单」：回传 `resolved` 会把问题单从 escalated 转成 resolved，
+        // 按 state 判的话这张卡连同处置结论一起消失 —— 而消失的正是人最想看结果的那一刻。
+        function dgxTicketCard(tk) {
+            var html = '<section class="dgx-card dgx-approve"><div class="dgx-label">处理 · DECISION</div>' +
+                '<div class="dgx-approve-hint">已升级——本次诊断已转成一张修复工单' +
+                (tk.number ? '，工单号 <span class="dgx-mono">' + dgxEsc(tk.number) + '</span>' : '') +
+                '。</div>';
+            // 还没回传（工单在跑）：只留上面那句。不用占位文本撑版面 —— 那看起来像"结果丢了"。
+            if (!tk.status) return html + '</section>';
+            html += '<div class="dgx-kv"><span class="dgx-k">回传状态</span><span class="dgx-v">' +
+                dgxEsc(DGX_TICKET_STATUS[tk.status] || tk.status) + '</span></div>';
+            if (tk.description) {
+                html += '<div class="dgx-kv"><span class="dgx-k">处置结论</span><span class="dgx-v">' +
+                    dgxEsc(tk.description) + '</span></div>';
+            }
+            if (tk.reported_at) {
+                html += '<div class="dgx-kv"><span class="dgx-k">回传时间</span><span class="dgx-v">' +
+                    dgxEsc(formatTime(tk.reported_at)) + '</span></div>';
+            }
+            return html + '</section>';
+        }
+
         // 处理条：仅当「问题单可动」且「诊断已到可裁定的终态」且「未在重跑窗口」时出现。
         // 已 resolved/closed 的记录 / analyzing / dismissed / approved 都不显示 → 不会出现点了报 409 的死按钮。
-        // 唯一的例外是 `escalated`：那条不返回空串，而是返回**结果卡**（见下）——人升级完要看到单号。
+        // 例外是**派过单**的记录（escalated，以及工单回传后转的 resolved）：那条不返回空串，
+        // 而是返回**工单卡**（见上）——人升级完要看到单号，修完要看到处置结论。
         function dgxApproval(snap) {
             var recState = String((pcDiagRec && pcDiagRec.state) || 'pending').toLowerCase();
-            // 已升级：处理卡换成**结果卡**（不是简单消失）——人点完要看到"派到哪去了"。
-            // 单号取自历史里最后一条升级裁定（真源 = 后端 evidence），不是本地记的临时值：
-            // 重开弹窗、换台机器看到的都一样。历史是异步拉的，所以首次渲染可能先无号、
-            // 拉完由 loadDiagnoseDecisions 里的 renderDiagnosis 补上。
-            if (recState === 'escalated') {
-                var hist = (pcDiagHistory && pcDiagHistory.items) || [];
-                var esc = null;
-                for (var k = hist.length - 1; k >= 0; k--) {
-                    if (hist[k] && hist[k].decision === 'escalate') { esc = hist[k]; break; }
-                }
-                var no = (esc && esc.ticket_number) || '';
-                return '<section class="dgx-card dgx-approve"><div class="dgx-label">处理 · DECISION</div>' +
-                    '<div class="dgx-approve-hint">已升级——本次诊断已转成一张修复工单' +
-                    (no ? '，工单号 <span class="dgx-mono">' + dgxEsc(no) + '</span>' : '') +
-                    '。</div></section>';
-            }
+            // 单号与回传结论都读自 evidence（`dgxTicketOf`），不是本地记的临时值：
+            // 重开弹窗、换台机器看到的都一样。
+            if (dgxTicket) return dgxTicketCard(dgxTicket);
             if (recState !== 'pending' && recState !== 'in_progress') return '';
             var st = snap.status;
             if (st !== 'completed' && st !== 'failed' && st !== 'closed_manual') return '';
@@ -5050,12 +5123,12 @@
                         // 不翻的话升级后那张卡照旧显示、三个按钮全是活的，再点「忽略」撞上后端
                         // 的 escalated 终态守卫拿 409 —— 一个不该存在的死按钮。
                         pcDiagRec.state = 'escalated';
-                        // 工单号从**历史**读（`loadDiagnoseDecisions` → evidence），不是从这个响应读：
-                        // 响应只在这一次点击里存在，重开弹窗时只能靠历史。所以这两步缺一不可。
-                        // ⚠️ 也不能指望 `pollDiagnosis` 里的自动重拉——它只在 `rev` 变化时才拉历史，
-                        // 而 escalate 不新增 run（rev = executions.length）→ rev 不变 → 不会重拉。
-                        loadDiagnoseDecisions(recordId);
-                        pollDiagnosis();                 // 重渲染：处理卡消失、工单结果出现
+                        // 工单就地落上：升级后那张卡换成工单卡，判据是 `dgxTicket`（见 dgxTicketCard）。
+                        // 单号这个响应里就有，先用它；下一轮列表刷新（5s）会拿 evidence 里同一份号
+                        // 覆盖 → 值相同 → 不重渲染。重开弹窗时则一律读 evidence，不靠这个临时值。
+                        dgxTicket = { number: num, status: '', description: '', reported_at: '' };
+                        loadDiagnoseDecisions(recordId);  // 历史里那条升级裁定（带同一份单号）
+                        pollDiagnosis();                 // 重渲染：审批按钮消失、工单卡出现
                         refresh();                       // 列表状态列转 escalated
                     } else {
                         window._showToast(
@@ -6261,6 +6334,7 @@
                     loadServiceFilter();
                     renderKpi();
                     renderTable();
+                    syncOpenDiagnosis();   // 诊断弹框开着 → 跟着这轮一起更新（工单回传 / state）
                 })
                 .catch(function (err) {
                     pcRefreshing = false;
