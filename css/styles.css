@@ -2160,7 +2160,12 @@ svg { fill: currentColor; }
     white-space: nowrap;
 }
 
-.alert-tag.severity-critical { background: #fef2f2; color: #dc2626; }
+/* critical 走**实心底 + 白字**，与 high 的"浅底彩字"拉开档次。
+   改前两条的背景**完全相同**（都是 #fef2f2），只差文字色 #dc2626 / #ef4444 ——
+   同一支红的相邻两档（red-600 / red-500），在同一块粉底上实测分不出来。
+   判据：**"最严重"这一档不该只靠色阶的一格之差**；实心与浅底是两种形态，
+   即使打印成灰度也能一眼分开。high / medium / low 仍保持浅底，形成"只有最严重那个是实心"的递进。 */
+.alert-tag.severity-critical { background: #dc2626; color: #fff; }
 .alert-tag.severity-warning  { background: #fffbeb; color: #d97706; }
 .alert-tag.severity-info     { background: #eff6ff; color: #2563eb; }
 
