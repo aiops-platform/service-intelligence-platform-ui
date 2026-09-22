@@ -1044,13 +1044,17 @@
             </div>
             <table class="reflow-table">
                 <thead>
+                    <!-- Ticket = 升级后绑到这条问题单上的修复工单号（后端 evidence 里的升级裁定，
+                         见 js/app.js 的 problemTicketNumber）；没升级过就显示 '-'。
+                         Occurrences 与 Domain 两列按要求撤掉 —— 次数在 Detail 弹窗的头部、
+                         域在 Detail 弹窗的 Meta 表里都照旧看得到。
+                         列数 8 → 7，下方 tbody 两处 colspan 已同步改成 7（js/app.js）。 -->
                     <tr>
                         <th class="col-problem">Problem</th>
                         <th>Service</th>
-                        <th>Domain</th>
+                        <th>Ticket</th>
                         <th>Severity</th>
                         <th>State</th>
-                        <th>Occurrences</th>
                         <th>First Seen</th>
                         <th>Actions</th>
                     </tr>

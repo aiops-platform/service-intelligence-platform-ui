@@ -2532,13 +2532,28 @@
     }
 
     // ── Table Sorting ───────────────────────────────────────────
+    // 点表头排序（全部 legacy 表格共用）。两条不变量，都是踩出来的：
+    //
+    // ⚠️ 1. **占位行不参与排序**。凑高度的行是「整行一个跨列格」
+    //    （`<tr class="alert-empty-row"><td colspan="N">&nbsp;</td></tr>`），
+    //    它只有 1 个子格；跟数据行一起排时 `children[colIndex]` 对它取到 undefined →
+    //    抛 TypeError。要命的是**异常发生在 sort 的比较器内部**，后面那句
+    //    「按结果重排 DOM」整段不执行 —— 现场表现是「点表头没反应」，只在控制台留一条
+    //    报错，看起来像"这张表不支持排序"。所以先按结构摘出来，排完原样补回表尾
+    //    （它们本就是垫底的，顺序无所谓）。
+    //
+    // ⚠️ 2. **数字列要按数字排，判据是「这一列的值长什么样」，不是写死列号**。
+    //    原来写死 `[0, 4, 5, 6]`（那是给某一页的 #/Incidents/Bot%/Risk 配的），换一页就错位：
+    //    First Seen 列落进"数字"分支后 `parseFloat("2026/09/22 12:54:22") === 2026`，
+    //    整列相等 → 点了纹丝不动。现在改成**逐列判定**：整列都是「一个数字 + 同一个后缀」
+    //    才走数字比较（'120s'/'9s'、'95%'/'3%'、'1,234' 都算，后缀不同或压根没有数字
+    //    的一律按字符串排——'2026/09/22 …' 这种定宽日期字符串按字典序正好是时间序）。
     function initTableSorting() {
         var headers = legacyRoot().querySelectorAll('th');
         headers.forEach(function (th) {
             th.addEventListener('click', function () {
                 var table = th.closest('table');
                 var tbody = table.querySelector('tbody');
-                var rows = Array.from(tbody.querySelectorAll('tr'));
                 var colIndex = Array.from(th.parentElement.children).indexOf(th);
                 var isAsc = th.classList.contains('sorted-asc');
 
@@ -2552,22 +2567,49 @@
                     th.classList.add('sorted-asc');
                 }
 
-                rows.sort(function (a, b) {
-                    var aVal = a.children[colIndex].textContent.trim();
-                    var bVal = b.children[colIndex].textContent.trim();
+                // 数据行 / 占位行分流（见上面第 1 条）。判据是"整行只有一个跨列格"，
+                // 不比对表头格数——分组表头那种多行 thead 会让格数对不上，把数据行误判成占位行。
+                var dataRows = [];
+                var fillerRows = [];
+                Array.from(tbody.querySelectorAll('tr')).forEach(function (row) {
+                    var only = row.children.length === 1 ? row.children[0] : null;
+                    ((only && only.colSpan > 1) ? fillerRows : dataRows).push(row);
+                });
 
-                    // Numeric sort for #, Incidents, Bot %, Risk columns
-                    if ([0, 4, 5, 6].indexOf(colIndex) !== -1) {
-                        var aNum = parseFloat(aVal.replace(/[,%]/g, '')) || 0;
-                        var bNum = parseFloat(bVal.replace(/[,%]/g, '')) || 0;
+                // 取该行本列的文本；行里没有这一格时给空串（宁可排在一边，也不抛）
+                var cellText = function (row) {
+                    var cell = row.children[colIndex];
+                    return cell ? cell.textContent.trim() : '';
+                };
+                // 数字列判据（见上面第 2 条）：整列都是「一个数字 + **同一个**后缀」才算。
+                // 「后缀相同」这一条是关键：它让 '120s' / '9s' / '60s'（带单位）、'95%' / '3%'、
+                // '1,234' 都走数字比较，又能把 '2026/09/22 12:54:22' 这种**以数字开头**的日期
+                // 挡在字符串分支外——它们的后缀各不相同，若按 parseFloat 比会全等于 2026
+                // → 点表头纹丝不动（这正是 First Seen 列原来的毛病）。
+                var leadingNum = function (v) {
+                    var m = /^[+-]?[\d,]+(\.\d+)?/.exec(v);
+                    return m ? { n: parseFloat(m[0].replace(/,/g, '')) || 0, rest: v.slice(m[0].length) } : null;
+                };
+                var parsedCells = dataRows.map(cellText).map(leadingNum);
+                var head = parsedCells[0];
+                var numeric = !!head && parsedCells.every(function (p) { return p && p.rest === head.rest; });
+                var asNumber = function (row) {
+                    var p = leadingNum(cellText(row));
+                    return p ? p.n : 0;
+                };
+
+                dataRows.sort(function (a, b) {
+                    if (numeric) {
+                        var aNum = asNumber(a);
+                        var bNum = asNumber(b);
                         return isAsc ? bNum - aNum : aNum - bNum;
                     }
-
-                    // String sort for App, Tier, Hc
+                    var aVal = cellText(a);
+                    var bVal = cellText(b);
                     return isAsc ? bVal.localeCompare(aVal) : aVal.localeCompare(bVal);
                 });
 
-                rows.forEach(function (row) { return tbody.appendChild(row); });
+                dataRows.concat(fillerRows).forEach(function (row) { return tbody.appendChild(row); });
 
                 // Update row numbers
                 tbody.querySelectorAll('.col-num').forEach(function (td, i) {
@@ -4277,6 +4319,24 @@
             return (p.symptom && p.symptom.summary) ? p.symptom.summary : (p.record_id || 'Untitled');
         }
 
+        // 升级后绑到这条问题单上的**修复工单号**（`INC-YYYYMMDD-NNNN`）；没升级过返回空串。
+        // 真源与后端 `storage/records.py` 的 `_holds_ticket` 同一套：evidence 里的升级裁定
+        // （`{type:"diagnose_decision", decision:"escalate", ticket_number}`）。
+        // `resolve_reason`（`escalated:<号>`）是**给人看的副本**，只在没有 evidence 时兜底 ——
+        // 单号为空时它退化成裸的 "escalated"，拿它当唯一判据会静默漏掉号。
+        function problemTicketNumber(p) {
+            var ev = (p && p.evidence) || [];
+            for (var i = ev.length - 1; i >= 0; i--) {
+                var e = ev[i];
+                if (e && e.type === 'diagnose_decision' && e.decision === 'escalate' && e.ticket_number) {
+                    return String(e.ticket_number);
+                }
+            }
+            var reason = String((p && p.resolve_reason) || '');
+            if (reason.indexOf('escalated:') === 0) return reason.slice('escalated:'.length).trim();
+            return '';
+        }
+
         function renderTable() {
             var filtered = filteredProblems();
             var total = filtered.length;
@@ -4288,7 +4348,7 @@
             var tbody = getEl('pcTableBody');
             var html = '';
             if (total === 0) {
-                html = '<tr class="alert-empty-row"><td colspan="8" class="pc-empty-state">No problems match the current filters.</td></tr>';
+                html = '<tr class="alert-empty-row"><td colspan="7" class="pc-empty-state">No problems match the current filters.</td></tr>';
             } else {
             for (var i = 0; i < PAGE_SIZE; i++) {
                 if (i < rows.length) {
@@ -4301,13 +4361,13 @@
                     // 或 diagnose_session（老记录：直连 spike）。两者都能进 View diagnosis——
                     // 后端 GET /{id}/diagnose 已按绑定分派引擎，返回同一形状，前端不必分支。
                     var diag = findAgentRun(p) || findDiagnoseSession(p);
+                    var ticket = problemTicketNumber(p);   // 升级生成的修复工单号；没有 → '-'
                     html += '<tr>' +
                         '<td class="col-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</td>' +
                         '<td>' + escapeHtml(p.service || '-') + '</td>' +
-                        '<td>' + escapeHtml(p.domain || '-') + '</td>' +
+                        '<td>' + (ticket ? escapeHtml(ticket) : '-') + '</td>' +
                         '<td><span class="alert-tag severity-' + sev + '">' + escapeHtml(p.severity || 'warning') + '</span></td>' +
                         '<td><span class="alert-tag status-' + disp.cls + '">' + escapeHtml(disp.label) + '</span></td>' +
-                        '<td>' + (p.occurrence_count || 1) + '</td>' +
                         '<td class="col-time">' + formatTime(p.detected_at || p.first_seen_at) + '</td>' +
                         '<td class="pc-actions">' +
                         '<button class="btn-alert-detail" data-id="' + escapeHtml(p.record_id) + '" data-act="detail">Detail</button>' +
@@ -4317,7 +4377,7 @@
                         '</td>' +
                         '</tr>';
                 } else {
-                    html += '<tr class="alert-empty-row"><td colspan="8">&nbsp;</td></tr>';
+                    html += '<tr class="alert-empty-row"><td colspan="7">&nbsp;</td></tr>';
                 }
             }
             }
