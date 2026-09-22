@@ -4372,6 +4372,10 @@
                         '<td class="pc-actions">' +
                         '<button class="btn-alert-detail" data-id="' + escapeHtml(p.record_id) + '" data-act="detail">Detail</button>' +
                         ((st === 'pending' || st === 'in_progress') && !diag ? '<button class="btn-alert-detail pc-diag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="diagnose">Analyze</button>' : '') +
+                        // 「Escalate」只在**还没分析过**的单上出现：分析过的走 View diagnosis 里的
+                        // 处理卡（那时该不该派、派哪种，得看着诊断结论决定）。与 Analyze 并列 ——
+                        // 两条都是"现在就动这条单"的入口，一个让平台诊断，一个直接派给修复流程。
+                        ((st === 'pending' || st === 'in_progress') && !diag ? '<button class="btn-alert-detail pc-escalate-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="escalate-fix">Escalate</button>' : '') +
                         (diag ? '<button class="btn-alert-detail pc-viewdiag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="view-diagnosis">View diagnosis</button>' : '') +
                         ((st === 'pending' || st === 'in_progress') ? '<button class="btn-alert-detail pc-ignore-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="ignore">Ignore</button>' : '') +
                         '</td>' +
@@ -4413,6 +4417,13 @@
                     if (act === 'detail') openProblemDetail(rec);
                     else if (act === 'ignore') confirmIgnore(rec);
                     else if (act === 'diagnose') startDiagnose(rec);
+                    // 派单会真的建出一张工单（不可逆的那一头在派单侧），与「忽略」同款先确认。
+                    else if (act === 'escalate-fix') {
+                        confirmDialog('Escalate ' + rec.record_id + '? A fix ticket pinned to ' +
+                            ESCALATE_FIX_WORKFLOW + ' will be created.', function () {
+                                escalateToFix(rec, false);
+                            });
+                    }
                     // View diagnosis 回到**结论版面**（.dgx-*）：先看根因/方案/审批，
                     // 执行过程退到弹窗底部「历次执行」区按需查看（见 dgxExecutions）。
                     else if (act === 'view-diagnosis') openDiagnosisView(rec);
@@ -5036,10 +5047,15 @@
             // 要派的是整份诊断，与用户当前翻到哪个分页签无关。没有方案就没有可派的活，
             // 这也正好与下面那句 hint 逐字对齐。
             var canEscalate = (st === 'completed') && opts.length > 0;
+            // 「升级 · 修复流程」= **诊断没给出东西**时的出路：没根因或没方案 → 直接把这单派给
+            // 修复流程（钉 `ESCALATE_FIX_WORKFLOW`），不再走上面那条「认可诊断」的升级。
+            // 上面那句 hint 里"仅可忽略"的旧文案与它成对（见下）。
+            var rootCause = String((snap.conclusion && snap.conclusion.root_cause) || '').trim();
+            var canEscalateFix = (!rootCause || opts.length === 0);
             var hint = sel
                 ? ('当前待处理：方案' + (dgxOptSel + 1) + '「' + sel.title + '」' +
                    (opts.length > 1 ? '（可切换上方分页签）' : ''))
-                : '本次诊断未给出可执行方案，仅可忽略。';
+                : '本次诊断未给出可执行方案，可忽略或升级到修复流程。';
 
             var html = '<section class="dgx-card dgx-approve"><div class="dgx-label">处理 · DECISION</div>' +
                 '<div class="dgx-approve-hint">' + dgxEsc(hint) + '</div>';
@@ -5068,9 +5084,56 @@
                         ? '<button type="button" class="dgx-btn dgx-btn--escalate dgx-act" data-act="escalate"' +
                           (dgxDeciding ? ' disabled' : '') + '>升级 · 生成工单</button>'
                         : '') +
+                    // 与「升级 · 生成工单」并列而非互斥：两者只在"有方案但没根因"时同时出现，
+                    // 那时派的确实是两件不同的事（一个认可这份诊断、一个把活直接交给修复流程）。
+                    (canEscalateFix
+                        ? '<button type="button" class="dgx-btn dgx-btn--escalate dgx-act" data-act="escalate-fix"' +
+                          (dgxDeciding ? ' disabled' : '') + '>升级 · 修复流程</button>'
+                        : '') +
                     '</div>';
             }
             return html + '</section>';
+        }
+
+        // ── 直接派单（页面上的两处「Escalate」/「升级 · 修复流程」）───────────────────
+        // 把问题单**不经诊断裁定**派成一张修复工单，建单时就钉住 `ESCALATE_FIX_WORKFLOW`。
+        // 与「升级 · 生成工单」的差别只在钉哪条流程：那条走诊断审批门、由 run 里的建单节点
+        // 按 YAML 的 `next_workflow`（problem-diagnose-fix）建；这条由人直接指定。
+        //
+        // ⚠️ **必须经 APM 派单，不能在浏览器里直接打 agentflow 的 `/tickets`**：工单号
+        // （`INC-YYYYMMDD-NNNN`）由 APM 取、问题单与工单的绑定也写在 APM 的 evidence 里。
+        // 绕过它建出来的单既没有号、也不绑问题单 —— 修完之后 `ticket-done` 的回传
+        // （`/v1/problems/ticket-status` 按号反查记录）会查无此单，处理卡的处置结论永远不亮。
+        var ESCALATE_FIX_WORKFLOW = 'bug-fix-scenario2';
+        var escalateBusy = false;   // 派单在途（防双击建出两张单：后端只兜已派过的，兜不住并发两次）
+
+        function escalateToFix(rec, modal) {
+            if (!rec || escalateBusy) return;
+            escalateBusy = true;
+            apmApi('/v1/problems/' + encodeURIComponent(rec.record_id) + '/escalate', {
+                method: 'POST',
+                body: { workflow_name: ESCALATE_FIX_WORKFLOW }
+            })
+                .then(function (resp) {
+                    escalateBusy = false;
+                    var num = (resp && resp.ticket_number) || '';
+                    window._showToast(
+                        modal ? (num ? ('已升级，工单 ' + num + ' 已生成') : '已升级，工单已生成')
+                              : (num ? ('Escalated · ticket ' + num) : 'Escalated'),
+                        'success');
+                    if (modal && pcDiagRec) {
+                        // 弹框留着：处理卡换成工单卡。与「升级 · 生成工单」同一套就地翻状态
+                        // （`dgxApproval` 的判据是 `dgxTicket`，不是 `state`）。
+                        pcDiagRec.state = 'escalated';
+                        dgxTicket = { number: num, status: '', description: '', reported_at: '' };
+                        pollDiagnosis();   // 重渲染：审批按钮消失、工单卡出现
+                    }
+                    refresh();             // 列表：状态列转 escalated、Ticket 列出号
+                })
+                .catch(function (err) {
+                    escalateBusy = false;
+                    window._showToast('Escalate failed: ' + err.message, 'error');
+                });
         }
 
         // 提交决策。三条出口，形状各不相同：
@@ -5405,7 +5468,12 @@
                     if (it.steps && it.steps.length) {
                         html += dgxOptionBody({ steps: it.steps });
                     }
-                    html += '<div class="dgx-muted">该轮快照不可用（诊断会话已过期）。</div>';
+                    // 「没有诊断轮次」的那条（页面上的 Escalate 直接派单，`engine=manual`）**不印**
+                    // 这句话：它压根没有会话，说"会话已过期"是把不存在的东西说成过期了。
+                    // 判据用 session_id —— 诊断裁定（spike/agentflow）**必有**它，直接派单必没有。
+                    if (it.session_id) {
+                        html += '<div class="dgx-muted">该轮快照不可用（诊断会话已过期）。</div>';
+                    }
                 }
                 if (it.reanalyze_count != null) {
                     html += '<div class="dgx-muted">驳回次数 ' + dgxEsc(String(it.reanalyze_count)) +
@@ -6481,6 +6549,10 @@
                         confirmDialog(
                             '升级该诊断？将生成一张修复工单并把这条问题单置为 escalated。',
                             function () { submitDiagnosisDecision('escalate'); });
+                    } else if (act === 'escalate-fix') {
+                        confirmDialog(
+                            '升级到修复流程？将生成一张工单并钉住 ' + ESCALATE_FIX_WORKFLOW + '。',
+                            function () { escalateToFix(pcDiagRec, true); });
                     } else if (act === 'flow-last') {
                         // 概要条 Flow Diagram：直接看**最后一次执行**的流程图，**只开这一张图**
                         //（silent：不亮下面的 run 查看器，关掉图就回诊断弹框）。
