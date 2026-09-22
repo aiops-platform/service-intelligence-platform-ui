@@ -2173,6 +2173,19 @@ svg { fill: currentColor; }
 .alert-tag.status-acknowledged  { background: #fffbeb; color: #d97706; }
 .alert-tag.status-resolved      { background: #ecfdf5; color: #059669; }
 .alert-tag.status-ignored       { background: #f3f4f6; color: #6b7280; }
+/* ↓ 2026-09-22 补：`new` / `running` / `paused` 此前**没有任何规则**，
+   而工单列表的展示状态**会产出这三个值**（`useTickets.ticketDisplayStatus`
+   → 类名裸拼 `'status-' + st`），于是它们只剩 `.alert-tag` 基类 ——
+   基类里既没有 background 也没有 color，看着是**纯黑文本**，
+   与旁边的 已解决(绿) / 失败(红) / 审批超时(琥珀) 明显不是一套。
+   ⚠️ 与 severity-medium/low 是**同一族问题**（那次在 4964 行一带补的）：类名裸拼 + 规则缺失。
+   配色沿用本文件既有语义：蓝=进行中（与 `status-in_progress` 同义）、
+   灰=未开始/中性、琥珀=停住了等人（与 `needs_info`/`acknowledged` 同一"等人"色）。
+   ⚠️ **双世界共享**：legacy `js/app.js` 也拼 `'status-' + st`，
+   那边若有这三个值的行，会一并从黑字变成徽标（本机 sip-aiops:8080 未运行，无法枚举，未验证）。 */
+.alert-tag.status-new           { background: #f3f4f6; color: #6b7280; }
+.alert-tag.status-running       { background: #eff6ff; color: #2563eb; }
+.alert-tag.status-paused        { background: #fffbeb; color: #d97706; }
 
 /* Alert Pagination */
 .alert-pagination {
