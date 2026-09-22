@@ -2,13 +2,18 @@
   Ticket Inbox —— 完整流程的**入口**。
 
   从「抓到一条 ticket」开始：新建/查看工单 → 发起诊断 → 跳 Run 详情看诊断/修复/审批全过程。
-  class 全部复用既有 styles.css，不新增样式。
+
+  class 复用既有 styles.css；**唯一的例外是 severity 那三档**
+  （`severity-medium` / `severity-low` / `severity-unknown` 于 2026-09-22 补入共享表）——
+  此前它们没有规则，`.alert-tag` 基类又没有 background/color，于是显示成黑字。
+  映射与归一化在 `@/utils/severity`，本模板不自己拼类名。
 -->
 <script setup>
 import { ref, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTickets } from './useTickets'
 import { runStatusLabel, runStatusOf, statusLabel } from '@/utils/runStatus'
+import { severityClass, severityLabel } from '@/utils/severity'
 import { formatTimeAgo } from '@/utils/time'
 
 const router = useRouter()
@@ -207,8 +212,8 @@ onActivated(load)
             <td class="col-summary" :title="t.title">{{ t.title }}</td>
             <td>{{ t.service || '-' }}</td>
             <td>
-              <span v-if="t.severity" class="alert-tag" :class="'severity-' + t.severity">
-                {{ String(t.severity).toUpperCase() }}
+              <span v-if="t.severity" class="alert-tag" :class="severityClass(t.severity)">
+                {{ severityLabel(t.severity) }}
               </span>
               <span v-else>-</span>
             </td>
@@ -269,8 +274,8 @@ onActivated(load)
             <span><b>namespace</b> {{ detail.namespace || '—' }}</span>
             <span>
               <b>severity</b>
-              <span v-if="detail.severity" class="alert-tag" :class="'severity-' + detail.severity">
-                {{ String(detail.severity).toUpperCase() }}
+              <span v-if="detail.severity" class="alert-tag" :class="severityClass(detail.severity)">
+                {{ severityLabel(detail.severity) }}
               </span>
               <span v-else>—</span>
             </span>

@@ -4958,6 +4958,19 @@ svg { fill: currentColor; }
 /* ── Problem Center ───────────────────────────────────────── */
 /* severity / state 标签补充：problem_record 用 high、pending、in_progress、closed、archived */
 .alert-tag.severity-high     { background: #fef2f2; color: #ef4444; }
+/* ↓ 2026-09-22 补：medium / low 此前**没有任何规则**，而建单表单自己就提供这两档 ——
+   于是从表单正常选 medium 建出来的工单显示成黑字（`.alert-tag` 基类里既没有
+   background 也没有 color，看着不像"中性"，像"漏了样式"）。不是历史脏数据，当时仍在产生。
+   配色沿用本文件既有语义：琥珀=需注意，绿=轻微，灰=未知。
+   ⚠️ 本表是**双世界共享**：legacy `js/app.js` 的告警表也拼 `'severity-' + sev`，
+   那边若存在 medium/low 的数据，会一并从黑字变成徽标（本机 sip-aiops:8080 未运行，无法枚举，未验证）。 */
+.alert-tag.severity-medium   { background: #fffbeb; color: #d97706; }
+.alert-tag.severity-low      { background: #ecfdf5; color: #059669; }
+/* unknown：**这是刻意加的一条，不是"兜底"**。没有它，任何没认出来的值仍会落到
+   `.alert-tag` 基类上 —— 即"一点样式都没有"，而这次要修的正是这个隐式兜底。
+   有了它，"未知"才是一个被**明确选择过**的外观（中性灰），而不是"看起来漏了样式"。
+   值本身不会被抹掉：`severity.js` 的 `severityLabel` 对未知值原样显示。 */
+.alert-tag.severity-unknown  { background: #f3f4f6; color: #6b7280; }
 .alert-tag.status-pending    { background: #fef2f2; color: #dc2626; }
 .alert-tag.status-in_progress{ background: #eff6ff; color: #2563eb; }
 .alert-tag.status-closed     { background: #f3f4f6; color: #6b7280; }
