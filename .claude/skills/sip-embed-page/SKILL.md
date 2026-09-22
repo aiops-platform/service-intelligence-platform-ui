@@ -88,6 +88,37 @@ python3 .claude/skills/sip-embed-page/scripts/check-embed-wiring.py <name>
 这种（`child events` 不在名词表里）它**不报**。Security Ops 那两个最要紧的写死值
 就是人工读 chunk 才发现的。**不要只信脚本的 ✓。**
 
+> 名词表和扫描器都在 2026-09-21 修过一次（Engineering Ops 那轮）：
+> `changes` 补进名词表；引号配对正则换成**词法扫描器** `iter_strings()`。那次
+> 「`86,994 changes · 13mo · 96×`」两条都踩中 —— 名词表没有 `changes`，
+> 而且模板字面量让正则**整片错位**，从某处起后面的文案一条都扫不到，
+> 报告却仍是 ✓。**静默漏扫比误报危险得多。**
+
+### 4a. 内层自己的 `router.push` 要改道给外壳
+
+内层是另一套 Next 应用，它的 `router.push('/agents')` 推的是**它自己的**路由。
+本仓没把该路径导出成内层页时，它会落进宿主 SPA 兜底 —— **iframe 里跑起整个 Vue 应用**。
+
+```bash
+# 穷尽列出该页所有以 / 开头的路径字面量，逐个对照本仓导出了哪些内层页
+python3 - <<'EOF'
+import sys; sys.path.insert(0, '.claude/skills/sip-embed-page/scripts')
+from importlib import import_module
+m = import_module('check-embed-wiring'); import glob
+for f in glob.glob('tools/vendor/<name>/chunks/*.js'):
+    for s, off in m.iter_strings(open(f, encoding='utf-8').read()):
+        if s.startswith('/'): print(s, '<-', f)
+EOF
+```
+
+⚠️ **`NextEmbed` 的 `inSameOriginFrame()` 挡不住这一类** —— 那个闸只在**目标路由本身
+是内嵌页**时才生效。目标若是普通 Vue 页（如 `/agent-registry`），没有任何拦截，
+整个应用就套进来了。Engineering Ops 实测如此。
+
+处置走现成的桥（`src/composables/useEmbedBridge.js`）：改成
+`window.parent.postMessage({type:"sip:…"}, location.origin)`，外壳在**顶层**路由，
+并给 `window.parent===window`（单独打开）保留原行为。见 `patch_engineering_ops_links`。
+
 文本类两处要改（`LEGACY` 加原文，`tenant_pairs()` 加替换值）：
 
 ```python
@@ -224,11 +255,13 @@ HEAD 版对照一次。
 |---|---|---|
 | 产出路径 ≠ 面板表 `route` | 内层 h1 变成 `SIP` | 目录索引必须 `public/<name>/index.html` |
 | 漏 `EMBED_PAGES` / nginx | 硬刷新拿到裸内嵌页 | 只拦带尾斜杠；生产补 nginx |
+| **不同名域漏了 `EMBED_PAGES`** | dev 下 iframe 里渲染出 Vue 应用自己 | 它不只管同名冲突，也给 dev 补目录索引 |
 | 漏 `DOMAIN_COMPONENTS` | 那个域还是空壳（落到 service-ops 概览） | 登记一次即可（空壳域不走 MIGRATED） |
 | 只重建了一页 | 另外几页的租户表缺租户 | `public/_next/` 是共用的，全量重建 |
 | 写死数字没进 `LEGACY` | 标题与 KPI 各说各话 | 见第 4 步 |
 | **写死的 appKey 在别的租户里不存在** | **该节静默消失**（`s && (…)` 短路） | 改运行期派生；先核对作用域 |
-| 只信自检脚本的 ✓ | 漏掉「数字 + 非房地产名词」的写死值 | 脚本不全覆盖，人工读一遍 chunk |
+| **内层 `router.push` 到本仓没导出的路径** | iframe 里**跑起整个 Vue 应用自己** | 改 postMessage 给外壳，见 4a |
+| 只信自检脚本的 ✓ | 漏掉名词表外的写死值 / 扫描器错位漏扫 | 脚本不全覆盖，人工读一遍 chunk |
 | 裸串替换改到别的页 | 不报错，别的页文案被一起改 | `__SIPCOPY__` 按租户出表不按页；下裸串前 grep 全部 chunk |
 | **chunk 补丁改错一个字符** | **整页白屏**，而「产出校验」是过的 | 跑 `node --check`；构建现已内置这步 |
 | 没加 `EMBED_PAGES` 就去看 `/x/` | 兜底渲染出**别的页面**（h1 却对） | 先接完三处再看页面，别被 h1 骗了 |

@@ -45,7 +45,71 @@ PANEL_CHUNK = PUBLIC / "_next" / "static" / "chunks" / "0wuztp2.9oz~8.js"
 # 页面自己 chunk 里「写死的房地产数字」长什么样。
 # ⚠️ 只认**复数**名词：单数的 "portfolio node"（图例解释）不算 —— 那条本来就不随租户变，
 # 收进来只会淹掉真信号。
-ESTATE_NOUN = re.compile(r"\b(apps|portfolios|journeys|teams|nodes|incidents)\b")
+# ⚠️ `changes` 是 2026-09-21 补的：Engineering Ops 的 description 写死
+#    「86,994 changes · 13mo · 96×」而这张表当时只有 apps/portfolios/journeys/…，
+#    **一条都没报** —— 而这个数是 best-buy 的、默认租户的 KPI 同时写着 5.3K，
+#    是扎眼的同屏矛盾。漏词比漏串更隐蔽，加词时宁多勿少（多报的会被人眼筛掉）。
+ESTATE_NOUN = re.compile(
+    r"\b(apps|portfolios|journeys|teams|nodes|incidents|changes)\b")
+
+
+def iter_strings(t):
+    """
+    单遍词法扫描，依次产出 `(内容, 起始 offset)` 的**字符串字面量**。
+
+    ## 为什么不能用 `"([^"\\\\]{10,300})"` 这种引号配对正则
+
+    踩过（2026-09-21，Engineering Ops）：那种写法在**模板字面量**面前会整片错位 ——
+    反引号里出现的 `"` 被当成字符串边界，于是从某处起配对全错，**它后面整片区域的
+    文案一条都扫不到**，而报告仍然是「✓ 没有未覆盖的文案」。
+    实测那个 chunk：错配的正则只认出 1303 条串、且**漏掉了那条真问题**；
+    换成这个扫描器是 1715 条，那条 description 就出来了。
+
+    静默漏扫比误报危险得多 —— 它让 ✓ 变成假信号。所以这里是**扫描器**而不是正则：
+    正确跳过模板字面量（含 `${}` 嵌套里的引号）、`\\` 转义、`//` 与 `/* */` 注释。
+    """
+    i, n = 0, len(t)
+    while i < n:
+        c = t[i]
+        if c == "/" and i + 1 < n:
+            if t[i+1] == "/":
+                j = t.find("\n", i); i = n if j < 0 else j + 1; continue
+            if t[i+1] == "*":
+                j = t.find("*/", i + 2); i = n if j < 0 else j + 2; continue
+        if c == "`":
+            i += 1
+            while i < n:
+                if t[i] == "\\": i += 2; continue
+                if t[i] == "`": i += 1; break
+                if t[i] == "$" and i + 1 < n and t[i+1] == "{":
+                    depth, i = 1, i + 2
+                    while i < n and depth:
+                        ch = t[i]
+                        if ch == "\\": i += 2; continue
+                        if ch in "\"'`":                  # ${} 内层字符串整体跳过
+                            q, i = ch, i + 1
+                            while i < n:
+                                if t[i] == "\\": i += 2; continue
+                                if t[i] == q: i += 1; break
+                                i += 1
+                            continue
+                        if ch == "{": depth += 1
+                        elif ch == "}": depth -= 1
+                        i += 1
+                    continue
+                i += 1
+            continue
+        if c in "\"'":
+            q, start, i = c, i + 1, i + 1
+            buf = []
+            while i < n:
+                if t[i] == "\\": buf.append(t[i:i+2]); i += 2; continue
+                if t[i] == q or t[i] == "\n": break
+                buf.append(t[i]); i += 1
+            yield "".join(buf), start
+            i += 1
+            continue
+        i += 1
 
 
 def _load(path: Path, name: str):
@@ -165,8 +229,9 @@ def scan_fixed_copy(page: dict) -> list:
         if names is not None and f.name not in names:
             continue                                   # 不是这一页的 chunk
         t = f.read_text(encoding="utf-8", errors="replace")
-        for m in re.finditer(r'"([^"\\\n]{12,300})"', t):
-            s = m.group(1)
+        for s, _off in iter_strings(t):
+            if not 12 <= len(s) <= 320:
+                continue
             if not any(c.isdigit() for c in s) or not ESTATE_NOUN.search(s):
                 continue
             if any(c in s for c in "(){}:;"):        # CSS 值 / JS 表达式，不是文案
@@ -177,11 +242,9 @@ def scan_fixed_copy(page: dict) -> list:
     return hits
 
 
-# 写死的 appKey：`appKey:"manhattan wms"` / `appKey:"pos"` …（属性名带引号，避免误伤
-# `getAppKey(` 之类）。改写器的裸串替换**够不着**它 —— 它不渲染成文本，是数据。
-APPKEY_RE = re.compile(r'appKey:"([^"]{2,80})"')
-# 已改成运行期派生（读 snapshot）的写法，不再算「写死」
-APPKEY_DERIVED = "(i.snapshot.topStorm||{})"
+# 写死的 appKey（如 `appKey:"manhattan wms"`）。改写器的裸串替换**够不着**它
+# —— 它不渲染成文本，是数据。识别方式是「`appKey:` 紧跟的字符串字面量」，
+# 用 iter_strings() 取字面量再回看前缀（见 scan_foreign_appkeys）。
 
 
 def appkeys_by_tenant() -> dict:
@@ -246,10 +309,18 @@ def scan_foreign_appkeys(page: dict) -> list:
         if names is not None and f.name not in names:
             continue                                  # 不是这一页的 chunk
         t = f.read_text(encoding="utf-8", errors="replace")
-        if APPKEY_DERIVED in t:                       # 该文件已改成派生写法
-            t = t.replace(APPKEY_DERIVED, "")
-        for key in sorted(set(APPKEY_RE.findall(t))):
-            n_ok = sum(1 for keys in per_tenant.values() if key in keys)
+        keys = set()
+        for s, off in iter_strings(t):
+            # 只认**紧跟在 `appKey:` 后面的那个字符串字面量**。
+            # 已改成运行期派生的写法（`appKey:(i.snapshot…).appKey`）不是字面量，
+            # 这里天然认不到，不需要额外过滤。
+            if not 2 <= len(s) <= 80:
+                continue
+            if not t[:off - 1].endswith("appKey:"):
+                continue
+            keys.add(s)
+        for key in sorted(keys):
+            n_ok = sum(1 for k in per_tenant.values() if key in k)
             if n_ok < n_all:                          # 有一个租户查不到就值得看一眼
                 hits.append((f.name, key, n_ok, n_all))
     return hits
@@ -296,13 +367,25 @@ def check(page_name: str, page: dict, failures: list):
 
     # 2. 同名域：三处必须成对
     basename = route.lstrip("/") if route else None
-    if basename and basename in vue_domain_keys():
-        print(f"     （同名域：Vue 路由与内嵌页都是 {route}）")
+    same_name = bool(basename and basename in vue_domain_keys())
+
+    # 2a. EMBED_PAGES —— **所有**目录索引页都要有，不只是同名域。
+    #     那个列表的另一半职责是给 dev/preview 补「Vite 不解析 public/ 目录索引」。
+    #     少了它，`/x/` 落进 SPA 兜底、iframe 里渲染出 Vue 应用自己 —— 与同名冲突无关。
+    #     原先只在同名分支里查，于是 business-ops / engineering-ops 这类**不同名**的页
+    #     漏了也没人报（2026-09-21 补）。
+    if route:
         cfg = (ROOT / "vite.config.js").read_text(encoding="utf-8")
         if re.search(rf"EMBED_PAGES = \[[^\]]*'{re.escape(route)}'", cfg):
-            _ok(f"vite.config.js 的 EMBED_PAGES 已登记 {route}（只拦带尾斜杠）")
+            _ok(f"vite.config.js 的 EMBED_PAGES 已登记 {route}"
+                + ("（只拦带尾斜杠）" if same_name else "（不同名域，仅为 dev 补目录索引）"))
         else:
-            failures.append(_bad(f"vite.config.js 的 EMBED_PAGES 缺 {route}"))
+            failures.append(_bad(
+                f"vite.config.js 的 EMBED_PAGES 缺 {route} → dev/preview 下 "
+                f"{entry} 会落进 SPA 兜底，iframe 里渲染出 Vue 应用自己"))
+
+    if same_name:
+        print(f"     （同名域：Vue 路由与内嵌页都是 {route}）")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         if re.search(rf"location = {re.escape(route)} \{{", readme):
             _ok(f"README 的 nginx 片段有 location = {route}")

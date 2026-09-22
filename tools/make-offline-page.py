@@ -2,7 +2,7 @@
 """
 把部署站的页面做成本地可跑、可交互的离线副本。
 
-六个页面，同一套 Next.js 外壳、同一批 chunk，只是入口路由不同：
+七个页面，同一套 Next.js 外壳、同一批 chunk，只是入口路由不同：
 
     --page constellation   部署站 `/`              → public/constellation-app.html
     --page business-ops    部署站 `/business-ops/`  → public/business-ops/index.html
@@ -10,6 +10,7 @@
     --page architecture    部署站 `/architecture/`  → public/architecture/index.html
     --page security-ops    部署站 `/security-ops/`  → public/security-ops/index.html
     --page finops          部署站 `/finops/`       → public/finops/index.html
+    --page engineering-ops 部署站 `/engineering-ops/` → public/engineering-ops/index.html
 
 > 除 constellation 外，产出路径都是**目录索引**（`<页>/index.html`）而不是随手起的
 > 文件名 —— 内层用 `usePathname()` 查面板表决定 h1，路径必须精确等于面板表里的
@@ -96,6 +97,8 @@ iframe 里就渲染出 Vue 应用自己了。由 `vite.config.js` 的 `sip-embed
     vendor/security-ops/chunks/               ← 只有 Security Ops 独有的 1 个 chunk
     vendor/finops/server.html                 ← FinOps 的服务器原始外壳
     vendor/finops/chunks/                     ← 只有 FinOps 独有的 1 个 chunk
+    vendor/engineering-ops/server.html        ← Engineering Ops 的服务器原始外壳
+    vendor/engineering-ops/chunks/            ← 只有 Engineering Ops 独有的 2 个 chunk
     vendor/media/*.woff2                      ← 字体（各页共用）
 
 > 除 Constellation 外都**不依赖**下载目录：外壳在自己的 `vendor/<页>/` 下，独有的 chunk
@@ -143,7 +146,7 @@ main.flex.w-full.flex-col.overflow-hidden { height: 100vh !important; }
 </style>
 """
 
-# 六个页面。产出都进 public/ —— Vite 按根伺服，内层 chunk 走的
+# 七个页面。产出都进 public/ —— Vite 按根伺服，内层 chunk 走的
 # `/_next/…`（turbopack 硬编码的**根绝对路径**）dev 与 build 才对得上。
 PAGES = {
     "constellation": {
@@ -202,6 +205,24 @@ PAGES = {
         # 完全一致（见 vite.config.js 的 EMBED_PAGES 与 README 的 nginx 片段）。
         "out": ("finops", "index.html"),
         "vendor_sub": "finops",
+        "shared_chunks": True,
+    },
+    "engineering-ops": {
+        "site_path": "/engineering-ops/",
+        # ⚠️ 同样不能随意：面板表里是
+        #     `{id:"engineering-ops", index:4, label:"Engineering Ops",
+        #       shortLabel:"Engineering", route:"/engineering-ops",
+        #       subtitle:"Code velocity · change calendar · Claude Code workbench",
+        #       pool:"VP3"}`（**有 pool**，与 finops / security-ops 不同），
+        # 对不上时内层 h1 静默变成 "SIP"。
+        #
+        # ★ 与前面五个不同：本域的 Vue 路由叫 **`/eng-ops`**（NAV 里的 key），
+        # 与内嵌页路径**不同名** —— 所以**不需要** README 那条 nginx 规则
+        # （没有同名的 Vue 路由会被目录索引抢走）。
+        # 但 `vite.config.js` 的 EMBED_PAGES **仍然要加**：那是给 dev/preview 补
+        # 「Vite 不解析 public/ 目录索引」的，与同名冲突是两件事。同理见 business-ops。
+        "out": ("engineering-ops", "index.html"),
+        "vendor_sub": "engineering-ops",
         "shared_chunks": True,
     },
 }
@@ -429,6 +450,12 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
                 print("  FinOps：agent ticker → 本租户的 app / 组合 / 金额（原为写死文案）")
             elif ft != "already":
                 print(f"  ! FinOps ticker 未改：{ft}")
+            # Engineering Ops 的三处页内跳转 → 交给外壳路由（否则在 iframe 里套出 Vue 自己）
+            el = tenant_copy.patch_engineering_ops_links(chunks_dir)
+            if el == "applied":
+                print("  Engineering Ops：3 处页内跳转 → postMessage 给外壳（原会自己套自己）")
+            elif el != "already":
+                print(f"  ! Engineering Ops 跳转未改：{el}")
     except Exception as e:
         print(f"    ! 注入租户文案失败，跳过：{e}")
 

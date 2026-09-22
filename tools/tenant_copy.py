@@ -93,6 +93,15 @@ LEGACY = {
     # 所以裸串替换就是全覆盖，含那个渲染成裸数字的 `childEvents` chip。
     "sec_storm": "INC13075702",
     "sec_storm_kids": "1,809",
+
+    # Engineering Ops 面板的 `PanelContainer` description —— 与 arch_desc 同一类：
+    # 三个写死的数字（changes / 月数 / 应急倍数），页面别处读的是 REAL.*。
+    # 实测 `86,994` 与 `96×` 正好是 **best-buy-reference** 的值，而默认租户 otr 的
+    # KPI 卡片同时写着 5.3K / 18 mo / 63× —— 同屏两个数打架。
+    # `13mo` 更是与**所有**租户的 `monthsCovered: 18` 都不符（连 best-buy 自己都是过期的）。
+    "eng_desc": ("The Build pillar at velocity · 86,994 changes · 13mo · 96× "
+                 "emergency-vs-standard backout differential · agents reviewing "
+                 "every change before it ships."),
 }
 
 # 拼写数字：用词而不是阿拉伯数字，这样 retail（6 条）不会被从 "Six" 改成 "6" ——
@@ -228,6 +237,22 @@ def tenant_pairs(d):
     if storm_id and storm_kids:
         pairs.append((LEGACY["sec_storm"], storm_id))
         pairs.append((LEGACY["sec_storm_kids"], f"{storm_kids:,}"))
+
+    # Engineering Ops 面板的 description：三个写死的数字换成该租户自己的。
+    #
+    # 与上面 arch_desc 同一条原则 —— **三个数缺一不可**：只换一部分会拼出
+    # 「5,250 changes · 13mo · 96×」这种把两个租户混在一句里的结果，比不换更糟。
+    #
+    # 这里的原文用的是**全数字带千分位**（`86,994`），与页面 KPI 的 `fmtK`（`87K`）
+    # 不是同一个格式 —— 按原文自己的散文体写，不去跟 KPI 的缩写格式。
+    # `13mo` → `{months}mo`：顺带修掉原文与**所有**租户（含 best-buy）都不符的月数。
+    if f.get("changes") and f.get("monthsCovered") and f.get("emergencyBackoutMultiplier"):
+        pairs.append((LEGACY["eng_desc"],
+                      f"The Build pillar at velocity · {f['changes']:,} changes · "
+                      f"{f['monthsCovered']}mo · "
+                      f"{f['emergencyBackoutMultiplier']:.0f}× emergency-vs-standard "
+                      f"backout differential · agents reviewing every change "
+                      f"before it ships."))
 
     out = []
     for a, b in pairs:
@@ -1146,6 +1171,89 @@ def patch_finops_ticker(chunks_dir) -> str:
     #    严格模式下是 SyntaxError: Unexpected strict mode reserved word。
     #    实测踩过：**整页白屏**，而构建的「产出校验」只查文件存在性、查不出语法。
     t = t.replace(FO_ANCHOR, FO_PRELUDE + "," + FO_ANCHOR[len("let "):])
+    f.write_text(t, encoding="utf-8", errors="surrogateescape")
+    return "applied"
+
+
+# Engineering Ops 的页内跳转 —— 见 patch_engineering_ops_links()
+EO_FILE = "0mnky.b.vyo00.js"
+# 未嵌入（单独打开离线副本）时**保持原样**：内层自己的路由在那套 shell 里是自洽的。
+# 只在被外壳嵌着时改道 —— 与 BPJ 不同，那里 standalone 会真的 404，所以给了另一个落点。
+EO_SITES = [
+    (
+        "MTTR 卡片 → /service-ops/",
+        'onMttrClick:()=>r.push("/service-ops/")',
+        'onMttrClick:()=>{window.parent!==window'
+        '?window.parent.postMessage({type:"sip:open-service-ops"},location.origin)'
+        ':r.push("/service-ops/")}',
+    ),
+    (
+        "SDLC Agents Live 卡片 → /agents/?group=sl",
+        'N=()=>r.push("/agents/?group=sl")',
+        'N=()=>{window.parent!==window'
+        '?window.parent.postMessage({type:"sip:open-agents"},location.origin)'
+        ':r.push("/agents/?group=sl")}',
+    ),
+    (
+        "打开 agent → /agents/?agent=<name>",
+        'O=e=>r.push(`/agents/?agent=${encodeURIComponent(e)}`)',
+        'O=e=>{window.parent!==window'
+        '?window.parent.postMessage({type:"sip:open-agents"},location.origin)'
+        ':r.push(`/agents/?agent=${encodeURIComponent(e)}`)}',
+    ),
+]
+
+
+def patch_engineering_ops_links(chunks_dir) -> str:
+    """
+    把 Engineering Ops 的**三处页内跳转**从「内层自己 push」改成「交给外壳路由」。
+
+    ## 为什么必须改（实测，不是推演）
+
+    内层是另一套 Next.js 应用，`router.push()` 的是**它自己的**路由。本仓没有把
+    `/agents/` 导出成内层页，于是那个路径落进宿主 SPA 兜底 —— **在 iframe 里渲染出
+    整个 Vue 应用自己**。实测点「SDLC Agents Live」后：
+
+        iframe URL  → /agents?group=sl
+        iframe 内容 → 完整 SIP 外壳 + AGENTS 页      ← 自己套自己
+
+    ⚠️ 这一例**连 `NextEmbed` 的第二道闸都躲过了**：`inSameOriginFrame()` 只在目标路由
+    本身是内嵌页时才拦得住，`/agent-registry` 不是内嵌页，所以那次没有任何拦截。
+    走 postMessage 让外壳**在顶层**路由，才是真的修好。
+
+    另一处 `/service-ops/` 同样中招，只是形态不同 —— 它会套出一层 Service Ops 内嵌页，
+    再被第二道闸拦下显示「未继续加载内嵌页」，但用户已经卡在那个坏状态里了。
+
+    ## 三处（穷尽核过，见 chunk 里所有以 `/` 开头的字面量）
+
+        ① onMttrClick → /service-ops/          MTTR 卡片「打开 /service-ops」
+        ② N           → /agents/?group=sl      「SDLC Agents Live」卡片
+        ③ O           → /agents/?agent=<name>  打开某个 agent
+
+    ②③ 都发 `sip:open-agents`（不带载荷 —— 本仓 Agents 页不读 query，
+    内层那两个参数是部署站自己的 agent 分类，见 `useEmbedBridge.js` 的说明）。
+    ① 复用已有的 `sip:open-service-ops`（该消息的 `portfolio` 已放宽为可选）。
+
+    ## 未嵌入时
+
+    `window.parent===window` → **保持原来的 `r.push`**。单独打开离线副本时内层 shell
+    是自洽的，改了反而坏。Business Ops 那条补丁给的是另一个落点（`/service-ops/?portfolio=`），
+    因为在那边的场景下原路径会 404；这里不会，所以不动。
+
+    返回状态字符串：`"applied"` / `"already"` / 其它为跳过原因。整组原子：任一锚点
+    不唯一就一个都不打（部分替换会留下「一半改道、一半仍嵌套」的混合态）。
+    """
+    f = chunks_dir / EO_FILE
+    if not f.is_file():
+        return f"找不到 {EO_FILE}"
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    if all(repl in t for _, _, repl in EO_SITES):
+        return "already"
+    for label, find, _ in EO_SITES:
+        if t.count(find) != 1:
+            return f"锚点不唯一：{label}（{t.count(find)} 处）"
+    for _, find, repl in EO_SITES:
+        t = t.replace(find, repl)
     f.write_text(t, encoding="utf-8", errors="surrogateescape")
     return "applied"
 

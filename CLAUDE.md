@@ -155,11 +155,14 @@ workflow DAG 由 `GraphCanvas.vue` + `useGraphCanvas.js`（命令式引擎）画
 
 ## 内嵌页（`public/` 下的 Next.js 离线副本）
 
-Constellation / Business Ops / Service Ops / Architecture / Security Ops / FinOps 六个域都是
-**另一套 Next.js 应用**的离线副本，由 `NextEmbed.vue` 用同源 iframe 嵌进来。
+Constellation / Business Ops / Service Ops / Architecture / Security Ops / FinOps /
+Engineering Ops 七个域都是**另一套 Next.js 应用**的离线副本，由 `NextEmbed.vue` 用同源
+iframe 嵌进来。
 
-> **这六个就是全部** —— `NAV` 里 5 个 `sidebar: null` 的域至此**全部**有了自己的页面，
+> **这七个就是全部** —— `NAV` 里 6 个 `sidebar: null` 的域至此**全部**有了自己的页面，
 > 没有域再走到「空壳兜底」（落 service-ops 概览 + 改写标题）。
+> 其中 `eng-ops` 原本**有**侧边栏（Knowledge Studio），2026-09-21 按要求摘掉后接入，
+> 见 nav.js 里那段注释（含恢复方法）。
 
 几条改之前必须知道的：
 
@@ -182,6 +185,14 @@ Constellation / Business Ops / Service Ops / Architecture / Security Ops / FinOp
   `vite.config.js` 的 `EMBED_PAGES` 只拦**带尾斜杠**的请求、生产 nginx 各补一条
   `location = /<页> { try_files /index.html =404; }`、组件在 `router/index.js` 的
   `DOMAIN_COMPONENTS` 登记。少一处就表现为「刷新后拿到裸的内嵌页，没有导航」。
+  ⚠️ **不同名的也一样要进 `EMBED_PAGES`**（business-ops / engineering-ops）：那个列表的
+  另一半职责是给 dev/preview 补「Vite 不解析 `public/` 目录索引」。少了它，`/x/` 落进
+  SPA 兜底、iframe 里渲染出 Vue 应用自己 —— 与同名冲突是两件事。
+- **内层自己的 `router.push` 要改道给外壳**（`useEmbedBridge.js` 的 postMessage 桥）。
+  那是另一套 Next 应用，push 的是**它的**路由；本仓没导出成内层页的路径会落进 SPA 兜底
+  → iframe 里跑起整个 Vue 应用。Engineering Ops 实测中招（点「SDLC Agents Live」→
+  `/agents?group=sl`），而且**这一例连 `NextEmbed` 的 `inSameOriginFrame()` 都躲过了** ——
+  那个闸只在目标路由本身是内嵌页时才生效。见 `patch_engineering_ops_links`。
 - **改写器的兜底租户必须与 `patch_default_tenant` 同值**（都是 `DT_DEFAULT`）。
   两处不一致时「没设过租户」会数据走 otr、文案走 retail，同一页两套数字。
 - **页面自己写死的租户数据要在 `tenant_copy.py` 里按租户替换，别只改文案**。
