@@ -234,6 +234,19 @@ export function useTickets() {
   }
 
   /**
+   * 建单表单里**默认选中**的流程。
+   *
+   * 用**名字**而不是 id：id 每个租户库都不同（种子 `seed-*` vs 新建 12 位 hex），
+   * 写死 id 在这里等于把某台机器的库状态钉进代码。名字在库与库之间是可移植的键 ——
+   * 与工单钉 workflow 时存名字是同一个理由。
+   *
+   * ⚠️ 它**不是"兜底"**：兜底是后端 `_workflow_for_ticket` 的第三档（库里最新一条，
+   * 随推新流程而变）。这里只是替人**预选**一个好用的默认值，人随时可以改成「不指定」。
+   * 两者是不同的东西，别把名字混起来——空选项上那句文案说的是**兜底**会跑哪条。
+   */
+  const DEFAULT_TICKET_WORKFLOW = 'order-service-quotation-print-fail'
+
+  /**
    * 可选的 workflow 列表（喂给建单表单的下拉）。
    *
    * **`[0]` 就是兜底那条**：后端 `GET /workflows` 是 `created_at DESC`，而未钉的工单
@@ -249,6 +262,17 @@ export function useTickets() {
     } catch (err) {
       workflows.value = []
       error.value = '加载流程列表失败: ' + (err?.message || 'network error')
+    }
+    // 预选默认流程。
+    //
+    // **放在这里、不放在 `emptyDraft()`**：表单初始化那一刻列表还没加载，
+    // 那时候拿不到 id。而且这样每次开模态都会重选一次，不会因为上一次的残留而漂。
+    //
+    // 找不到就**保持空**（= 不指定）—— 该流程被删/改名的租户上不该因此建不出单，
+    // 也不该退而选一条别的（那是在替人做决定）。
+    if (!draft.value.workflowId) {
+      const hit = workflows.value.find((w) => w.name === DEFAULT_TICKET_WORKFLOW)
+      if (hit) draft.value.workflowId = hit.id
     }
   }
 
