@@ -214,24 +214,36 @@ export const NAV = [
   {
     key: 'eng-ops',
     label: 'Engineering Ops',
-    landing: 'knowledge-reflow-log',
     dot: '#3b82f6',
     panel: '4/8 · ENGINEERING OPS',
     title: 'Code velocity · change calendar · Claude Code workbench',
-    sidebar: {
-      id: 'sidebar-eng-ops',
-      title: 'Engineering Ops',
-      groups: [
-        {
-          key: 'knowledge-studio',
-          label: 'Knowledge Studio',
-          items: [
-            { slug: 'knowledge-reflow-log', label: 'Knowledge Reflow Log' },
-            { slug: 'knowledge-search', label: 'Knowledge Search' },
-          ],
-        },
-      ],
-    },
+    /*
+     * 2026-09-21：按用户要求**摘掉侧边栏**，该域改为内嵌部署站的 Engineering Ops 面板
+     * （`/eng-ops` → `EngineeringOpsView.vue`，走 `EMPTY_DOMAINS` 那条分支）。
+     *
+     * 与 Approval Center / L1 Automation / Metrics Analysis 那几次同理：
+     * **只摘导航，不删页面**。两个 legacy 面板（`page-reflow-log` /
+     * `page-knowledge-search`）仍在 `js/app.js` 与 `legacy-panels.html` 里，
+     * `PANEL_ID` 的两条映射也没动 —— 但 flattenItems() 是路由表的唯一来源，
+     * 本域不再被它遍历，于是这两个叶子不再产出路由：侧边栏点不到、直接输 URL
+     * 也落进 catch-all 回到 service-ops。
+     *
+     * ⚠️ 同时摘掉了 `landing: 'knowledge-reflow-log'` —— 它只在**有侧边栏**时被
+     * `App.vue` 消费（`item.sidebar ? landing : key`），没有侧边栏后是死字段，
+     * 留着会让人以为域名还能落到那个叶子。其余 5 个无侧边栏的域也都没有 `landing`。
+     *
+     * 要恢复「Knowledge Studio 侧边栏」就把下面两块**一起**放回来
+     * （其余文件一个都不用碰）：
+     *   landing: 'knowledge-reflow-log',
+     *   sidebar: {
+     *     id: 'sidebar-eng-ops', title: 'Engineering Ops',
+     *     groups: [{ key: 'knowledge-studio', label: 'Knowledge Studio', items: [
+     *       { slug: 'knowledge-reflow-log', label: 'Knowledge Reflow Log' },
+     *       { slug: 'knowledge-search', label: 'Knowledge Search' },
+     *     ]}],
+     *   },
+     */
+    sidebar: null,
   },
   {
     key: 'architecture',

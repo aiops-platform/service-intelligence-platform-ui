@@ -66,8 +66,17 @@ function sipLegacyBuildCopy() {
  * ⚠️ 生产端要同步：通用 `try_files $uri $uri/ /index.html` 会把这四个无斜杠路径
  * 经 `$uri/` 解成目录索引，同样吐内嵌页 —— nginx 需在通用规则**之前**各补一条
  * `location = /<页> { try_files /index.html =404; }`。见 README 的 nginx 片段。
+ *
+ * ## 列表里另有一类：**不同名**的目录索引页
+ *
+ * `/business-ops` 与 `/engineering-ops` 属于这一类 —— 它们的 Vue 路由分别叫
+ * `/biz-ops` 与 `/eng-ops`（NAV 里的 key），与内嵌页路径不同名，所以**生产 nginx
+ * 不需要**那条 `location =`（没有同名 Vue 路由会被目录索引抢走）。
+ * 但它们**仍然要列在这里**：这个列表的一半职责是给 dev/preview 补
+ * 「Vite 不解析 public/ 目录索引」，那是与同名冲突无关的另一件事。
  */
-const EMBED_PAGES = ['/business-ops', '/service-ops', '/architecture', '/security-ops', '/finops']
+const EMBED_PAGES = ['/business-ops', '/service-ops', '/architecture',
+                     '/security-ops', '/finops', '/engineering-ops']
 
 function sipEmbedPageIndex() {
   // dev 读源目录 public/，preview 读产物 dist/ —— configResolved 里才拿得到这两个值
