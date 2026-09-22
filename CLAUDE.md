@@ -193,6 +193,10 @@ iframe 嵌进来。
   → iframe 里跑起整个 Vue 应用。Engineering Ops 实测中招（点「SDLC Agents Live」→
   `/agents?group=sl`），而且**这一例连 `NextEmbed` 的 `inSameOriginFrame()` 都躲过了** ——
   那个闸只在目标路由本身是内嵌页时才生效。见 `patch_engineering_ops_links`。
+  ⚠️ **「本仓有这个页面」也不等于安全**：Security Ops 的卡片 push `/engineering-ops/`
+  （带尾斜杠、本仓确实导出了），但 **Next 默认 `trailingSlash: false` 会抹掉尾斜杠** ——
+  请求变成 `/engineering-ops`，目录索引插件只拦带斜杠的，于是照样落 SPA 兜底、
+  被 catch-all 重定向到 `/service-ops`。**必须实测点击**，见 `patch_security_ops_links`。
 - **改写器的兜底租户必须与 `patch_default_tenant` 同值**（都是 `DT_DEFAULT`）。
   两处不一致时「没设过租户」会数据走 otr、文案走 retail，同一页两套数字。
 - **页面自己写死的租户数据要在 `tenant_copy.py` 里按租户替换，别只改文案**。

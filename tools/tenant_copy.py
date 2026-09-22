@@ -1258,6 +1258,73 @@ def patch_engineering_ops_links(chunks_dir) -> str:
     return "applied"
 
 
+# Security Ops 的「Emergency change risk」卡片 —— 见 patch_security_ops_links()
+SS_FILE = "15zvtls0y9kdc.js"
+SS_SITE = (
+    "Emergency change risk 卡片 → /engineering-ops/",
+    'onClick:()=>e.push("/engineering-ops/")',
+    # ⚠️ 尾部保留 `,` 之外**一个字符都不能动** —— 这一段是 JSX 属性列表，
+    #    替换成块语句后原来紧跟的 `,drillLabel:…` 必须还在属性位上。
+    'onClick:()=>{window.parent!==window'
+    '?window.parent.postMessage({type:"sip:open-engineering-ops"},location.origin)'
+    ':e.push("/engineering-ops/")}',
+)
+
+
+def patch_security_ops_links(chunks_dir) -> str:
+    """
+    把 Security Ops 的「Emergency change risk」卡片从「内层自己 push」改成「交给外壳路由」。
+
+    ## 症状（实测）
+
+    那个 KPI 卡片写的是 `onClick:()=>e.push("/engineering-ops/")` —— **内层 Next 应用
+    自己的 router**。点下去之后：
+
+        iframe  /security-ops/  →  /service-ops      ← 跑起整个 Vue 应用
+        顶层    /security-ops         不动
+        页脚    PANEL 7/8 · SECURITY OPS   不动
+        导航高亮 Security Ops              不动
+
+    也就是说：**iframe 里换成了 Service Ops、而且换的是 Vue 应用自己**，外壳却仍以为
+    自己在 Security Ops 上 —— 内容与导航彻底脱节。
+
+    ## 根因：Next 的 `trailingSlash: false` 会抹掉尾斜杠
+
+    这条最值得记 —— 它和 Engineering Ops 那三处（推到本仓**没有**的路径）**不是同一个成因**：
+
+        内层 push 的是 `/engineering-ops/`（**带**尾斜杠）
+        本仓**确实**导出了 `public/engineering-ops/index.html`
+
+    看着应该是对的。但 Next 默认 `trailingSlash: false`，**导航前会把尾斜杠规范化掉**，
+    于是浏览器实际请求的是 `/engineering-ops`（无斜杠）——
+    而 `vite.config.js` 的目录索引插件**只拦带尾斜杠的请求**（那正是它与同名 Vue 路由
+    分流的手段），所以它不接，请求落进 SPA 兜底；vue-router 里没有 `/engineering-ops`
+    这条路由（本仓的 key 是 `/eng-ops`），于是被 **catch-all 重定向到 `/service-ops`**。
+
+    > **「本仓有这个页面」不等于这个链接是安全的。**
+    > 判断一个内层 push 是否会出事，不能只看目标路径存不存在 —— 它过了内层路由，
+    > 尾斜杠就可能被规范化掉。**必须实测点击。**
+
+    ## 处置
+
+    交给外壳在**顶层**路由到 `/eng-ops`（原站上点这个卡片就是整页切到 Engineering Ops
+    面板，内层的 `sub` 里也写着 `· /engineering-ops`），未嵌入时保持原来的 push。
+
+    返回状态字符串：`"applied"` / `"already"` / 其它为跳过原因。
+    """
+    f = chunks_dir / SS_FILE
+    if not f.is_file():
+        return f"找不到 {SS_FILE}"
+    t = f.read_text(encoding="utf-8", errors="surrogateescape")
+    label, find, repl = SS_SITE
+    if repl in t:
+        return "already"
+    if t.count(find) != 1:
+        return f"锚点不唯一：{label}（{t.count(find)} 处）"
+    f.write_text(t.replace(find, repl), encoding="utf-8", errors="surrogateescape")
+    return "applied"
+
+
 # ── 注入到页面的运行时改写器 ─────────────────────────────────────────
 
 REWRITER = r"""

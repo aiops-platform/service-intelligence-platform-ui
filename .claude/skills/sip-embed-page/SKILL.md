@@ -5,9 +5,12 @@ description: 把部署站 sip-platform.web.app 的页面接进本仓作为内嵌
 
 # 接入一个内嵌页（部署站 → 本仓）
 
-本仓的 4 个域（Constellation / Business Ops / Service Ops / Architecture）不是 Vue 写的，
+本仓的 7 个域（Constellation / Business Ops / Service Ops / Architecture /
+Security Ops / FinOps / Engineering Ops）不是 Vue 写的，
 而是**另一套 Next.js 应用**的离线副本，由 `NextEmbed.vue` 用同源 iframe 嵌进来。
-这个 skill 是接第 5 个（或维护前 4 个）的完整流程。
+
+> 2026-09-21 已接齐：`NAV` 里 6 个 `sidebar: null` 的域**全部**有了自己的页面。
+> 这个 skill 用于接下一个，或维护这 7 个（重建 / 排查 / 改租户文案）。
 
 ## 0. 先判断：内嵌，还是 Vue 重写
 
@@ -115,6 +118,16 @@ EOF
 是内嵌页**时才生效。目标若是普通 Vue 页（如 `/agent-registry`），没有任何拦截，
 整个应用就套进来了。Engineering Ops 实测如此。
 
+⚠️ **「本仓有这个页面」不等于这个链接是安全的**（Security Ops 的
+「Emergency change risk」卡片实测）：它 push 的是 `/engineering-ops/`，**带**尾斜杠，
+本仓确实导出了这个目录索引 —— 看着没问题。但 **Next 默认 `trailingSlash: false`，
+导航前会把尾斜杠规范化掉**，实际请求 `/engineering-ops`（无斜杠）→ 目录索引插件
+（只拦带斜杠的）不接 → 落 SPA 兜底 → vue-router 无此路由 → catch-all
+**重定向到 `/service-ops`** → iframe 里跑起 Vue 应用。
+
+所以判据不是「目标路径存不存在」，而是**它过没过内层路由** —— 过了就可能被规范化。
+**必须实测点击**，读代码会推错（这条踩过）。
+
 处置走现成的桥（`src/composables/useEmbedBridge.js`）：改成
 `window.parent.postMessage({type:"sip:…"}, location.origin)`，外壳在**顶层**路由，
 并给 `window.parent===window`（单独打开）保留原行为。见 `patch_engineering_ops_links`。
@@ -187,20 +200,27 @@ let __FS=(function(){…})(),let S=[{…}]   // ← let 出现在声明列表里
 「没找到 node，跳过」时就是没查过，别当成通过。
 
 ## 5. Vue 接线
-
 ```bash
 # a. 视图（照抄 BusinessOpsView.vue 的骨架，文件头写清「为什么内嵌 / 路径为什么不能改」）
-src/views/<name>/<Name>View.vue          # <NextEmbed src="/<name>/" title="…" label="正在载入 …" />
+src/views/<name>/<Name>View.vue   # <NextEmbed src="/<name>/" title="…" label="正在载入 …" />
 
-# b. 路由登记 —— 空壳域走 DOMAIN_COMPONENTS，有侧边栏的域走 STANDALONE_PAGES
-src/router/index.js
+# b. 路由登记
+src/router/index.js               # 空壳域 → DOMAIN_COMPONENTS；有侧边栏的域 → STANDALONE_PAGES
 
-# c. 与 Vue 路由**同名**时才要（architecture / service-ops 属此类，constellation / business-ops 不同名）
-vite.config.js      → EMBED_PAGES 加 '/<name>'（插件只拦**带尾斜杠**的请求）
-README.md           → nginx 补 location = /<name> { try_files /index.html =404; }
+# c1. EMBED_PAGES —— ★ **每一页都要加**，不只同名域
+vite.config.js                    # 另一半职责是给 dev/preview 补「Vite 不解析 public/
+                                  # 目录索引」。少了它：/x/ 落进 SPA 兜底，iframe 里渲染出
+                                  # Vue 应用自己。
+
+# c2. nginx —— **只在与 Vue 路由同名**时才要
+README.md                         # location = /<name> { try_files /index.html =404; }
 ```
 
-c 的三处为什么必须成对：`/architecture` 是 Vue 路由、`/architecture/` 是内嵌页，
+同名的是：`service-ops` / `architecture` / `security-ops` / `finops`。
+**不同名的不用 c2**：`business-ops`（Vue 路由 `/biz-ops`）、`engineering-ops`（`/eng-ops`）
+—— 没有同名 Vue 路由会被目录索引抢走。
+
+c2 为什么必须成对：`/architecture` 是 Vue 路由、`/architecture/` 是内嵌页，
 少了 nginx 那条，通用 `try_files $uri $uri/ /index.html` 会把 `/architecture` 经 `$uri/`
 解成目录索引，**硬刷新返回裸的内嵌页**（没有 AppHeader / 侧边栏，Vue 应用根本没启动）。
 
@@ -209,8 +229,8 @@ c 的三处为什么必须成对：`/architecture` 是 Vue 路由、`/architectu
 `public/_next/` 与 `__SIPCOPY__` 是全部页面**共用**的。只重建新那页，另外几页的租户表就停在旧状态。
 
 ```bash
-for p in constellation business-ops service-ops architecture security-ops; do
-  python3 tools/make-offline-page.py --page $p | grep -E '✓ 输出|✗'
+for p in constellation business-ops service-ops architecture security-ops finops engineering-ops; do
+  python3 tools/make-offline-page.py --page $p | grep -E '✓ 输出|✓ 语法校验|✗'
 done
 ```
 

@@ -456,6 +456,13 @@ def build(page: dict, chunk_srcs, out_dir: Path, server_html: str, fonts: dict, 
                 print("  Engineering Ops：3 处页内跳转 → postMessage 给外壳（原会自己套自己）")
             elif el != "already":
                 print(f"  ! Engineering Ops 跳转未改：{el}")
+            # Security Ops 的「Emergency change risk」卡片 → 交给外壳路由到 /eng-ops
+            # （内层 push 的 `/engineering-ops/` 会被 Next 抹掉尾斜杠 → 落 SPA 兜底）
+            ss = tenant_copy.patch_security_ops_links(chunks_dir)
+            if ss == "applied":
+                print("  Security Ops：Emergency change risk 卡片 → postMessage 给外壳")
+            elif ss != "already":
+                print(f"  ! Security Ops 卡片跳转未改：{ss}")
     except Exception as e:
         print(f"    ! 注入租户文案失败，跳过：{e}")
 
