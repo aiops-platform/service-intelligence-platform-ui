@@ -25,6 +25,9 @@ const {
   draft,
   creating,
   runningId,
+  workflows,
+  loadWorkflows,
+  fallbackWorkflowLabel,
   counts,
   visible,
   load,
@@ -55,6 +58,20 @@ async function refresh() {
   } finally {
     setTimeout(() => (refreshing.value = false), 600)
   }
+}
+
+/**
+ * 开「+ New Ticket」时拉一次流程列表。
+ *
+ * **不是页面挂载时拉**：空选项上写着"不指定将跑 `<最新那条>`"，而那条会随别人推新流程
+ * 而变 —— 挂载时拉的会是一份旧名单，于是标签指的那条**已经不是**真会跑的那条。
+ * 开模态时拉，拿到的是当下的判断依据。
+ *
+ * 失败不阻断建单（不钉是合法的），见 `loadWorkflows`。
+ */
+function openNew() {
+  showNew.value = true
+  loadWorkflows()
 }
 
 async function submitNew() {
@@ -103,7 +120,7 @@ onActivated(load)
         </span>
       </h1>
       <div style="display: flex; align-items: center; gap: 12px">
-        <button class="btn btn-yellow" @click="showNew = true">+ New Ticket</button>
+        <button class="btn btn-yellow" @click="openNew">+ New Ticket</button>
         <button class="si-refresh-btn" :disabled="refreshing" @click="refresh">
           <svg class="si-refresh-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
@@ -279,6 +296,16 @@ onActivated(load)
               </span>
               <span v-else>—</span>
             </span>
+            <!--
+              执行流程：**没有这一行，"我建单时选了哪条"就没有任何回执**。
+              后端那一列存的是**名字**（不是 id），直接显示即可。
+              未钉时写明"跑库里最新一条"—— 空着会让人以为它不跑。
+            -->
+            <span>
+              <b>执行流程</b>
+              <template v-if="detail.workflow_name">{{ detail.workflow_name }}</template>
+              <span v-else style="color: var(--text-tertiary)">未指定（跑库里最新一条）</span>
+            </span>
             <span><b>创建</b> {{ formatTimeAgo(detail.created_at) }}</span>
           </div>
 
@@ -409,6 +436,22 @@ onActivated(load)
               <label>trace_id <span style="color: var(--text-tertiary)">（可空）</span></label>
               <input v-model="draft.traceId" type="text" placeholder="trace-20260819-…" />
             </div>
+          </div>
+          <!--
+            执行流程。**整行**而不是塞进上面那个两列网格：选项文案是流程名（可能很长），
+            挤在半栏里会被截断，而这里恰恰是最不该猜的一格。
+          -->
+          <div class="apm-field">
+            <label>执行流程 <span style="color: var(--text-tertiary)">（这张单发起诊断时跑哪条）</span></label>
+            <select v-model="draft.workflowId">
+              <!--
+                空选项写明**兜底实际会跑哪条**，而不是一句含糊的"不指定"：
+                不写清的话，"我没选"与"我不知道它会跑什么"在界面上长得一样，
+                而兜底那条是会变的（推一条新流程就换）。
+              -->
+              <option value="">{{ fallbackWorkflowLabel }}</option>
+              <option v-for="w in workflows" :key="w.id" :value="w.id">{{ w.name }}</option>
+            </select>
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
             <div class="apm-field">

@@ -5,7 +5,7 @@
  * 诊断/修复/审批的全过程。数据源是 agentflow 的 `/tickets`（B2 新增）。
  */
 import { ref, computed } from 'vue'
-import { ticketApi, runApi } from '@/api/agentflow'
+import { ticketApi, runApi, workflowApi } from '@/api/agentflow'
 import { REJECTED, runStatusLabel, statusLabel } from '@/utils/runStatus'
 
 /**
@@ -188,6 +188,8 @@ export function useTickets() {
 
   /** 新建表单（字段对齐测试数据里的 ServiceNow 事件形状） */
   const draft = ref(emptyDraft())
+  /** 可选的 workflow（建单表单的下拉数据源；`[0]` 即兜底那条，见 `loadWorkflows`） */
+  const workflows = ref([])
   const creating = ref(false)
   /** 正在发起诊断的 ticket id（防重复点击） */
   const runningId = ref('')
@@ -203,6 +205,8 @@ export function useTickets() {
       traceId: '',
       windowStart: w.start,
       windowEnd: w.end,
+      // 这张单后续跑哪条流程。'' = 不钉（发起时后端退回「库里最新一条」）
+      workflowId: '',
     }
   }
 
@@ -222,9 +226,38 @@ export function useTickets() {
       window_start: d.windowStart ? toIsoWithOffset(d.windowStart) : undefined,
       window_end: d.windowEnd ? toIsoWithOffset(d.windowEnd) : undefined,
       severity: d.severity || undefined,
+      // 传 **id**，后端查回名字存进 `tickets.workflow_name`（那一列存名字是既有契约：
+      // 名字跨租户可移植、id 每库都不同）。不传 = 不钉。
+      workflow_id: d.workflowId || undefined,
     }
     return payload
   }
+
+  /**
+   * 可选的 workflow 列表（喂给建单表单的下拉）。
+   *
+   * **`[0]` 就是兜底那条**：后端 `GET /workflows` 是 `created_at DESC`，而未钉的工单
+   * 发起诊断时取 `saved[0]`（`_workflow_for_ticket` 的第三档）。空选项的文案要
+   * 靠它说清"不选会跑哪条"—— 所以**这份列表必须与后端同一个判据**，不能另算一套。
+   *
+   * 加载失败**不阻断建单**（不钉是合法的），只把错误显示出来。
+   */
+  async function loadWorkflows() {
+    try {
+      const data = await workflowApi.list()
+      workflows.value = Array.isArray(data) ? data : []
+    } catch (err) {
+      workflows.value = []
+      error.value = '加载流程列表失败: ' + (err?.message || 'network error')
+    }
+  }
+
+  /** 空选项的文案：写明"不指定"到底会跑哪条，而不是含糊的两个字。 */
+  const fallbackWorkflowLabel = computed(() =>
+    workflows.value.length
+      ? `（不指定 —— 将跑：${workflows.value[0].name}）`
+      : '（不指定 —— 库里没有已保存流程）',
+  )
 
   // 计数与过滤都走**展示状态**：否则"中断"的工单会被算进 In Progress，
   // 点进去却一条都看不到（列表按展示状态过滤，计数按原始状态统计）。
@@ -287,7 +320,16 @@ export function useTickets() {
     runningId.value = ticket.id
     error.value = ''
     try {
-      const out = await ticketApi.run(ticket.id, ticket.workflowId)
+      // **刻意不传 workflow_id**：跑哪条由**工单钉的那条**决定
+      // （建单时选的，见 `draftToPayload`；后端 `_workflow_for_ticket` 的第二档）。
+      //
+      // 这里原先是 `ticketApi.run(ticket.id, ticket.workflowId)` —— `workflowId` 是
+      // camelCase，而后端行里那个字段叫 `workflow_name`，所以它**恒为 undefined**。
+      // 今天无害（传 undefined 等于不传，恰好让"钉的"生效），但那是**巧合不是设计**：
+      // 一旦有人"顺手把它改对"（改成 `ticket.workflow_name`），传进去的会是**名字**，
+      // 而 `run` 的 body 要的是 **id** —— 要么 404，要么跑错一条。
+      // 人工覆盖是另一个动作（run 详情页/接口直接传），不该混在这里。
+      const out = await ticketApi.run(ticket.id)
       await load() // 工单状态转为 running、run_ids 更新
       return out
     } catch (err) {
@@ -424,6 +466,9 @@ export function useTickets() {
     draft,
     creating,
     runningId,
+    workflows,
+    loadWorkflows,
+    fallbackWorkflowLabel,
     counts,
     visible,
     load,
