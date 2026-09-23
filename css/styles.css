@@ -5004,6 +5004,17 @@ svg { fill: currentColor; }
 /* 「Analyze」触发 + View diagnosis（诊断链路专属色 accent-purple，与 .dgx-verdict 同色系） */
 .pc-diag-btn { color: var(--accent-purple); }
 .pc-diag-btn:hover { color: var(--accent-purple); border-color: var(--accent-purple); }
+/* 「Analyze」在途 → 行内换成不可点的「Analyzing」（弱化程度照 .dgx-btn:disabled 的 0.45）。
+   上面那条 :hover 不以 :disabled 为条件，光标扫过禁用按钮仍会把它染成"可点"的样子，
+   所以这里把 :hover 一起写上 —— 同权重、写在后面才压得住（见文件顶部关于追加顺序的说明）。 */
+.pc-diag-btn:disabled,
+.pc-diag-btn:disabled:hover {
+    color: var(--accent-purple);
+    background: #fff;
+    border-color: var(--border-color);
+    opacity: 0.45;
+    cursor: not-allowed;
+}
 .pc-viewdiag-btn { color: var(--accent-purple); }
 .pc-viewdiag-btn:hover { color: var(--accent-purple); border-color: var(--accent-purple); }
 /* 直接派单（列表行的 Escalate）：同属"现在就动这条单"，与 Analyze / View diagnosis 同色，

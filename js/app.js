@@ -4338,6 +4338,8 @@
         }
 
         function renderTable() {
+            // 先按最新数据结算一次在途标记（起过的 run 已回读到 → 解除），再据此出按钮。
+            clearSettledDiagBusy();
             var filtered = filteredProblems();
             var total = filtered.length;
             var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -4361,6 +4363,12 @@
                     // 或 diagnose_session（老记录：直连 spike）。两者都能进 View diagnosis——
                     // 后端 GET /{id}/diagnose 已按绑定分派引擎，返回同一形状，前端不必分支。
                     var diag = findAgentRun(p) || findDiagnoseSession(p);
+                    // Analyze 在途（见 startDiagnose）。忙碌态**从状态渲染**，不能点完去改 DOM：
+                    // 表格每 5s 被轮询整体重建 tbody.innerHTML，改上去的 disabled / 文案会被
+                    // 下一次 renderTable 抹掉，而 diagBusy 还在 —— 于是按钮「看着能点、点了没反应」。
+                    // 上面 clearSettledDiagBusy() 已把"run 已回读"的那些清掉了，所以这里为真即
+                    // 意味着还没有 diag。
+                    var analyzing = !!diagBusy[p.record_id];
                     var ticket = problemTicketNumber(p);   // 升级生成的修复工单号；没有 → '-'
                     html += '<tr>' +
                         '<td class="col-title" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</td>' +
@@ -4371,7 +4379,17 @@
                         '<td class="col-time">' + formatTime(p.detected_at || p.first_seen_at) + '</td>' +
                         '<td class="pc-actions">' +
                         '<button class="btn-alert-detail" data-id="' + escapeHtml(p.record_id) + '" data-act="detail">Detail</button>' +
-                        ((st === 'pending' || st === 'in_progress') && !diag ? '<button class="btn-alert-detail pc-diag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="diagnose">Analyze</button>' : '') +
+                        // 同一枚按钮两种形态：在途 → 不可点的「Analyzing」（按钮自己就是进度指示，
+                        // 不另起 toast/spinner）；其余时候才是可点的 Analyze。
+                        ((st === 'pending' || st === 'in_progress') && !diag
+                            ? (analyzing
+                                // 不加省略号是**量出来的**：按钮 min-width 64px、文字区约 46px，
+                                // 「Analyzing…」宽 76.7px，会把这一列撑宽 12.7px —— 表格是
+                                // table-layout: auto，代价是左边所有列横向平移 12.7px（点一下整行抖一下）。
+                                // 「Analyzing」只 65.7px，落在 min-width 的那点余量里，位移 1.7px（看不出）。
+                                ? '<button class="btn-alert-detail pc-diag-btn" disabled>Analyzing</button>'
+                                : '<button class="btn-alert-detail pc-diag-btn" data-id="' + escapeHtml(p.record_id) + '" data-act="diagnose">Analyze</button>')
+                            : '') +
                         // 「Escalate」只在**还没分析过**的单上出现：分析过的走 View diagnosis 里的
                         // 处理卡（那时该不该派、派哪种，得看着诊断结论决定）。与 Analyze 并列 ——
                         // 两条都是"现在就动这条单"的入口，一个让平台诊断，一个直接派给修复流程。
@@ -4587,7 +4605,10 @@
         //    session_id 绑进 evidence；绑定后 Analyze 隐藏，出现「View diagnosis」）──────
         // 内容视图：本页轮询 GET /v1/problems/{id}/diagnose（后端同源代理诊断服务 /status），
         // 直到终态（completed/failed/approved/closed_manual）停轮。
-        var diagBusy = {};        // record_id -> true（请求在途，防双击）
+        // record_id -> true：这一行的 Analyze 正在起 run（**列表按钮据此渲染成不可点的
+        // 「Analyzing」**，见 renderTable 里那段说明）。解除的判据是**数据**不是 POST 的返回，
+        // 见 clearSettledDiagBusy。
+        var diagBusy = {};
         var pcDiagRec = null;     // 正在查看诊断的问题记录
         var pcDiagTimer = null;   // 2s 轮询 timer（关弹框必清）
         var pcDiagLastSnap = null;// 最近一次渲染的快照（重渲染/交互置灰用）
@@ -4633,6 +4654,10 @@
         function startDiagnose(rec) {
             if (!rec || diagBusy[rec.record_id]) return;
             diagBusy[rec.record_id] = true;
+            // 立刻把这一行画成「Analyzing」：等待这段时间**必须看得见**。此前只是靠 diagBusy
+            // 静默吞掉第二次点击——按钮还写着 Analyze、看着能点，点了没反应，用户无从判断
+            // 第一次到底有没有生效（也就自然会去重复点）。
+            renderTable();
             var recordId = rec.record_id;
             resolveLogDiagnoseWorkflowId()
                 .then(function (wfId) {
@@ -4642,16 +4667,34 @@
                     });
                 })
                 .then(function (data) {
-                    delete diagBusy[recordId];
+                    // ⚠️ **这里不解除忙碌态**。POST 成功只是「run 起来了」，列表里还得等
+                    // refresh() 把 evidence 读回来——那之前 `diag` 仍为空。此时若按钮恢复成
+                    // Analyze，再点一次是**真的会起第二个 run** 的（/analyze 带 rerun: true，
+                    // 后端不拦；上一版就是在这里 delete 的）。解除交给 clearSettledDiagBusy。
                     var rid = data && data.run_id ? data.run_id : '';
                     window._showToast('Analyze started' + (rid ? ' · ' + rid : ''), 'success');
                     if (rid) openProblemRun(rec, rid); // 直接打开运行视图（不必等 evidence 回读）
                     refresh(); // 非乐观：以后端 evidence 为准 → Analyze 隐藏 + 出现 View diagnosis
                 })
                 .catch(function (err) {
+                    // 失败要**当场**放回可点：不重渲染的话按钮会停在「Analyzing」直到下一次
+                    // 轮询（最长 5s），而请求其实已经结束了。
                     delete diagBusy[recordId];
                     window._showToast('Analyze failed: ' + (err && err.message ? err.message : 'network error'), 'error');
+                    renderTable();
                 });
+        }
+
+        // 解除“已起过 run 的行”的忙碌态。**判据是数据**（列表里这条已经能看到 agent_run /
+        // diagnose_session），不是 POST 返回、也不是定时器：真源永远是列表这一份。
+        // refresh 失败时也不用特殊照顾——5s 的静默轮询会把数据带回来，届时自动解除。
+        function clearSettledDiagBusy() {
+            for (var i = 0; i < allProblems.length; i++) {
+                var p = allProblems[i];
+                if (diagBusy[p.record_id] && (findAgentRun(p) || findDiagnoseSession(p))) {
+                    delete diagBusy[p.record_id];
+                }
+            }
         }
 
         function stopDiagPolling() {

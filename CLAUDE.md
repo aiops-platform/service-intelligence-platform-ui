@@ -220,5 +220,5 @@ iframe 嵌进来。
 - changelog 文件放在 `changelogs/` 目录下
 - 命名格式：`v{MAJOR}.{MINOR}.{PATCH}-{slug}.md`
 - 模板和必须包含的内容见 `CONTRIBUTING.md` 第 48-90 行
-- 当前版本号：`v2.5.3`
+- 当前版本号：`v2.6.12`
 - 已有的 changelog 文件保留不动，只新增不修改历史文件
