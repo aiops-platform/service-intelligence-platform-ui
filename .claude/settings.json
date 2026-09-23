@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}/.claude/hooks/changelog-version-unique.sh\"",
+            "timeout": 20,
+            "statusMessage": "检查 changelog 版本号"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}/.claude/hooks/git-push-guard.sh\"",
+            "timeout": 30,
+            "statusMessage": "检查是否落后远端"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR}/.claude/hooks/commit-radius-warn.sh\"",
+            "timeout": 15,
+            "statusMessage": "检查改动面"
+          }
+        ]
+      }
+    ]
+  }
+}
