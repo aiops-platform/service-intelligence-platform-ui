@@ -6854,6 +6854,14 @@
         }
 
         // ── Form read / write ──
+
+        // 表单把 source_config 分成两半：**命名输入框**渲染 NAMED_KEYS，**其余键**
+        // （ES 查询开关 + 后端将来新增的键）统一由 `apmEsQuery` 这个 JSON 编辑器承载。
+        // readForm 与 fillForm 必须用同一对表，否则键会在往返中丢失。改一处要改两处。
+        var NAMED_KEYS = ['url', 'rows_path', 'signature_frames', 'window_sec', 'timezone',
+                          'field_mapping', 'headers', 'params', 'time_params'];
+        var ES_QUERY_KEYS = ['time_field', 'service_field', 'level_field', 'levels'];
+
         function readForm() {
             var signalType = getEl('apmSignalType').value;
             var service = getEl('apmService').value.trim();
@@ -6869,7 +6877,26 @@
             var params = parseJson('apmParams', false);
             var timeParams = parseJson('apmTimeParams', false);
 
-            var sc = { url: url };
+            var esQuery = parseJson('apmEsQuery', false);
+            // 注意 typeof null === 'object'，故 null 要单独挡掉
+            if (!esQuery || Array.isArray(esQuery) || typeof esQuery !== 'object') {
+                throw new Error('ES Query Fields must be a JSON object');
+            }
+            // 键名写错不会有任何后端报错（source_config 写入侧不校验未知键，采集器也忽略它们），
+            // 所以这里显式预警。**仍然照存**：后端新加的键不必等前端发版就能用。
+            Object.keys(esQuery).forEach(function (k) {
+                if (ES_QUERY_KEYS.indexOf(k) === -1) {
+                    window._showToast('未知键 "' + k + '" 不是已知的 ES 查询字段，将原样透传', 'error');
+                }
+            });
+            // levels 必须是数组：写成 "ERROR" 会被后端按字符序列当多个值，实测匹配 0 条。
+            if (esQuery.levels !== undefined && !Array.isArray(esQuery.levels)) {
+                throw new Error('levels 必须是数组，如 ["ERROR"]');
+            }
+
+            var sc = {};
+            Object.keys(esQuery).forEach(function (k) { sc[k] = esQuery[k]; });
+            sc.url = url;
             var rowsPath = getEl('apmRowsPath').value.trim();
             if (rowsPath) sc.rows_path = rowsPath;
             if (signalType === 'log') {
@@ -6909,6 +6936,14 @@
             getEl('apmRowsPath').value = sc.rows_path || 'data.result';
             getEl('apmSignatureFrames').value = sc.signature_frames || 3;
             getEl('apmWindowSec').value = sc.window_sec || '';
+            // ES Query Fields：四个 ES 查询开关 + 表单没别的输入框承载的键。
+            // 后者必须一起回填，否则后端新加的键会在界面上"消失"，用户改完一保存就被抹掉
+            // —— 与 readForm 里的 NAMED_KEYS/ES_QUERY_KEYS 是同一对约定，改一处要改两处。
+            var esObj = {};
+            Object.keys(sc).forEach(function (k) {
+                if (ES_QUERY_KEYS.indexOf(k) !== -1 || NAMED_KEYS.indexOf(k) === -1) esObj[k] = sc[k];
+            });
+            getEl('apmEsQuery').value = Object.keys(esObj).length ? JSON.stringify(esObj, null, 2) : '';
             getEl('apmFieldMapping').value = sc.field_mapping ? JSON.stringify(sc.field_mapping, null, 2) : '';
             getEl('apmHeaders').value = sc.headers && Object.keys(sc.headers).length ? JSON.stringify(sc.headers, null, 2) : '';
             getEl('apmParams').value = sc.params && Object.keys(sc.params).length ? JSON.stringify(sc.params, null, 2) : '';
@@ -6937,6 +6972,7 @@
             getEl('apmRowsPath').value = 'data.result';
             getEl('apmSignatureFrames').value = 3;
             getEl('apmWindowSec').value = '';
+            getEl('apmEsQuery').value = '';
             getEl('apmFieldMapping').value = '';
             getEl('apmHeaders').value = '';
             getEl('apmParams').value = '';

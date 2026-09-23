@@ -1689,12 +1689,16 @@
                         <textarea id="apmHeaders" rows="3" placeholder='{"Authorization": "${env:APM_TOKEN}"}'></textarea>
                     </div>
                     <div class="apm-field">
-                        <label for="apmParams">Params (JSON)</label>
-                        <textarea id="apmParams" rows="3" placeholder='{"level": "error"}'></textarea>
+                        <label for="apmParams">Params (JSON) <span class="apm-hint">URL 查询串 · 仅放源认识的键</span></label>
+                        <textarea id="apmParams" rows="3" placeholder='{"pretty": "true"}'></textarea>
                     </div>
                     <div class="apm-field">
                         <label for="apmTimeParams">Time Params (JSON)</label>
                         <textarea id="apmTimeParams" rows="3" placeholder='{"start": "start", "end": "end"}'></textarea>
+                    </div>
+                    <div class="apm-field apm-field-wide">
+                        <label for="apmEsQuery">ES Query Fields (JSON) <span class="apm-hint">ES 源查询开关，只进 POST body；需 .keyword 后缀、大小写精确；其余键原样透传</span></label>
+                        <textarea id="apmEsQuery" rows="4" placeholder='{"time_field": "@timestamp", "service_field": "app.service.keyword", "level_field": "app.level.keyword", "levels": ["ERROR"]}'></textarea>
                     </div>
                     <div class="apm-field">
                         <label for="apmTimezone">Timezone <span class="apm-hint">IANA · Spring 源按本地墙钟解析时间</span></label>
