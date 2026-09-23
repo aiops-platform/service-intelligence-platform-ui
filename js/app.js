@@ -5081,10 +5081,23 @@
             var opts = (snap.conclusion && snap.conclusion.recommended_fix) || [];
             var sel = opts[dgxOptSel] || null;
             var hasSteps = !!(sel && sel.steps && sel.steps.length);
-            // 拒绝要求结论已完成且选中方案有 steps——后端会把选中的那份方案快照进历史，
-            // 没有 steps 就没东西可留。后端按引擎分派：新路径驳回 agentflow 审批节点并起新一轮 run，
-            // 老路径走 spike /remediate。failed/closed_manual 只能忽略。
-            var canReject = (st === 'completed') && hasSteps;
+            // 有方案 → 「拒绝 · 重新分析」：后端把选中的那份方案快照进历史，没有 steps 就没东西可留。
+            // 无结论 → 「补齐证据重跑」：run 走了 **halt**（证据不足 / 取证失败）时结论为空，
+            //   没有方案可驳 —— 但恰恰最需要带着人的补充线索再跑一轮。此前这种情况只给
+            //   「忽略 / 升级 · 修复流程」，**两个都不能重跑**，用户就卡在这里。
+            //   后端两条走同一条 reject 分支（起新一轮 run），不依赖方案、也不依赖有待批的门；
+            //   理由是否必填也由服务端按"有没有方案"判定，与这里的判据同源。
+            // failed 也算：run 直接**失败**（LLM 连接挂掉、abort 节点）同样没有结论，而这类
+            //   环境/瞬时故障最该一键重试。后端对 failed 与 halt 判定完全同路（无门 →
+            //   `no_pending_gate` → 起新一轮），实测发在 failed 的 run 上返回 200 并起了新 run。
+            var noConclusion = opts.length === 0;
+            var canReject = (st === 'completed' || st === 'failed') && (hasSteps || noConclusion);
+            // 按钮与反馈框的文案随语义切换：驳斥方案 / 补齐证据重跑 / 直接重试。
+            // failed 单列一档：它是**执行失败**（没跑出结论），说"补齐证据"是误导 —— 多数情况
+            // 人只需要再跑一次，而不是先去找线索。
+            var rejectLabel = hasSteps
+                ? '拒绝 · 重新分析'
+                : (st === 'failed' ? '重试诊断' : '补齐证据重跑');
             // 升级 = 认可诊断 → 平台在 agentflow 建一张修复工单，工单号绑回这条问题单，
             // 问题单转 escalated 终态。**判据是"诊断给出了方案"，不是"选中那份方案完整"**：
             // 要派的是整份诊断，与用户当前翻到哪个分页签无关。没有方案就没有可派的活，
@@ -5098,18 +5111,28 @@
             var hint = sel
                 ? ('当前待处理：方案' + (dgxOptSel + 1) + '「' + sel.title + '」' +
                    (opts.length > 1 ? '（可切换上方分页签）' : ''))
-                : '本次诊断未给出可执行方案，可忽略或升级到修复流程。';
+                // failed 与 halt 分开说：前者是"这一轮没跑完"，后者是"跑完了但证据不足"——
+                // 同一句"证据不足中断"套在 failed 上会把人引去补证据，而他其实只需重跑。
+                : (st === 'failed'
+                    ? '本次诊断未跑出结论（执行失败）：可直接重试、忽略，或升级到修复流程。'
+                    : '本次诊断未给出可执行方案（多为证据不足中断）：可补齐线索重跑、忽略，或升级到修复流程。');
 
             var html = '<section class="dgx-card dgx-approve"><div class="dgx-label">处理 · DECISION</div>' +
                 '<div class="dgx-approve-hint">' + dgxEsc(hint) + '</div>';
 
             if (dgxFbOpen) {
+                // 文案随语义切换，且**说实话**：从前那句"诊断将带着这条建议重新分析…"在无结论时
+                // 是空头支票（后端根本没把 feedback 送进新一轮的输入）。
+                var fbPlaceholder = hasSteps
+                    ? '请给出要修改的地方，诊断将带着这条建议重新分析…'
+                    : '补充线索（服务 / 仓库 / 时间范围…），新一轮会带着它重跑；留空 = 直接重试';
                 html += '<div class="dgx-fb">' +
-                    '<textarea class="dgx-fb-input" rows="3" placeholder="请给出要修改的地方，诊断将带着这条建议重新分析…">' +
+                    '<textarea class="dgx-fb-input" rows="3" placeholder="' + dgxEsc(fbPlaceholder) + '">' +
                     dgxEsc(dgxFbText) + '</textarea>' +
                     '<div class="dgx-fb-actions">' +
                     '<button type="button" class="dgx-btn dgx-btn--reject dgx-act" data-act="reject-submit"' +
-                    (dgxDeciding ? ' disabled' : '') + '>提交拒绝并重新分析</button>' +
+                    (dgxDeciding ? ' disabled' : '') + '>' +
+                    dgxEsc(hasSteps ? '提交拒绝并重新分析' : '提交并重跑') + '</button>' +
                     '<button type="button" class="dgx-btn dgx-btn--ghost dgx-act" data-act="reject-cancel"' +
                     (dgxDeciding ? ' disabled' : '') + '>取消</button>' +
                     '</div></div>';
@@ -5117,7 +5140,7 @@
                 html += '<div class="dgx-approve-actions">' +
                     (canReject
                         ? '<button type="button" class="dgx-btn dgx-btn--reject dgx-act" data-act="reject"' +
-                          (dgxDeciding ? ' disabled' : '') + '>拒绝 · 重新分析</button>'
+                          (dgxDeciding ? ' disabled' : '') + '>' + dgxEsc(rejectLabel) + '</button>'
                         : '') +
                     '<button type="button" class="dgx-btn dgx-btn--ignore dgx-act" data-act="ignore"' +
                     (dgxDeciding ? ' disabled' : '') + '>忽略</button>' +
@@ -5186,7 +5209,12 @@
         // apmApi 已把后端 {code,reason} 的 reason 提成 err.message → 409/400 的中文原因直接展示。
         function submitDiagnosisDecision(decision) {
             if (!pcDiagRec || dgxDeciding) return;
-            if (decision === 'reject' && !dgxFbText.trim()) {
+            // 驳斥**一份方案**必须写理由；而 halt 后的「补齐证据重跑」是重试语义，**允许留空**
+            // （留空 = 直接重试，适用于 code-locator 轮次耗尽这类执行类失败）。
+            // 判据与服务端一致（"这份诊断有没有给出方案"），所以前端放行的不会被后端 400 打回。
+            var diagOpts = (pcDiagLastSnap && pcDiagLastSnap.conclusion
+                            && pcDiagLastSnap.conclusion.recommended_fix) || [];
+            if (decision === 'reject' && !dgxFbText.trim() && diagOpts.length > 0) {
                 window._showToast('请先填写修改建议', 'error');
                 return;
             }
