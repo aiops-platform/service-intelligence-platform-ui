@@ -4613,20 +4613,20 @@
         var pcDiagTimer = null;   // 2s 轮询 timer（关弹框必清）
         var pcDiagLastSnap = null;// 最近一次渲染的快照（重渲染/交互置灰用）
         var PC_DIAG_TERMINAL = { completed: 1, failed: 1, approved: 1, closed_manual: 1, dismissed: 1 };
-        // 状态胶囊一律中文标签（**绝不把原始枚举印给用户**，与 dgxTaskView 同纪律）。
+        // 状态胶囊一律英文标签（**绝不把原始枚举印给用户**，与 dgxTaskView 同纪律）。
         // CSS 类仍用原始 dgx-status--<en>（着色不受影响），兜底 || st。
         var DGX_STATUS_LABEL = {
-            analyzing: '分析中', completed: '已完成', failed: '失败',
-            approved: '已通过', closed_manual: '需人工处理', dismissed: '已忽略'
+            analyzing: 'Analyzing', completed: 'Completed', failed: 'Failed',
+            approved: 'Approved', closed_manual: 'Needs manual action', dismissed: 'Dismissed'
         };
         // 修复步骤的类别（agentflow 的 fix-planner 输出 type；老 spike 快照没有这个字段）
         var DGX_STEP_TYPE = {
-            code_fix: '代码修复',
-            infra_action: '基础设施动作',
-            config_change: '配置变更'
+            code_fix: 'Code fix',
+            infra_action: 'Infra action',
+            config_change: 'Config change'
         };
         var dgxOptSel = 0;        // 当前选中的修复方案下标（互斥多方案分页签）
-        var dgxChainOpen = false; // 「分析链路」折叠区开合（默认关闭；轮询重渲染后保持）
+        var dgxChainOpen = false; // 「Investigation」折叠区开合（默认关闭；轮询重渲染后保持）
         var dgxFbOpen = false;    // 拒绝反馈框开合
         var dgxFbText = '';       // 拒绝反馈文本（轮询重渲染回填，不丢输入）
         var dgxDeciding = false;  // 决策 POST 在途（按钮 disabled）
@@ -4805,7 +4805,7 @@
         // ⚠️ 后端 decision 枚举里还有 `false_positive`（M7 的误报回写链路仍在用），
         // 只是处理模块不再出那个按钮——历史里仍可能出现，所以这张表不能删它。
         // 漏登记的 decision 会被 `dgxPlanHistory` **原样印给用户**、chip 兜底成灰色。
-        var DGX_DECISION_LABEL = { reject: '已拒绝', ignore: '已忽略', escalate: '已升级', false_positive: '已误报' };
+        var DGX_DECISION_LABEL = { reject: 'Rejected', ignore: 'Ignored', escalate: 'Escalated', false_positive: 'False positive' };
         var DGX_DECISION_CLS = { reject: 'reject', ignore: 'ignore', escalate: 'escalate', false_positive: 'fp' };
 
         function loadDiagnoseDecisions(recordId) {
@@ -4829,7 +4829,7 @@
         // 不含回传（后端有意不混）。记录来自列表的 5s 轮询，故回传到达后最多 5s 就显出来 ——
         // 搭车刷新见 refresh() → syncOpenDiagnosis()。
         // 一轮跑完一条，重跑就再来一条：卡上取**最后一条**，那是工单现在的状态。
-        var DGX_TICKET_STATUS = { resolved: '已修复', failed: '修复未完成', insufficient: '证据不足' };
+        var DGX_TICKET_STATUS = { resolved: 'Resolved', failed: 'Fix incomplete', insufficient: 'Insufficient evidence' };
 
         // 记录 → 工单对象；没派过单返回 null（处理卡这时才走审批按钮那条路）。
         function dgxTicketOf(rec) {
@@ -4868,8 +4868,8 @@
         // 时间戳归一 → epoch 毫秒。**两条后端路径给的形状不同**：spike 历史是 epoch 秒
         // （`aidiag/diag/session.py` 的 `created_at: float`），agentflow 是 ISO 字符串
         // （`viewmodel.py` 契约写的就是 ISO8601）。下面两个 helper 原先只认数字，
-        // 「Analyze」切到 agentflow 后：dgxElapsed 拿字符串做减法 → 渲染出「耗时 NaNm NaNs」，
-        // dgxClock 的 `ts * 1000` → isNaN → 返回空串，把「更新」**静默吞掉**。
+        // 「Analyze」切到 agentflow 后：dgxElapsed 拿字符串做减法 → 渲染出「Elapsed NaNm NaNs」，
+        // dgxClock 的 `ts * 1000` → isNaN → 返回空串，把「Updated」**静默吞掉**。
         // 这里两种都吃，不再依赖上游用哪种形状。
         function dgxTsMs(v) {
             if (v === null || v === undefined || v === '') return NaN;
@@ -4894,13 +4894,13 @@
         }
         // score 可选：上游 rca.confidence 是 0~1 的小数（实测 0.86），后端压成
         // high/medium/low 档位后**原值会丢**，故另带一个 0~100 的整百分数
-        // （conclusion.confidence_score，与档位同源）。有分值时显示「置信度 高 · 86%」；
-        // 没有的（如 spike 历史快照只有档位）退回原来的「置信度 高 · high」。
+        // （conclusion.confidence_score，与档位同源）。有分值时显示「Confidence High · 86%」；
+        // 没有的（如 spike 历史快照只有档位）退回原来的「Confidence High · high」。
         function dgxConfChip(c, score) {
             var v = (c || 'medium').toLowerCase();
-            var zh = v === 'high' ? '高' : (v === 'low' ? '低' : '中');
+            var lvl = v === 'high' ? 'High' : (v === 'low' ? 'Low' : 'Medium');
             var tail = (typeof score === 'number' && isFinite(score)) ? (score + '%') : dgxEsc(v);
-            return '<span class="dgx-conf dgx-conf--' + dgxEsc(v) + '">置信度 ' + dgxEsc(zh) +
+            return '<span class="dgx-conf dgx-conf--' + dgxEsc(v) + '">Confidence ' + dgxEsc(lvl) +
                 ' · ' + tail + '</span>';
         }
         function dgxShaChip(label, sha) {
@@ -4947,13 +4947,16 @@
             var html = '';
             // 标题可选：历史计划里标题已在 summary 展示，此处只铺 steps（不再重复标题头）
             if (o.title || o.recommended) {
-                html += '<div class="dgx-opt-head">' + dgxEsc(o.title || '(未命名方案)') +
-                    (o.recommended ? '<span class="dgx-rec">模型推荐</span>' : '') + '</div>';
+                html += '<div class="dgx-opt-head">' + dgxEsc(o.title || '(untitled option)') +
+                    (o.recommended ? '<span class="dgx-rec">Model pick</span>' : '') + '</div>';
             }
-            if (o.applies_when) html += '<div class="dgx-kv"><span class="dgx-k">适用前提</span><span class="dgx-v">' + dgxEsc(o.applies_when) + '</span></div>';
-            if (o.reason) html += '<div class="dgx-kv"><span class="dgx-k">推荐理由</span><span class="dgx-v">' + dgxEsc(o.reason) + '</span></div>';
+            // ⚠️ 字段名长度**必须落在 `.dgx-k` 的 68px 里**（css/styles.css:7096 是固定宽度）：
+            // 超一点就折成两行，同一张卡里「Verification」一行、「Outcome」两行，行高参差。
+            // 中文四字时代天然满足；英文化后逐条量过（12px Inter），以下都是单行。
+            if (o.applies_when) html += '<div class="dgx-kv"><span class="dgx-k">Applies to</span><span class="dgx-v">' + dgxEsc(o.applies_when) + '</span></div>';
+            if (o.reason) html += '<div class="dgx-kv"><span class="dgx-k">Rationale</span><span class="dgx-v">' + dgxEsc(o.reason) + '</span></div>';
             var steps = o.steps || [];
-            if (!steps.length) return html + '<div class="dgx-muted">无步骤。</div>';
+            if (!steps.length) return html + '<div class="dgx-muted">No steps.</div>';
             html += '<ol class="dgx-steps">';
             for (var i = 0; i < steps.length; i++) {
                 var s = steps[i] || {};
@@ -4966,9 +4969,9 @@
                     (s.risk ? '<span class="dgx-risk dgx-risk--' + dgxEsc(s.risk) + '">risk ' + dgxEsc(s.risk) + '</span>' : '') +
                     '</div>' +
                     (s.change ? '<div class="dgx-step-change">' + dgxEsc(s.change) + '</div>' : '') +
-                    (s.expected_effect ? '<div class="dgx-kv"><span class="dgx-k">预期效果</span><span class="dgx-v">' + dgxEsc(s.expected_effect) + '</span></div>' : '') +
-                    (s.verification ? '<div class="dgx-kv"><span class="dgx-k">验证方式</span><span class="dgx-v">' + dgxEsc(s.verification) + '</span></div>' : '') +
-                    (s.rollback ? '<div class="dgx-kv"><span class="dgx-k">回滚</span><span class="dgx-v">' + dgxEsc(s.rollback) + '</span></div>' : '') +
+                    (s.expected_effect ? '<div class="dgx-kv"><span class="dgx-k">Outcome</span><span class="dgx-v">' + dgxEsc(s.expected_effect) + '</span></div>' : '') +
+                    (s.verification ? '<div class="dgx-kv"><span class="dgx-k">Verification</span><span class="dgx-v">' + dgxEsc(s.verification) + '</span></div>' : '') +
+                    (s.rollback ? '<div class="dgx-kv"><span class="dgx-k">Rollback</span><span class="dgx-v">' + dgxEsc(s.rollback) + '</span></div>' : '') +
                     (s.suggested_diff ? '<pre class="dgx-code">' + dgxEsc(s.suggested_diff) + '</pre>' : '') +
                     '</li>';
             }
@@ -4979,17 +4982,17 @@
         function dgxConclusion(c) {
             if (!c) return '';
             // 1) 根因 + 置信度/commit 元信息（同屏给出「结论 + 可信度」，先看结论再决定读多深）
-            var html = '<section class="dgx-card dgx-verdict"><div class="dgx-label">根因 · ROOT CAUSE</div>' +
+            var html = '<section class="dgx-card dgx-verdict"><div class="dgx-label">Root Cause</div>' +
                 '<p class="dgx-verdict-text">' + dgxEsc(c.root_cause || '—') + '</p>' +
                 '<div class="dgx-verdict-meta">' + dgxConfChip(c.confidence, c.confidence_score) +
                 dgxShaChip('deployed', c.deployed_commit) +
                 dgxShaChip('base', c.base_commit) +
-                dgxShaChip('已修复于', c.already_fixed_by) + '</div>' +
+                dgxShaChip('fixed in', c.already_fixed_by) + '</div>' +
                 (c.base_note ? '<p class="dgx-note">' + dgxEsc(c.base_note) + '</p>' : '') +
                 '</section>';
             // 2) 总结
             if (c.summary) {
-                html += '<section class="dgx-card"><div class="dgx-label">总结 · SUMMARY</div>' +
+                html += '<section class="dgx-card"><div class="dgx-label">Summary</div>' +
                     '<p class="dgx-body-text">' + dgxEsc(c.summary) + '</p></section>';
             }
             return html;
@@ -5001,19 +5004,19 @@
         function dgxFixOptions(opts, opts_) {
             opts_ = opts_ || {};
             if (!opts.length) {
-                return '<section class="dgx-card"><div class="dgx-label">修复方案 · FIX OPTIONS</div>' +
-                    '<div class="dgx-muted">本次诊断未给出修复方案。</div></section>';
+                return '<section class="dgx-card"><div class="dgx-label">Fix Options</div>' +
+                    '<div class="dgx-muted">This diagnosis produced no fix options.</div></section>';
             }
             if (opts_.flat) {
-                var flat = '<section class="dgx-card"><div class="dgx-label">修复方案 · FIX OPTIONS' +
-                    (opts.length > 1 ? '（互斥 ' + opts.length + ' 选 1）' : '') + '</div>';
+                var flat = '<section class="dgx-card"><div class="dgx-label">Fix Options' +
+                    (opts.length > 1 ? ' (mutually exclusive — choose 1 of ' + opts.length + ')' : '') + '</div>';
                 for (var f = 0; f < opts.length; f++) {
                     var fo = opts[f] || {};
                     var rejected = opts_.highlight === (f + 1);
                     flat += '<div class="dgx-opt-flat' + (rejected ? ' is-rejected' : '') + '">' +
-                        '<div class="dgx-opt-head">方案' + (f + 1) + ' · ' + dgxEsc(fo.title || '(未命名方案)') +
-                        (fo.recommended ? '<span class="dgx-rec">模型推荐</span>' : '') +
-                        (rejected ? '<span class="dgx-hist-reject">本轮被拒</span>' : '') + '</div>' +
+                        '<div class="dgx-opt-head">Option ' + (f + 1) + ' · ' + dgxEsc(fo.title || '(untitled option)') +
+                        (fo.recommended ? '<span class="dgx-rec">Model pick</span>' : '') +
+                        (rejected ? '<span class="dgx-hist-reject">Rejected this round</span>' : '') + '</div>' +
                         // 标题已在本函数头部渲染 → 只把正文交给 dgxOptionBody（不重复标题头）
                         dgxOptionBody({ applies_when: fo.applies_when, reason: fo.reason, steps: fo.steps || [] }) +
                         '</div>';
@@ -5021,14 +5024,14 @@
                 return flat + '</section>';
             }
             if (dgxOptSel >= opts.length) dgxOptSel = 0;
-            var html = '<section class="dgx-card"><div class="dgx-label">修复方案 · FIX OPTIONS' +
-                (opts.length > 1 ? '（互斥 ' + opts.length + ' 选 1）' : '') + '</div>';
+            var html = '<section class="dgx-card"><div class="dgx-label">Fix Options' +
+                (opts.length > 1 ? ' (mutually exclusive — choose 1 of ' + opts.length + ')' : '') + '</div>';
             if (opts.length > 1) {
                 html += '<div class="dgx-tabs" role="tablist">';
                 for (var i = 0; i < opts.length; i++) {
                     html += '<button type="button" role="tab" class="dgx-tab' + (i === dgxOptSel ? ' is-active' : '') +
-                        '" data-opt="' + i + '" aria-selected="' + (i === dgxOptSel ? 'true' : 'false') + '">方案' + (i + 1) +
-                        (opts[i] && opts[i].recommended ? '<span class="dgx-star" title="模型推荐">★</span>' : '') + '</button>';
+                        '" data-opt="' + i + '" aria-selected="' + (i === dgxOptSel ? 'true' : 'false') + '">Option ' + (i + 1) +
+                        (opts[i] && opts[i].recommended ? '<span class="dgx-star" title="Model pick">★</span>' : '') + '</button>';
                 }
                 html += '</div>';
             }
@@ -5045,20 +5048,20 @@
         // ⚠️ 判据必须是「记录里有没有工单」：回传 `resolved` 会把问题单从 escalated 转成 resolved，
         // 按 state 判的话这张卡连同处置结论一起消失 —— 而消失的正是人最想看结果的那一刻。
         function dgxTicketCard(tk) {
-            var html = '<section class="dgx-card dgx-approve"><div class="dgx-label">处理 · DECISION</div>' +
-                '<div class="dgx-approve-hint">已升级——本次诊断已转成一张修复工单' +
-                (tk.number ? '，工单号 <span class="dgx-mono">' + dgxEsc(tk.number) + '</span>' : '') +
-                '。</div>';
+            var html = '<section class="dgx-card dgx-approve"><div class="dgx-label">Decision</div>' +
+                '<div class="dgx-approve-hint">Escalated — this diagnosis was turned into a fix ticket' +
+                (tk.number ? ', ticket <span class="dgx-mono">' + dgxEsc(tk.number) + '</span>' : '') +
+                '.</div>';
             // 还没回传（工单在跑）：只留上面那句。不用占位文本撑版面 —— 那看起来像"结果丢了"。
             if (!tk.status) return html + '</section>';
-            html += '<div class="dgx-kv"><span class="dgx-k">回传状态</span><span class="dgx-v">' +
+            html += '<div class="dgx-kv"><span class="dgx-k">Status</span><span class="dgx-v">' +
                 dgxEsc(DGX_TICKET_STATUS[tk.status] || tk.status) + '</span></div>';
             if (tk.description) {
-                html += '<div class="dgx-kv"><span class="dgx-k">处置结论</span><span class="dgx-v">' +
+                html += '<div class="dgx-kv"><span class="dgx-k">Resolution</span><span class="dgx-v">' +
                     dgxEsc(tk.description) + '</span></div>';
             }
             if (tk.reported_at) {
-                html += '<div class="dgx-kv"><span class="dgx-k">回传时间</span><span class="dgx-v">' +
+                html += '<div class="dgx-kv"><span class="dgx-k">Reported at</span><span class="dgx-v">' +
                     dgxEsc(formatTime(tk.reported_at)) + '</span></div>';
             }
             return html + '</section>';
@@ -5081,10 +5084,10 @@
             var opts = (snap.conclusion && snap.conclusion.recommended_fix) || [];
             var sel = opts[dgxOptSel] || null;
             var hasSteps = !!(sel && sel.steps && sel.steps.length);
-            // 有方案 → 「拒绝 · 重新分析」：后端把选中的那份方案快照进历史，没有 steps 就没东西可留。
-            // 无结论 → 「补齐证据重跑」：run 走了 **halt**（证据不足 / 取证失败）时结论为空，
+            // 有方案 → 「Reject & re-analyze」：后端把选中的那份方案快照进历史，没有 steps 就没东西可留。
+            // 无结论 → 「Re-run with more context」：run 走了 **halt**（证据不足 / 取证失败）时结论为空，
             //   没有方案可驳 —— 但恰恰最需要带着人的补充线索再跑一轮。此前这种情况只给
-            //   「忽略 / 升级 · 修复流程」，**两个都不能重跑**，用户就卡在这里。
+            //   「Ignore / Escalate · fix workflow」，**两个都不能重跑**，用户就卡在这里。
             //   后端两条走同一条 reject 分支（起新一轮 run），不依赖方案、也不依赖有待批的门；
             //   理由是否必填也由服务端按"有没有方案"判定，与这里的判据同源。
             // failed 也算：run 直接**失败**（LLM 连接挂掉、abort 节点）同样没有结论，而这类
@@ -5096,45 +5099,45 @@
             // failed 单列一档：它是**执行失败**（没跑出结论），说"补齐证据"是误导 —— 多数情况
             // 人只需要再跑一次，而不是先去找线索。
             var rejectLabel = hasSteps
-                ? '拒绝 · 重新分析'
-                : (st === 'failed' ? '重试诊断' : '补齐证据重跑');
+                ? 'Reject & re-analyze'
+                : (st === 'failed' ? 'Retry diagnosis' : 'Re-run with more context');
             // 升级 = 认可诊断 → 平台在 agentflow 建一张修复工单，工单号绑回这条问题单，
             // 问题单转 escalated 终态。**判据是"诊断给出了方案"，不是"选中那份方案完整"**：
             // 要派的是整份诊断，与用户当前翻到哪个分页签无关。没有方案就没有可派的活，
             // 这也正好与下面那句 hint 逐字对齐。
             var canEscalate = (st === 'completed') && opts.length > 0;
-            // 「升级 · 修复流程」= **诊断没给出东西**时的出路：没根因或没方案 → 直接把这单派给
+            // 「Escalate · fix workflow」= **诊断没给出东西**时的出路：没根因或没方案 → 直接把这单派给
             // 修复流程（钉 `ESCALATE_FIX_WORKFLOW`），不再走上面那条「认可诊断」的升级。
             // 上面那句 hint 里"仅可忽略"的旧文案与它成对（见下）。
             var rootCause = String((snap.conclusion && snap.conclusion.root_cause) || '').trim();
             var canEscalateFix = (!rootCause || opts.length === 0);
             var hint = sel
-                ? ('当前待处理：方案' + (dgxOptSel + 1) + '「' + sel.title + '」' +
-                   (opts.length > 1 ? '（可切换上方分页签）' : ''))
+                ? ('Acting on: Option ' + (dgxOptSel + 1) + ' “' + sel.title + '”' +
+                   (opts.length > 1 ? ' (switch tabs above)' : ''))
                 // failed 与 halt 分开说：前者是"这一轮没跑完"，后者是"跑完了但证据不足"——
                 // 同一句"证据不足中断"套在 failed 上会把人引去补证据，而他其实只需重跑。
                 : (st === 'failed'
-                    ? '本次诊断未跑出结论（执行失败）：可直接重试、忽略，或升级到修复流程。'
-                    : '本次诊断未给出可执行方案（多为证据不足中断）：可补齐线索重跑、忽略，或升级到修复流程。');
+                    ? 'This run produced no conclusion (execution failed): retry, ignore, or escalate to the fix workflow.'
+                    : 'This diagnosis produced no actionable fix (usually halted for lack of evidence): re-run with more context, ignore, or escalate to the fix workflow.');
 
-            var html = '<section class="dgx-card dgx-approve"><div class="dgx-label">处理 · DECISION</div>' +
+            var html = '<section class="dgx-card dgx-approve"><div class="dgx-label">Decision</div>' +
                 '<div class="dgx-approve-hint">' + dgxEsc(hint) + '</div>';
 
             if (dgxFbOpen) {
                 // 文案随语义切换，且**说实话**：从前那句"诊断将带着这条建议重新分析…"在无结论时
                 // 是空头支票（后端根本没把 feedback 送进新一轮的输入）。
                 var fbPlaceholder = hasSteps
-                    ? '请给出要修改的地方，诊断将带着这条建议重新分析…'
-                    : '补充线索（服务 / 仓库 / 时间范围…），新一轮会带着它重跑；留空 = 直接重试';
+                    ? 'Describe what to change — the next run will re-analyze with this feedback…'
+                    : 'Add context (service / repo / time range…); the next run will take it along. Leave empty to just retry';
                 html += '<div class="dgx-fb">' +
                     '<textarea class="dgx-fb-input" rows="3" placeholder="' + dgxEsc(fbPlaceholder) + '">' +
                     dgxEsc(dgxFbText) + '</textarea>' +
                     '<div class="dgx-fb-actions">' +
                     '<button type="button" class="dgx-btn dgx-btn--reject dgx-act" data-act="reject-submit"' +
                     (dgxDeciding ? ' disabled' : '') + '>' +
-                    dgxEsc(hasSteps ? '提交拒绝并重新分析' : '提交并重跑') + '</button>' +
+                    dgxEsc(hasSteps ? 'Submit & re-analyze' : 'Submit & re-run') + '</button>' +
                     '<button type="button" class="dgx-btn dgx-btn--ghost dgx-act" data-act="reject-cancel"' +
-                    (dgxDeciding ? ' disabled' : '') + '>取消</button>' +
+                    (dgxDeciding ? ' disabled' : '') + '>Cancel</button>' +
                     '</div></div>';
             } else {
                 html += '<div class="dgx-approve-actions">' +
@@ -5143,27 +5146,27 @@
                           (dgxDeciding ? ' disabled' : '') + '>' + dgxEsc(rejectLabel) + '</button>'
                         : '') +
                     '<button type="button" class="dgx-btn dgx-btn--ignore dgx-act" data-act="ignore"' +
-                    (dgxDeciding ? ' disabled' : '') + '>忽略</button>' +
+                    (dgxDeciding ? ' disabled' : '') + '>Ignore</button>' +
                     // 升级**顶掉的就是原来「误报」的位置**（最右），不是新插一档：
                     // 布局不变、人的肌肉记忆不用重学。
                     (canEscalate
                         ? '<button type="button" class="dgx-btn dgx-btn--escalate dgx-act" data-act="escalate"' +
-                          (dgxDeciding ? ' disabled' : '') + '>升级 · 生成工单</button>'
+                          (dgxDeciding ? ' disabled' : '') + '>Escalate · create ticket</button>'
                         : '') +
-                    // 与「升级 · 生成工单」并列而非互斥：两者只在"有方案但没根因"时同时出现，
+                    // 与「Escalate · create ticket」并列而非互斥：两者只在"有方案但没根因"时同时出现，
                     // 那时派的确实是两件不同的事（一个认可这份诊断、一个把活直接交给修复流程）。
                     (canEscalateFix
                         ? '<button type="button" class="dgx-btn dgx-btn--escalate dgx-act" data-act="escalate-fix"' +
-                          (dgxDeciding ? ' disabled' : '') + '>升级 · 修复流程</button>'
+                          (dgxDeciding ? ' disabled' : '') + '>Escalate · fix workflow</button>'
                         : '') +
                     '</div>';
             }
             return html + '</section>';
         }
 
-        // ── 直接派单（页面上的两处「Escalate」/「升级 · 修复流程」）───────────────────
+        // ── 直接派单（页面上的两处「Escalate」/「Escalate · fix workflow」）───────────────────
         // 把问题单**不经诊断裁定**派成一张修复工单，建单时就钉住 `ESCALATE_FIX_WORKFLOW`。
-        // 与「升级 · 生成工单」的差别只在钉哪条流程：那条走诊断审批门、由 run 里的建单节点
+        // 与「Escalate · create ticket」的差别只在钉哪条流程：那条走诊断审批门、由 run 里的建单节点
         // 按 YAML 的 `next_workflow`（problem-diagnose-fix）建；这条由人直接指定。
         //
         // ⚠️ **必须经 APM 派单，不能在浏览器里直接打 agentflow 的 `/tickets`**：工单号
@@ -5184,11 +5187,10 @@
                     escalateBusy = false;
                     var num = (resp && resp.ticket_number) || '';
                     window._showToast(
-                        modal ? (num ? ('已升级，工单 ' + num + ' 已生成') : '已升级，工单已生成')
-                              : (num ? ('Escalated · ticket ' + num) : 'Escalated'),
+                        num ? ('Escalated · ticket ' + num + ' created') : 'Escalated · ticket created',
                         'success');
                     if (modal && pcDiagRec) {
-                        // 弹框留着：处理卡换成工单卡。与「升级 · 生成工单」同一套就地翻状态
+                        // 弹框留着：处理卡换成工单卡。与「Escalate · create ticket」同一套就地翻状态
                         // （`dgxApproval` 的判据是 `dgxTicket`，不是 `state`）。
                         pcDiagRec.state = 'escalated';
                         dgxTicket = { number: num, status: '', description: '', reported_at: '' };
@@ -5209,13 +5211,13 @@
         // apmApi 已把后端 {code,reason} 的 reason 提成 err.message → 409/400 的中文原因直接展示。
         function submitDiagnosisDecision(decision) {
             if (!pcDiagRec || dgxDeciding) return;
-            // 驳斥**一份方案**必须写理由；而 halt 后的「补齐证据重跑」是重试语义，**允许留空**
+            // 驳斥**一份方案**必须写理由；而 halt 后的「Re-run with more context」是重试语义，**允许留空**
             // （留空 = 直接重试，适用于 code-locator 轮次耗尽这类执行类失败）。
             // 判据与服务端一致（"这份诊断有没有给出方案"），所以前端放行的不会被后端 400 打回。
             var diagOpts = (pcDiagLastSnap && pcDiagLastSnap.conclusion
                             && pcDiagLastSnap.conclusion.recommended_fix) || [];
             if (decision === 'reject' && !dgxFbText.trim() && diagOpts.length > 0) {
-                window._showToast('请先填写修改建议', 'error');
+                window._showToast('Please describe the change first', 'error');
                 return;
             }
             var recordId = pcDiagRec.record_id;
@@ -5236,8 +5238,8 @@
                         var max = resp && resp.max_reanalyze != null ? resp.max_reanalyze : '';
                         var capped = !!(resp && resp.remediation_status === 'closed_manual');
                         window._showToast(
-                            capped ? ('驳回已达上限 ' + cnt + '/' + max + '，需人工处理')
-                                   : ('已驳回，正在重新分析（' + cnt + '/' + max + '）'),
+                            capped ? ('Rejection limit reached (' + cnt + '/' + max + ') — manual action needed')
+                                   : ('Rejected, re-analyzing (' + cnt + '/' + max + ')'),
                             capped ? 'error' : 'success');
                         dgxFbOpen = false;
                         dgxFbText = '';
@@ -5250,11 +5252,11 @@
                     } else if (decision === 'escalate') {
                         var num = (resp && resp.ticket_number) || '';
                         window._showToast(
-                            num ? ('已升级，工单 ' + num + ' 已生成') : '已升级，工单已生成', 'success');
+                            num ? ('Escalated · ticket ' + num + ' created') : 'Escalated · ticket created', 'success');
                         // ⚠️ **必须就地翻本地 state**：处理卡的显隐读的是 `pcDiagRec.state`
                         // （dgxApproval 开头），而 `pollDiagnosis` 只重拉诊断快照、**不重拉 record**
                         // （pcDiagRec 只在 openDiagnosisView 里赋值），`refresh()` 也不回写它。
-                        // 不翻的话升级后那张卡照旧显示、三个按钮全是活的，再点「忽略」撞上后端
+                        // 不翻的话升级后那张卡照旧显示、三个按钮全是活的，再点「Ignore」撞上后端
                         // 的 escalated 终态守卫拿 409 —— 一个不该存在的死按钮。
                         pcDiagRec.state = 'escalated';
                         // 工单就地落上：升级后那张卡换成工单卡，判据是 `dgxTicket`（见 dgxTicketCard）。
@@ -5266,7 +5268,8 @@
                         refresh();                       // 列表状态列转 escalated
                     } else {
                         window._showToast(
-                            decision === 'false_positive' ? '已标记误报并关闭问题单' : '已忽略并关闭问题单',
+                            decision === 'false_positive' ? 'Marked as false positive and closed the problem'
+                                                          : 'Ignored and closed the problem',
                             'success');
                         closeDiagnosisView();
                         refresh(); // 问题单已关，列表以后端为准
@@ -5274,16 +5277,16 @@
                 })
                 .catch(function (err) {
                     dgxDeciding = false;
-                    window._showToast('操作失败: ' + err.message, 'error');
+                    window._showToast('Action failed: ' + err.message, 'error');
                     renderDiagnosis(pcDiagLastSnap); // 保持弹窗，可改建议重试
                 });
         }
 
-        // 任务状态：枚举 → 中文标签 + CSS 修饰类。**绝不把原始枚举印给用户**。
+        // 任务状态：枚举 → 英文标签 + CSS 修饰类。**绝不把原始枚举印给用户**。
         // tasks 是模型自报账本（只有 complete_task 会写 done），收尾步骤常残留 todo；服务端已
         // 在落终态时做确定性归一（completed→done+derived、failed→cancelled），此处再兜一层显示派生。
         var DGX_TASK_LABEL = {
-            todo: '待办', in_progress: '进行中', done: '已完成', failed: '失败', cancelled: '已中止'
+            todo: 'To do', in_progress: 'In progress', done: 'Done', failed: 'Failed', cancelled: 'Cancelled'
         };
         var DGX_TASK_CLS = {
             todo: 'todo', in_progress: 'running', done: 'done', failed: 'failed', cancelled: 'cancelled'
@@ -5296,23 +5299,23 @@
             var cls = DGX_TASK_CLS[st] || 'todo';
             var stt = snap && snap.status;
             // 兜底派生：会话已到终态却仍留 todo/in_progress（服务端未归一，或旧会话）时，不能把
-            // 原始枚举/「待办」印给用户 —— 终态意味着这段计划已有交代：
-            //   有结论（completed/approved）→ 「随结论完成」（done + derived，灰显）；
-            //   无结论（failed/closed_manual）→ 「已中止」（cancelled，灰 + 删除线），**绝不显示完成**。
+            // 原始枚举/「To do」印给用户 —— 终态意味着这段计划已有交代：
+            //   有结论（completed/approved）→ 「Closed with conclusion」（done + derived，灰显）；
+            //   无结论（failed/closed_manual）→ 「Cancelled」（cancelled，灰 + 删除线），**绝不显示完成**。
             if ((st === 'todo' || st === 'in_progress') && PC_DIAG_TERMINAL[stt]) {
                 if (stt === 'failed' || stt === 'closed_manual') {
                     cls = 'cancelled';
-                    label = '已中止';
+                    label = 'Cancelled';
                 } else {
                     cls = 'done';
-                    label = '随结论完成';
+                    label = 'Closed with conclusion';
                     derived = true;
                 }
             }
             return { cls: cls, label: label, derived: derived };
         }
 
-        // 「分析链路」——默认关闭：调研计划 / 用到的 MCP server / 工具调用时间线 / 证据链 / 原始 JSON
+        // 「Investigation」——默认关闭：Investigation plan / MCP servers used / Tool call timeline / Evidence / Raw JSON
         // openFlag：显式开合（缺省沿用全局 dgxChainOpen，让 live 轮询重渲染不塌）；
         // hist：历史快照实例 → 加 .dgx-chain--hist（弱化，且开合不污染 live 的 dgxChainOpen）。
         function dgxChain(snap, openFlag, hist) {
@@ -5322,39 +5325,39 @@
             var evs = (snap.conclusion && snap.conclusion.evidence) || [];
             var servers = dgxMcpServers(calls);
             var meta = [];
-            if (tasks.length) meta.push('调研计划 ' + tasks.length);
-            meta.push('工具调用 ' + calls.length);
-            if (servers.length) meta.push('MCP server ' + servers.length);
-            if (evs.length) meta.push('证据 ' + evs.length);
+            if (tasks.length) meta.push('Plan ' + tasks.length);
+            meta.push('Tool calls ' + calls.length);
+            if (servers.length) meta.push('MCP servers ' + servers.length);
+            if (evs.length) meta.push('Evidence ' + evs.length);
 
             var html = '<details class="dgx-chain' + (hist ? ' dgx-chain--hist' : '') + '"' + (openFlag ? ' open' : '') + '>' +
-                '<summary class="dgx-chain-sum"><span class="dgx-caret"></span>分析链路 · INVESTIGATION' +
+                '<summary class="dgx-chain-sum"><span class="dgx-caret"></span>Investigation' +
                 '<span class="dgx-chain-meta">' + dgxEsc(meta.join(' · ')) + '</span></summary>' +
                 '<div class="dgx-chain-body">';
 
             if (tasks.length) {
-                html += '<h5 class="dgx-h5">调研计划</h5><ol class="dgx-tasks">';
+                html += '<h5 class="dgx-h5">Investigation plan</h5><ol class="dgx-tasks">';
                 for (var i = 0; i < tasks.length; i++) {
                     var t = tasks[i] || {};
                     var tv = dgxTaskView(snap, t);
                     // derived = 未显式 complete_task，随终态一并收口（灰显 + title 说明）
                     html += '<li class="dgx-task dgx-task--' + tv.cls + (tv.derived ? ' is-derived' : '') + '">' +
                         '<span class="dgx-task-dot"></span><span class="dgx-task-title">' + dgxEsc(t.title || '') + '</span>' +
-                        '<span class="dgx-task-st"' + (tv.derived ? ' title="未显式标记完成，随结论一并收口"' : '') + '>' +
+                        '<span class="dgx-task-st"' + (tv.derived ? ' title="Not explicitly completed; closed out with the conclusion"' : '') + '>' +
                         dgxEsc(tv.label) + '</span></li>';
                 }
                 html += '</ol>';
             }
             if (servers.length) {
-                html += '<h5 class="dgx-h5">使用的 MCP Server</h5><div class="dgx-mcps">';
+                html += '<h5 class="dgx-h5">MCP servers used</h5><div class="dgx-mcps">';
                 for (var m = 0; m < servers.length; m++) {
                     html += '<span class="dgx-mcp">' + dgxEsc(servers[m].server) +
-                        '<span class="dgx-mcp-n" title="调用次数">' + servers[m].count + '</span></span>';
+                        '<span class="dgx-mcp-n" title="Calls">' + servers[m].count + '</span></span>';
                 }
                 html += '</div>';
             }
             if (calls.length) {
-                html += '<h5 class="dgx-h5">工具调用时间线</h5><ol class="dgx-tl">';
+                html += '<h5 class="dgx-h5">Tool call timeline</h5><ol class="dgx-tl">';
                 for (var k = 0; k < calls.length; k++) {
                     var ev = calls[k] || {};
                     var p = dgxToolParts(ev.tool);
@@ -5374,24 +5377,24 @@
                 html += '</ol>';
             }
             if (!tasks.length && !calls.length && !evs.length) {
-                html += '<div class="dgx-muted">暂无过程记录。</div>';
+                html += '<div class="dgx-muted">No process record.</div>';
             }
             if (evs.length) {
-                html += '<h5 class="dgx-h5">证据链 (' + evs.length + ')</h5><div class="dgx-evs">';
+                html += '<h5 class="dgx-h5">Evidence (' + evs.length + ')</h5><div class="dgx-evs">';
                 for (var e = 0; e < evs.length; e++) {
                     var it = evs[e] || {};
                     html += '<div class="dgx-ev"><div class="dgx-ev-head">' +
                         '<span class="dgx-tag">' + dgxEsc(it.source || 'evidence') + '</span>' +
                         (it.commit ? '<span class="dgx-mono dgx-ev-commit" title="' + dgxEsc(it.commit) + '">@' + dgxEsc(dgxShort(it.commit)) + '</span>' : '') +
                         '</div>' +
-                        (it.query ? '<div class="dgx-kv"><span class="dgx-k">查询</span><span class="dgx-v dgx-mono">' + dgxEsc(it.query) + '</span></div>' : '') +
-                        (it.finding ? '<div class="dgx-kv"><span class="dgx-k">结论</span><span class="dgx-v">' + dgxEsc(it.finding) + '</span></div>' : '') +
-                        (it.supporting_text ? '<details class="dgx-sub"><summary>原文</summary><pre class="dgx-code">' + dgxEsc(it.supporting_text) + '</pre></details>' : '') +
+                        (it.query ? '<div class="dgx-kv"><span class="dgx-k">Query</span><span class="dgx-v dgx-mono">' + dgxEsc(it.query) + '</span></div>' : '') +
+                        (it.finding ? '<div class="dgx-kv"><span class="dgx-k">Finding</span><span class="dgx-v">' + dgxEsc(it.finding) + '</span></div>' : '') +
+                        (it.supporting_text ? '<details class="dgx-sub"><summary>Raw text</summary><pre class="dgx-code">' + dgxEsc(it.supporting_text) + '</pre></details>' : '') +
                         '</div>';
                 }
                 html += '</div>';
             }
-            html += '<details class="dgx-sub"><summary>原始 JSON</summary><pre class="dgx-code">' +
+            html += '<details class="dgx-sub"><summary>Raw JSON</summary><pre class="dgx-code">' +
                 dgxEsc(JSON.stringify(snap, null, 2)) + '</pre></details>';
             return html + '</div></details>';
         }
@@ -5405,14 +5408,14 @@
             var html = '<div class="dgx-hist-snap">' +
                 '<div class="dgx-head"><div class="dgx-head-top">' +
                 '<span class="dgx-status dgx-status--' + dgxEsc(st) + '">' + dgxEsc(DGX_STATUS_LABEL[st] || st) + '</span>' +
-                (snap.trigger ? '<span class="dgx-chip">来源 ' + dgxEsc(snap.trigger) + '</span>' : '') +
+                (snap.trigger ? '<span class="dgx-chip">Source ' + dgxEsc(snap.trigger) + '</span>' : '') +
                 // 轮次标识：老记录是 spike 的 session_id，新记录是 agentflow 的 run_id。
                 // 两者都落在 ref 上（历史快照没有 ref，回落 session_id），ref_kind 只影响提示文案。
                 ((snap.ref || snap.session_id)
                     ? '<span class="dgx-chip dgx-mono" title="' + dgxEsc(snap.ref_kind === 'run' ? 'run_id' : 'session_id') + '">' +
                       dgxEsc(snap.ref || snap.session_id) + '</span>'
                     : '') +
-                (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">耗时 ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
+                (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">Elapsed ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
                 '</div>' +
                 (snap.issue_title ? '<h2 class="dgx-issue">' + dgxEsc(snap.issue_title) + '</h2>' : '') +
                 '</div>';
@@ -5421,7 +5424,7 @@
                 html += dgxConclusion(c);
                 html += dgxFixOptions(c.recommended_fix || [], { flat: true, highlight: rejectIdx });
             } else {
-                html += '<div class="dgx-card"><div class="dgx-muted">该轮无结构化结论。</div></div>';
+                html += '<div class="dgx-card"><div class="dgx-muted">No structured conclusion for this round.</div></div>';
             }
             html += dgxChain(snap, false, true);
             return html + '</div>';
@@ -5434,8 +5437,8 @@
         // 按需从这里下钻到 #pcRunOverlay（复用「View analysis」那套 run 查看器与节点级审批）。
         // 数据来自后端视图模型的 executions[]：每轮 run 一条，带实时状态。
         var DGX_EXEC_STATE = {
-            analyzing: '进行中', completed: '已完成', failed: '失败',
-            approved: '已通过', closed_manual: '已中止', dismissed: '已忽略'
+            analyzing: 'Running', completed: 'Completed', failed: 'Failed',
+            approved: 'Approved', closed_manual: 'Cancelled', dismissed: 'Dismissed'
         };
 
         function dgxExecShort(id) {
@@ -5443,11 +5446,11 @@
             return s.length > 14 ? s.slice(0, 8) + '…' + s.slice(-4) : s;
         }
 
-        // 「历次执行」里的**最后一次**（= 当前轮）。判定只写这一份，按钮与下钻都用它。
+        // 「Executions」里的**最后一次**（= 当前轮）。判定只写这一份，按钮与下钻都用它。
         //
         // 后端 fetch_executions 按 evidence 写入顺序返回，**最后一条**打 is_current
         // （重跑追加在尾部），故这里的优先级是 is_current → 数组末条。
-        // ⚠️ 不能拿「列表里最后一个」当最后一次：dgxExecutions 渲染时把「进行中」置顶，
+        // ⚠️ 不能拿「列表里最后一个」当最后一次：dgxExecutions 渲染时把「Running」置顶，
         // 渲染顺序与数组顺序不同（最后一次正在跑时，它反而排在第一条）。
         function dgxLastExecution(snap) {
             var items = (snap && snap.executions) || [];
@@ -5485,19 +5488,19 @@
                 return ra - rb;
             });
             var html = '<section class="dgx-card dgx-exec">' +
-                '<div class="dgx-label">历次执行 · EXECUTIONS</div>';
+                '<div class="dgx-label">Executions</div>';
             for (var i = 0; i < sorted.length; i++) {
                 var it = sorted[i] || {};
                 var st = it.vm_status || '';
-                var label = DGX_EXEC_STATE[st] || st || '未知';
+                var label = DGX_EXEC_STATE[st] || st || 'Unknown';
                 var when = it.started_at ? formatTime(it.started_at) : '';
                 html += '<button type="button" class="dgx-exec-row dgx-exec--' + dgxEsc(st) + '"' +
                     ' data-exec-run="' + dgxEsc(it.run_id || '') + '">' +
                     '<span class="dgx-exec-id dgx-mono">' + dgxEsc(dgxExecShort(it.run_id)) + '</span>' +
                     '<span class="dgx-exec-state">' + dgxEsc(label) + '</span>' +
-                    (it.is_current ? '<span class="dgx-exec-cur">当前</span>' : '') +
+                    (it.is_current ? '<span class="dgx-exec-cur">Current</span>' : '') +
                     (when ? '<span class="dgx-exec-time">' + dgxEsc(when) + '</span>' : '') +
-                    '<span class="dgx-exec-go">查看执行流程 ›</span>' +
+                    '<span class="dgx-exec-go">View run ›</span>' +
                     '</button>';
             }
             return html + '</section>';
@@ -5506,7 +5509,7 @@
         function dgxPlanHistory() {
             var items = (pcDiagHistory && pcDiagHistory.items) || [];
             if (!items.length) return '';
-            var html = '<section class="dgx-card dgx-history"><div class="dgx-label">历史计划 · PLAN HISTORY</div>';
+            var html = '<section class="dgx-card dgx-history"><div class="dgx-label">Plan History</div>';
             for (var i = 0; i < items.length; i++) {
                 var it = items[i] || {};
                 var dec = it.decision || '';
@@ -5515,7 +5518,7 @@
                 var when = it.decided_at ? formatTime(it.decided_at) : '';
                 var head = '#' + (i + 1);
                 if (it.option_index) {
-                    head += ' 方案' + it.option_index + ' · ' + (it.option_title || '(未命名方案)');
+                    head += ' Option ' + it.option_index + ' · ' + (it.option_title || '(untitled option)');
                 }
                 html += '<details class="dgx-hist"><summary class="dgx-hist-sum">' +
                     '<span class="dgx-hist-title">' + dgxEsc(head) + '</span>' +
@@ -5523,13 +5526,13 @@
                     (when ? '<span class="dgx-hist-time">' + dgxEsc(when) + '</span>' : '') +
                     '</summary><div class="dgx-hist-body">';
                 if (it.feedback) {
-                    html += '<div class="dgx-kv"><span class="dgx-k">拒因</span><span class="dgx-v">' +
+                    html += '<div class="dgx-kv"><span class="dgx-k">Reason</span><span class="dgx-v">' +
                         dgxEsc(it.feedback) + '</span></div>';
                 }
                 // 升级那一条带工单号——「这条问题单派到哪去了」的唯一线索。
                 // 与处理结果卡、Problem Detail 的 Resolve Reason 行同源（后端把号也写进了 resolve_reason）。
                 if (it.ticket_number) {
-                    html += '<div class="dgx-kv"><span class="dgx-k">工单</span>' +
+                    html += '<div class="dgx-kv"><span class="dgx-k">Ticket</span>' +
                         '<span class="dgx-v dgx-mono">' + dgxEsc(it.ticket_number) + '</span></div>';
                 }
                 if (it.snapshot && typeof it.snapshot === 'object') {
@@ -5543,13 +5546,13 @@
                     // 这句话：它压根没有会话，说"会话已过期"是把不存在的东西说成过期了。
                     // 判据用 session_id —— 诊断裁定（spike/agentflow）**必有**它，直接派单必没有。
                     if (it.session_id) {
-                        html += '<div class="dgx-muted">该轮快照不可用（诊断会话已过期）。</div>';
+                        html += '<div class="dgx-muted">Snapshot unavailable for this round (diagnosis session expired).</div>';
                     }
                 }
                 if (it.reanalyze_count != null) {
-                    html += '<div class="dgx-muted">驳回次数 ' + dgxEsc(String(it.reanalyze_count)) +
+                    html += '<div class="dgx-muted">Rejections ' + dgxEsc(String(it.reanalyze_count)) +
                         (it.max_reanalyze != null ? ('/' + dgxEsc(String(it.max_reanalyze))) : '') +
-                        (it.remediation_status === 'closed_manual' ? ' · 已达驳回上限，需人工处理' : '') +
+                        (it.remediation_status === 'closed_manual' ? ' · rejection limit reached, manual action needed' : '') +
                         '</div>';
                 }
                 html += '</div></details>';
@@ -5575,20 +5578,20 @@
             // 会把本块高度锁死 52px 导致标题溢出压到根因卡片上。
             html += '<div class="dgx-head"><div class="dgx-head-top">' +
                 '<span class="dgx-status dgx-status--' + dgxEsc(st) + '">' + dgxEsc(DGX_STATUS_LABEL[st] || st) + '</span>' +
-                (snap.trigger ? '<span class="dgx-chip">来源 ' + dgxEsc(snap.trigger) + '</span>' : '') +
+                (snap.trigger ? '<span class="dgx-chip">Source ' + dgxEsc(snap.trigger) + '</span>' : '') +
                 // 轮次标识：老记录是 spike 的 session_id，新记录是 agentflow 的 run_id。
                 // 两者都落在 ref 上（历史快照没有 ref，回落 session_id），ref_kind 只影响提示文案。
                 ((snap.ref || snap.session_id)
                     ? '<span class="dgx-chip dgx-mono" title="' + dgxEsc(snap.ref_kind === 'run' ? 'run_id' : 'session_id') + '">' +
                       dgxEsc(snap.ref || snap.session_id) + '</span>'
                     : '') +
-                (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">耗时 ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
+                (dgxElapsed(snap.created_at, snap.updated_at) ? '<span class="dgx-chip">Elapsed ' + dgxEsc(dgxElapsed(snap.created_at, snap.updated_at)) + '</span>' : '') +
                 // 状态行右端：Flow Diagram 入口 + 更新时间（两者互换过位置，按用户要求：
                 // 按钮在左、时间贴最右）。两者同处一个右对齐簇 —— margin-left:auto 挂在外层
                 // .dgx-head-right 上，而不是各处一个（两个 auto 会平分空白，把「更新」挤到中间去）。
                 '<span class="dgx-head-right">' +
                 dgxFlowBtn(snap) +
-                (snap.updated_at ? '<span class="dgx-updated">更新 ' + dgxEsc(dgxClock(snap.updated_at)) + '</span>' : '') +
+                (snap.updated_at ? '<span class="dgx-updated">Updated ' + dgxEsc(dgxClock(snap.updated_at)) + '</span>' : '') +
                 '</span>' +
                 '</div>' +
                 (snap.issue_title ? '<h2 class="dgx-issue">' + dgxEsc(snap.issue_title) + '</h2>' : '') +
@@ -5598,11 +5601,11 @@
 
             if (dgxRerunPending) {
                 // 拒绝后抑制旧快照：只留状态头 + 重跑提示，绝不渲染旧结论/审批条（否则拒绝按钮二次可用）
-                html += '<div class="dgx-live dgx-rerun"><span class="dgx-spinner"></span>已提交修改建议，正在重新分析…</div>';
+                html += '<div class="dgx-live dgx-rerun"><span class="dgx-spinner"></span>Feedback submitted, re-analyzing…</div>';
             } else {
                 if (!terminal) {
-                    html += '<div class="dgx-live"><span class="dgx-spinner"></span>分析中… 已完成 ' +
-                        ((snap.tool_calls || []).length) + ' 次工具调用</div>';
+                    html += '<div class="dgx-live"><span class="dgx-spinner"></span>Analyzing… ' +
+                        ((snap.tool_calls || []).length) + ' tool calls so far</div>';
                 }
 
                 if (c) {
@@ -5611,7 +5614,7 @@
                     // 3) 修复方案
                     html += dgxFixOptions(c.recommended_fix || []);
                 } else if (terminal) {
-                    html += '<div class="dgx-card"><div class="dgx-muted">本次诊断无结构化结论。</div></div>';
+                    html += '<div class="dgx-card"><div class="dgx-muted">This diagnosis produced no structured conclusion.</div></div>';
                 }
 
                 // 5) 处理（拒绝/忽略/误报）——放在结论之后、分析链路之前
@@ -6613,16 +6616,16 @@
                     else if (act === 'reject-cancel') { dgxFbOpen = false; renderDiagnosis(pcDiagLastSnap); }
                     else if (act === 'reject-submit') submitDiagnosisDecision('reject');
                     else if (act === 'ignore') {
-                        confirmDialog('忽略该诊断并关闭这条问题单？', function () { submitDiagnosisDecision('ignore'); });
+                        confirmDialog('Ignore this diagnosis and close the problem?', function () { submitDiagnosisDecision('ignore'); });
                     } else if (act === 'escalate') {
                         // 二次确认与「忽略」同款：这一步会把问题单转成终态、且**会真的建出一张工单**
                         // （不可逆的动作在派单侧），误点的代价比忽略高。
                         confirmDialog(
-                            '升级该诊断？将生成一张修复工单并把这条问题单置为 escalated。',
+                            'Escalate this diagnosis? A fix ticket will be created and the problem will be set to escalated.',
                             function () { submitDiagnosisDecision('escalate'); });
                     } else if (act === 'escalate-fix') {
                         confirmDialog(
-                            '升级到修复流程？将生成一张工单并钉住 ' + ESCALATE_FIX_WORKFLOW + '。',
+                            'Escalate to the fix workflow? A ticket pinned to ' + ESCALATE_FIX_WORKFLOW + ' will be created.',
                             function () { escalateToFix(pcDiagRec, true); });
                     } else if (act === 'flow-last') {
                         // 概要条 Flow Diagram：直接看**最后一次执行**的流程图，**只开这一张图**
