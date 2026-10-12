@@ -18,6 +18,9 @@ npm run build     # 产出 dist/
 npm run preview   # 预览构建产物，默认 :4173
 ```
 
+> 三个命令都经 `scripts/vite-with-base.mjs` **自动探测部署形态**（本机 `/`、共享机器 `/sip/`），
+> 不需要传任何参数；启动时会打印判定依据。详见「部署形态：本机 / 子路径」。
+
 浏览器访问 `http://localhost:5173`。
 
 > **端口注意**：开发时前端在 `:5173`，经 Vite proxy 转发到三个后端
@@ -76,9 +79,71 @@ npm run preview   # 预览构建产物，默认 :4173
 
 `src/api/config.js` 的 base 三级回退：**localStorage > `VITE_*` > 相对路径默认**。
 dev 下可用 `__sipApi.setBase('sipAiops', 'http://host:8080/api/sip-aiops')` 临时改。
+（那三个「相对路径默认」由部署 `base` 派生 —— 见「部署形态」，本机拼出 `/agentflow`。）
 
-> **未迁移的 15 个视图仍打硬编码绝对 URL**、依赖后端开 CORS —— 这是有意保留的不对称，
-> 等它们逐个迁移时自然收敛。**不要**为了它们去改那些 base。
+> **未迁移的 15 个视图**（`js/app.js`）不走上面这套：它不过打包器、读不到 `import.meta.env`，
+> 改用**运行时判定**的三个常量 `SIP_AGENTFLOW` / `SIP_AIOPS` / `SIP_APM`。
+> 本机形态下它们解析成绝对 `http://localhost:<port>`（与改造前逐字一致），
+> 远端形态下改走同源前缀。详见「部署形态」。
+
+## 部署形态：本机 / 子路径
+
+同一份源码要能落在两种位置，**靠自动探测的 `base` 切换，不靠人记参数**。
+
+|  | 本机部署 | 子路径部署（如共享机器上的 `/sip/`） |
+|---|---|---|
+| 挂载点 | `/` | `/sip/` |
+| 资源引用 | `/assets/…` | `/sip/assets/…` |
+| 后端地址 | 绝对 `http://localhost:<port>` 直连 | 同源前缀 `/sip/agentflow` 等，经 proxy / nginx |
+| base 由谁定 | `scripts/vite-with-base.mjs` 探测 | 同左 |
+
+`dev` / `build` / `preview` 都经那个包装器，**零参数**。判定顺序（先命中先用）：
+
+1. 环境变量 `VITE_BASE` —— 显式覆盖（CI、临时换挂载点）
+2. 本机 nginx 里存在「**指向本应用 preview 端口(4173)** 的 `/sip/` 反代」→ `/sip/`
+3. 否则 `/`
+
+第 2 步刻意要求**两个条件同时成立**（前缀 + 指向本应用）：光看 `/sip/` 前缀会把**别人的站点**
+认成自己 —— 那台共享机器上还有十几个别人的 location。启动时先看这一行，再怀疑别处：
+
+```
+[sip] base=/sip/  （/opt/homebrew/etc/nginx/nginx.conf 里有指向本应用(:4173)的 /sip/ 反代）
+```
+
+### 为什么 base 在构建期定、后端地址却在运行期定
+
+**base 必须构建期定**：它被焊进 `dist/index.html` 的资源引用 —— `base='/'` 的产物放到 `/sip/` 下，
+assets 会全部 404。
+
+**后端地址反过来只能运行期定**：判据是「浏览器与后端同不同机」，而这**只有浏览器自己知道**。
+`js/app.js` 用 `location.hostname` 判（`src/api/config.js` 那侧不需要 —— 它的默认值本就是相对路径，
+由 base 派生就够了）：
+
+```js
+var SIP_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+var SIP_AGENTFLOW = SIP_LOCAL ? 'http://localhost:8000' : SIP_PREFIX + '/agentflow';
+```
+
+所以 **`js/app.js` 在两种形态下逐字节相同**（实测 md5 一致）—— 它是唯一与 base 无关的产物。
+`base` 传进它得靠 `src/legacy/bridge.js` 注入的 `window.__SIP_BASE__`（同一个 IIFE 读不到
+`import.meta.env`，与 `__SIP_DEFER_LEGACY_INIT` 是同一套接缝）。
+
+### 三处容易踩的地方
+
+- **别用 `.env` 配 base**：Vite 在**任何 mode 下都加载 `.env`**，而 `src/api/config.js` 的优先级是
+  `localStorage > VITE_* > 相对默认` —— 一个残留的 `.env` 会**静默盖掉**默认值。所以仓库里
+  没有 `.env`（只有 `.env.example`）。
+- **`import.meta.env.BASE_URL` 末尾带斜杠**（`'/'` 或 `'/sip/'`）。拼路径前先
+  `replace(/\/+$/, '')`，否则 `BASE_URL + '/x/'` 得到 `//x/` —— 浏览器按**协议相对 URL** 解析，
+  会把 `x` 当主机名。
+- **视图里的 `'/architecture/'` 字面量不能省**：`check-embed-wiring.py` 按它反查「哪个视图渲染了
+  哪个内嵌页」。写成 `` `${base}/architecture/` `` 会让该视图被判成「没有任何视图渲染它」——
+  **校验脚本会红**。要写成 `base + '/architecture/'` 保住这个字面量。
+
+> 子路径部署时，七个内嵌页里 turbopack 硬编码的 `/_next/…` 需要 nginx 额外一条
+> `location ^~ /_next/ { proxy_pass http://127.0.0.1:4173/sip/_next/; }` —— 因为 `base='/sip/'`
+> 破坏了「`public/` 按根伺服」这个前提（见 `NextEmbed.vue` 的说明）。**本机部署不需要它。**
+
 
 ## 样式
 
