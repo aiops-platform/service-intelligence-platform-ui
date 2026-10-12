@@ -20,6 +20,27 @@
         return window.__SIP_LEGACY_ROOT || document;
     }
 
+    // ── 后端地址（部署形态自适应）─────────────────────────────
+    // 本文件**不过打包器**（bridge.js 以 classic script 加载），读不到 `import.meta.env` ——
+    // 应用挂载 base 由 bridge.js 注入的全局递进来，见下面的 __SIP_BASE__。
+    //
+    // 两种形态在「浏览器能否直连后端」上不同：
+    //   · 本机部署：浏览器与后端同机 → 保留 http://localhost:<port> 绝对地址直连
+    //     （与改造前逐字一致，不经过任何代理）
+    //   · 子路径部署（远端机器）：浏览器在别的机器上，localhost 指的是**访问者自己** ——
+    //     必须改走同源前缀，由 dev proxy / 生产 nginx 转发
+    //
+    // 判据用 hostname 而非路径：它表达的正是「浏览器与后端同不同机」这件事，
+    // 且本机用 127.0.0.1 打开时同样成立。与 src/api/config.js 的 PREFIX 是同一套思路。
+    var SIP_LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+    // 应用挂载前缀（末尾不带斜杠）：本机 ''、子路径部署 '/sip'
+    var SIP_PREFIX = (window.__SIP_BASE__ || '/').replace(/\/+$/, '');
+
+    var SIP_AGENTFLOW = SIP_LOCAL ? 'http://localhost:8000' : SIP_PREFIX + '/agentflow';
+    // sip-aiops 的路径本身就是 /api/sip-aiops/**，故远端只需前缀，路径由调用处补
+    var SIP_AIOPS     = SIP_LOCAL ? 'http://localhost:8080' : SIP_PREFIX;
+    var SIP_APM       = SIP_LOCAL ? 'http://localhost:7070' : SIP_PREFIX + '/apm-api';
+
     // ── Shared Utilities ──────────────────────────────────────
     function escapeHtml(text) {
         if (!text) return '';
@@ -141,7 +162,7 @@
      * 要放宽就改这一处。
      */
     function fetchProblemRecords() {
-        var base = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
+        var base = localStorage.getItem('apmBaseUrl') || SIP_APM;
         var headers = { 'X-Tenant-Id': localStorage.getItem('apmTenantId') || 'default' };
         var apiKey = localStorage.getItem('apmApiKey') || '';
         if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
@@ -307,7 +328,7 @@
     }
 
     // ── Knowledge Search ───────────────────────────────────────
-    var KB_API_BASE = 'http://localhost:8000';
+    var KB_API_BASE = SIP_AGENTFLOW;
     var ksStats = null;
     var ksResults = [];
 
@@ -1426,7 +1447,7 @@
         // 让遗留页面直连 sip-aiops(:8080)，而本页现在改由 agentflow(:8000) 供数。
         var SI_BASE = localStorage.getItem('smartInspectionBaseUrl')
                    || localStorage.getItem('workflowBaseUrl')
-                   || '/agentflow';
+                   || SIP_AGENTFLOW;
         var API_URL = SI_BASE + '/app-indicators';
         var services = [];
         var currentFilter = 'all';
@@ -1932,7 +1953,7 @@
                 '</div>';
             overlay.classList.add('open');
 
-            var url = 'http://localhost:8080/api/sip-aiops/app-alert?serviceName=' +
+            var url = SIP_AIOPS + '/api/sip-aiops/app-alert?serviceName=' +
                 encodeURIComponent(serviceName) + '&size=10&page=' + page;
 
             fetch(url)
@@ -2094,7 +2115,7 @@
         }
 
         function handleAlertAction(alertId, action) {
-            var url = 'http://localhost:8080/api/sip-aiops/app-alert/' + alertId + '/' + action;
+            var url = SIP_AIOPS + '/api/sip-aiops/app-alert/' + alertId + '/' + action;
             if (action === 'acknowledge') url += '?acknowledgedBy=admin';
 
             fetch(url, { method: 'PUT' })
@@ -2128,7 +2149,7 @@
                 '</div>';
             overlay.classList.add('open');
 
-            var url = 'http://localhost:8080/api/sip-aiops/app-alert/' + alert.id + '/analysis';
+            var url = SIP_AIOPS + '/api/sip-aiops/app-alert/' + alert.id + '/analysis';
 
             fetch(url)
                 .then(function (res) {
@@ -2678,7 +2699,7 @@
             '</div>';
         overlay.classList.add('open');
 
-        var url = 'http://localhost:8080/api/sip-aiops/' + apiPrefix + '/' + alert.id + '/analysis';
+        var url = SIP_AIOPS + '/api/sip-aiops/' + apiPrefix + '/' + alert.id + '/analysis';
         fetch(url)
             .then(function(res) {
                 if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -3623,7 +3644,7 @@
 
     // ── Metrics Analysis Page ───────────────────────────────────
     function initMetricsAnalysis() {
-        var API_BASE = 'http://localhost:8080/api/sip-aiops';
+        var API_BASE = SIP_AIOPS + '/api/sip-aiops';
         var currentPage = 0;
         var currentService = '';
         var currentType = 'all';
@@ -3826,7 +3847,7 @@
 
     // ── Log Analysis Page ───────────────────────────────────────
     function initLogAnalysis() {
-        var API_BASE = 'http://localhost:8080/api/sip-aiops';
+        var API_BASE = SIP_AIOPS + '/api/sip-aiops';
         var currentPage = 0;
         var currentService = '';
         var currentSeverity = 'all';
@@ -4024,7 +4045,7 @@
     // 基址优先级与 Bug Solve 页一致（bugSolveBaseUrl > workflowBaseUrl > 默认 8000）；
     // 租户取 `agentflowTenantId`（与 Vue 侧 `src/api/config.js` 的 resolveTenant 同一个 key）。
     var AGENTFLOW_BASE = localStorage.getItem('bugSolveBaseUrl')
-        || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+        || localStorage.getItem('workflowBaseUrl') || SIP_AGENTFLOW;
     var AGENTFLOW_TENANT = localStorage.getItem('agentflowTenantId') || 'otr';
 
     /**
@@ -4049,7 +4070,7 @@
 
     function initProblems() {
         // 后端地址（同 Monitor Targets）：默认 http://localhost:7070，localStorage 可覆盖。
-        var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
+        var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || SIP_APM;
         var TENANT_ID = localStorage.getItem('apmTenantId') || 'default';
         var API_KEY = localStorage.getItem('apmApiKey') || '';
 
@@ -6854,7 +6875,7 @@
     function initMonitorTargets() {
         // 后端地址（可配置）：默认 http://localhost:7070（后端 .env APM_PORT=7070）。
         // 可用 localStorage 覆盖：apmBaseUrl / apmTenantId / apmApiKey。
-        var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
+        var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || SIP_APM;
         var TENANT_ID = localStorage.getItem('apmTenantId') || 'default';
         var API_KEY = localStorage.getItem('apmApiKey') || '';
 
@@ -7275,7 +7296,7 @@
     function initDomainConfig() {
         // 后端地址（可配置）：默认 http://localhost:7070（后端 .env APM_PORT=7070）。
         // 可用 localStorage 覆盖：apmBaseUrl / apmTenantId / apmApiKey。
-        var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || 'http://localhost:7070';
+        var APM_BASE_URL = localStorage.getItem('apmBaseUrl') || SIP_APM;
         var TENANT_ID = localStorage.getItem('apmTenantId') || 'default';
         var API_KEY = localStorage.getItem('apmApiKey') || '';
 
@@ -7763,7 +7784,7 @@
     // ── Agent Registry（Agent Fleet）────────────────────────────
     function initAgentRegistry() {
         // 后端地址（可配置）：默认 http://localhost:8000。可用 localStorage 覆盖：agentsBaseUrl。
-        var AGENT_API_BASE = localStorage.getItem('agentsBaseUrl') || 'http://localhost:8000';
+        var AGENT_API_BASE = localStorage.getItem('agentsBaseUrl') || SIP_AGENTFLOW;
 
         // 流水线阶段分组配置：key 对应后端 /agents 返回的 stage 字段
         // （detect/diagnose/fix/verify/deliver/learn），按后端下发数据驱动分组。
@@ -8368,7 +8389,7 @@
 
     // ── Bug Solve（选流程 → 贴 Ticket → 跑 run → 轮询 → 审批 → 节点详情）──
     function initBugSolve() {
-        var BS_API_BASE = localStorage.getItem('bugSolveBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+        var BS_API_BASE = localStorage.getItem('bugSolveBaseUrl') || localStorage.getItem('workflowBaseUrl') || SIP_AGENTFLOW;
 
         var workflows = [];
         var workflowId = null;
@@ -8807,7 +8828,7 @@
     // ── MCP Server 配置（配置通用 MCP server → 绑 agent → 测试连接 / 工具列表）──
     function initMcpServers() {
         // 后端地址（可配置）：默认 http://localhost:8000。可用 localStorage 覆盖：mcpBaseUrl（否则沿用 workflowBaseUrl）。
-        var MCP_API_BASE = localStorage.getItem('mcpBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+        var MCP_API_BASE = localStorage.getItem('mcpBaseUrl') || localStorage.getItem('workflowBaseUrl') || SIP_AGENTFLOW;
 
         var servers = [];
         var editingId = null;     // 当前编辑的 server id；null = New
@@ -9422,7 +9443,7 @@
     // ── Agent 配置（DB 驱动 AgentSpec 覆盖 + agent→MCP server 绑定）──
     function initAgentConfig() {
         // 后端地址（可配置）：默认 http://localhost:8000。可用 localStorage 覆盖：agentConfigBaseUrl（否则沿用 workflowBaseUrl）。
-        var AGC_API_BASE = localStorage.getItem('agentConfigBaseUrl') || localStorage.getItem('workflowBaseUrl') || 'http://localhost:8000';
+        var AGC_API_BASE = localStorage.getItem('agentConfigBaseUrl') || localStorage.getItem('workflowBaseUrl') || SIP_AGENTFLOW;
 
         var agents = [];        // GET /agent-configs 行
         var editingName = null; // 当前编辑的 agent 名；null = New（custom）
