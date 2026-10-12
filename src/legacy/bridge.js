@@ -17,7 +17,9 @@ import rawHtml from './legacy-panels.html?raw'
 export const legacyPanelsHtml = rawHtml
 
 const LEGACY_HOST_ID = 'sip-legacy-host'
-const LEGACY_SCRIPT = '/js/app.js'
+/** 应用挂载点（末尾带斜杠）：本机 '/'；子路径部署 '/sip/'。 */
+const BASE = import.meta.env.BASE_URL || '/'
+const LEGACY_SCRIPT = `${BASE}js/app.js`
 
 function loadClassicScript(src) {
   return new Promise((resolve, reject) => {
@@ -48,6 +50,10 @@ export function ensureLegacyBooted() {
 
     // S1/S2/S9：把全文档查询收进这棵子树
     window.__SIP_LEGACY_ROOT = host
+
+    // 部署挂载点：app.js 是 classic script、不过打包器，读不到 import.meta.env，
+    // 用这个全局把 base 递进去（与 __SIP_DEFER_LEGACY_INIT 同一套接缝）
+    window.__SIP_BASE__ = BASE
 
     // S7：让 app.js 加载后不立即自启，等我们把 DOM 备好再显式调 init
     window.__SIP_DEFER_LEGACY_INIT = true

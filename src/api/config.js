@@ -11,11 +11,20 @@
  * 反代转发到真实后端，浏览器视角同源 —— 这就是跨域问题的解法本身。
  */
 
+/**
+ * 应用挂载前缀（末尾不带斜杠）：本机 `''`、子路径部署 `'/sip'`。
+ *
+ * 取自 Vite 的 `base` —— 那是**编译期常量**，由 scripts/vite-with-base.mjs 探测后经
+ * VITE_BASE 传入。所以这里不需要任何运行时判断：base 一变，这几个默认值跟着变。
+ * 拼出来的仍是相对路径，照旧由 dev proxy / 生产 nginx 转发，浏览器视角同源。
+ */
+const PREFIX = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '')
+
 const DEFAULTS = {
-  sipAiops: '/api/sip-aiops',
-  agentflow: '/agentflow',
+  sipAiops: `${PREFIX}/api/sip-aiops`,
+  agentflow: `${PREFIX}/agentflow`,
   // CMDB 编辑面：datasource MCP server 的 /admin/cmdb（dev proxy 会把前缀 rewrite 掉）
-  cmdb: '/api/cmdb',
+  cmdb: `${PREFIX}/api/cmdb`,
 }
 
 /**

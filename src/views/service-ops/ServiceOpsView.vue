@@ -48,15 +48,28 @@ import NextEmbed from '@/components/NextEmbed.vue'
 
 const route = useRoute()
 
+/**
+ * 应用挂载前缀（末尾不带斜杠）：本机 `''`、子路径部署 `'/sip'`。
+ * 取自 Vite 的 `base` —— 编译期常量，由 scripts/vite-with-base.mjs 探测后传入。
+ */
+const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '')
+
 /** 深链参数。数组形式（`?portfolio=a&portfolio=b`）一律当没有 —— 只认单个字符串。 */
 const portfolio = computed(() =>
   typeof route.query.portfolio === 'string' ? route.query.portfolio : '',
 )
 
+/**
+ * 前缀与裸路径分开拼，保留 `/service-ops/` 字面量 ——
+ * `check-embed-wiring.py` 按「视图里出现的带引号入口路径」反查，写成
+ * `${base}/service-ops/` 那样没有字面量，本视图会被误判成「没有任何视图渲染它」。
+ */
+const SRC_BASE = base + '/service-ops/'
+
 const src = computed(() =>
   portfolio.value
-    ? `/service-ops/?portfolio=${encodeURIComponent(portfolio.value)}`
-    : '/service-ops/',
+    ? `${SRC_BASE}?portfolio=${encodeURIComponent(portfolio.value)}`
+    : SRC_BASE,
 )
 
 /**

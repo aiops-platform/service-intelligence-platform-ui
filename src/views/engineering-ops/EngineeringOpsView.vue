@@ -66,8 +66,18 @@
 -->
 <script setup>
 import NextEmbed from '@/components/NextEmbed.vue'
+
+/**
+ * 应用挂载前缀（末尾不带斜杠）：本机 `''`、子路径部署 `'/sip'`。
+ * 取自 Vite 的 `base` —— 编译期常量，由 scripts/vite-with-base.mjs 探测后传入。
+ *
+ * 内嵌页的真实路径必须是 `/xxx/` 这个形态（见本文件顶部「路径为什么必须是 …」那节），
+ * 所以前缀与裸路径**分开拼**，保留 `/` 开头的字面量 ——
+ * `.claude/skills/sip-embed-page/scripts/check-embed-wiring.py` 正是按它反查的。
+ */
+const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '')
 </script>
 
 <template>
-  <NextEmbed src="/engineering-ops/" title="Engineering Ops" label="正在载入 Engineering Ops…" />
+  <NextEmbed :src="base + '/engineering-ops/'" title="Engineering Ops" label="正在载入 Engineering Ops…" />
 </template>

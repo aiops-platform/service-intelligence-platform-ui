@@ -193,7 +193,8 @@ const routes = [
 ]
 
 export const router = createRouter({
-  history: createWebHistory(),
+  // base 由 vite 的 `base` 决定（本机 '/'、子路径部署 '/sip/'），见 scripts/vite-with-base.mjs
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
 })
 
