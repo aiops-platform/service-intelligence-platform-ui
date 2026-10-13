@@ -10,6 +10,7 @@ import { ref, onMounted, onActivated } from 'vue'
 import { useBugSolveRun, statusClass } from './useBugSolveRun'
 import { nodeStatusLabel, statusLabel } from '@/utils/runStatus'
 import NodePayload from '@/components/graph/NodePayload.vue'
+import NodeHealth from '@/components/graph/NodeHealth.vue'
 import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
 import { agentsApi } from '@/api/agentflow'
@@ -82,8 +83,10 @@ function nodeTip(nid) {
 
 
 
+// 图例是**字面量**，加了新状态必须同时改这里 —— 否则图里有这个颜色、图例里没有，
+// 读的人只会以为是自己看错了。
 const HINT =
-  '选择流程后预览图；点击「开始解决问题」运行。节点按状态着色：绿=done 蓝=running 灰=pending 红=failed 橙=cancelled 琥珀=待审批。'
+  '选择流程后预览图；点击「开始解决问题」运行。节点按状态着色：绿=done 绿底琥珀边=完成但有告警 蓝=running 灰=pending 红=failed 橙=cancelled 琥珀=待审批。'
 
 async function refreshWorkflows() {
   refreshing.value = true
@@ -230,6 +233,14 @@ onActivated(loadWorkflows)
               <span class="bs-badge" :class="'bs-badge-' + detail.status">{{ nodeStatusLabel(detail.status) }}</span>
               <span class="bs-detail-meta">tokens {{ detail.tokens }} · cost {{ detail.cost }}</span>
             </div>
+            <!-- 失败原因。`useBugSolveRun` 的 detail 此前**没有**带上 `error`，
+                 于是本页从不显示失败节点的错误（Run Detail 那边一直在显示）—— 一并补齐。 -->
+            <div v-if="detail.error" class="alert-error" style="display: block; margin: 8px 0">
+              {{ detail.error }}
+            </div>
+            <!-- 执行告警，挂在字段列表上方（见 NodeHealth 的说明） -->
+            <NodeHealth v-if="detail.health?.degraded"
+                        :health="detail.health" :status="detail.status" />
             <div class="bs-tabs">
               <button
                 class="bs-tab"

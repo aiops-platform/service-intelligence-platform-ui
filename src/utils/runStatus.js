@@ -31,6 +31,25 @@ export const HALTED = 'halted'
 /** 审批被否决（人工驳回 / 超时自动拒绝）。同样不是 `success`。 */
 export const REJECTED = 'rejected'
 
+/**
+ * 降级：**跑完了、结果可用，但执行过程里有失败的工具调用**。
+ *
+ * 与相邻几档的分界，一句话各一条：
+ *
+ * - 不是 `failed` —— 那是**没干成**（引擎判了失败，下游根本不执行）。
+ * - 不是 `halted` —— 那是**证据不足、没结论**。
+ * - 不是 `waiting_approval` —— 那是**还没跑完、在等人**。
+ *
+ * 这一档恰恰相反：**活干完了**，只是过程中有工具调用出错、或某个承诺的交付没做成。
+ * 实测 `run_bc41d9c418` 的 `fix` 节点：`ws_git show` 被白名单拒（工具错误），
+ * 但修复完成、产物齐备 —— 引擎判 `done` + `degraded`。这种节点原先在图上是纯绿，
+ * 与"一切正常"完全分不开。
+ *
+ * run 级与节点级**共用这一个名字**：后端两级各给一份**形状不同**的健康信息，
+ * 名字再不收成一个的话，图、表、徽章又会各说各话（见文件头第 3 节）。
+ */
+export const DEGRADED = 'degraded'
+
 /** 这条 run 是不是**中途中断**（`kind: halt` 被触发）。 */
 export function isHalted(run) {
   return !!run && run.outcome === 'halted' && !!run.halted_at
@@ -49,7 +68,8 @@ export function isRejected(run) {
 }
 
 /**
- * 整条 run 的展示状态：中断报 `halted`、被否决报 `rejected`，其余用后端给的原值。
+ * 整条 run 的展示状态：中断报 `halted`、被否决报 `rejected`、成功但有告警报 `degraded`，
+ * 其余用后端给的原值。
  *
  * 未知值原样透出（不映射成"其它"）—— 后端加新状态时这里不该变成一句谎话。
  */
@@ -57,7 +77,17 @@ export function runStatusOf(run) {
   if (!run) return ''
   if (isHalted(run)) return HALTED
   if (isRejected(run)) return REJECTED
-  return run.status || ''
+  const st = run.status || ''
+  // 成功但过程有告警。
+  //
+  // ⚠️ **只认"真成功"**：`unmet_delivery` 非空的 run，`status` 本来就已经是 `failed`
+  // （引擎在交付未达成时判节点失败、run 跟着失败），下面这个 `st === 'success'`
+  // 把它挡在外面 —— 红的还是红的，绝不因为"有告警"就降级成琥珀。
+  if (st === 'success') {
+    const h = runHealthOf(run)
+    if (!h.unmet.length && h.warnings.length) return DEGRADED
+  }
+  return st
 }
 
 /**
@@ -70,21 +100,117 @@ export function rejectReasonOf(run) {
   return isRejected(run) ? run.reject_reason || null : null
 }
 
+// ---------------------------------------------------------------------------
+// 执行健康度（`_health`）
+// ---------------------------------------------------------------------------
+
+/**
+ * 健康信息 → **统一形状**。后端两级各给一份，**键名和形状都不一样**：
+ *
+ * | | 键名 | `unmet_delivery` | 条目带 `node` |
+ * |---|---|---|---|
+ * | 节点级 `nodes[nid].output._health` | `failed[]` | 裸工具名 | 否 |
+ * | run 级（响应顶层 `health`） | `failed_calls[]` | `'node：tool'` 串 | 是 |
+ *
+ * 不归一的话，每个组件都得自己记住"我手上这份是哪一档"，漏一处就是一处静默错读。
+ *
+ * ⚠️ **两个 `degraded` 标志不等价**：节点级是 `bool(failed)`（**不含** unmet），
+ * run 级是 `bool(failed_calls) || bool(unmet)`。所以这里**自己算** `degraded`，
+ * 调用方一律只看归一后的 `warnings` / `unmet`，**别去读后端那个 `degraded`**。
+ *
+ * ⚠️ `_health` **缺失就是健康** —— 干净节点、以及 `halt`/`closed` 这类不跑 agent 的
+ * 节点上整个键都不存在（后端 `snapshot()` 无事可报时返回 `None`）。缺键不许当异常，
+ * 更不许兜底成"未知"。
+ *
+ * @returns `{degraded, warnings:[{node,tool,impact,state,error}], unmet:[], truncated}`
+ */
+function normalizeHealth(h) {
+  if (!h || typeof h !== 'object') {
+    return { degraded: false, warnings: [], unmet: [], truncated: null }
+  }
+  // 两种键名都认：节点级 `failed[]` / run 级 `failed_calls[]`
+  const raw = Array.isArray(h.failed) ? h.failed
+    : Array.isArray(h.failed_calls) ? h.failed_calls : []
+  const warnings = raw
+    .filter((f) => f && typeof f === 'object')
+    .map((f) => ({
+      tool: f.tool || '',
+      impact: f.impact || '',
+      state: f.state || '',
+      // 后端已把 error 截到 500 字符；这里不再截，展示层按需再截
+      error: typeof f.error === 'string' ? f.error : '',
+      node: f.node || '', // run 级才有；节点级为空串
+    }))
+  const unmet = (Array.isArray(h.unmet_delivery) ? h.unmet_delivery : [])
+    .filter((x) => typeof x === 'string' && x)
+  return {
+    degraded: warnings.length > 0 || unmet.length > 0, // 自己算，不用后端两个不一致的字段
+    warnings,
+    unmet,
+    truncated: typeof h.failed_calls_truncated === 'number' ? h.failed_calls_truncated : null,
+  }
+}
+
+/** 节点级健康度（`nodes[nid].output._health`）。**缺 `_health` ⇒ 健康**。 */
+export function nodeHealthOf(run, nid) {
+  return nodeHealthOfNode(run?.nodes?.[nid])
+}
+
+/** 同上，但直接吃**节点对象** —— 悬停提示手上只有节点，拿不到 run/nid。 */
+export function nodeHealthOfNode(node) {
+  const out = node?.output
+  return normalizeHealth(out && typeof out === 'object' ? out._health : null)
+}
+
+/** run 级健康度（响应**顶层**的 `health`）。 */
+export function runHealthOf(run) {
+  return normalizeHealth(run?.health)
+}
+
+/**
+ * 把 `_health` 从 output 里摘掉。
+ *
+ * 它由详情面板顶部的告警块单独渲染；不摘的话同一个东西会在字段列表里再列一遍，
+ * 而且混在几十个业务字段中间，正是这一轮要消灭的"看不见"。
+ */
+export function withoutNodeHealth(output) {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return output
+  if (!('_health' in output)) return output
+  const { _health, ...rest } = output
+  return rest
+}
+
 /**
  * 单个节点的展示状态。
  *
- * 触发中断的那个节点在库里是 `done`（它确实跑完了），但展示成 `done` 会让人以为
- * "这一步正常通过"。所以**只有它**改报 `halted` —— 其余节点照旧。
+ * **两档派生覆盖，顺序不能反**：
  *
- * @param run        `GET /runs/{id}` 的返回（含 `outcome` / `halted_at`）
+ * 1. 触发中断的那个节点在库里是 `done`（它确实跑完了），但展示成 `done` 会让人以为
+ *    "这一步正常通过"。所以**只有它**改报 `halted`。
+ * 2. **降级**：`done` 且有失败的工具调用 —— "跑完了、结果可用，但过程有瑕疵"。
+ *
+ * ⚠️ `failed` / `rejected` 节点**永不降级**：它们本来就该是红的，告警信息由详情
+ * 面板直出。把一次交付失败染成琥珀绿，等于把"没干成"说成"基本干成了"。
+ *
+ * ⚠️ `unmet_delivery` 非空出现在 `done` 节点上**本不该发生**（引擎会把这种节点判成
+ * `failed`）。这里仍然认它，是因为宁可多报一次告警，也不能把一次交付失败显示成绿的。
+ * 同理，`_health` 缺失时**返回原状态**（`done` 就是 `done`）—— 判不出来就保持原状，
+ * **绝不**掉进 `statusClass` 的灰色兜底（那会把"跑完了"说成"还没跑"）。
+ *
+ * @param run        `GET /runs/{id}` 的返回（含 `outcome` / `halted_at` / `nodes`）
  * @param nid        节点 id
  * @param rawStatus  该节点在 `run.nodes[nid].status` 里的原值
  */
 export function nodeStatusOf(run, nid, rawStatus) {
   if (isHalted(run) && run.halted_at === nid) return HALTED
+  const st = rawStatus || 'pending'
+  if (st === 'done') {
+    const h = nodeHealthOf(run, nid)
+    if (h.warnings.length || h.unmet.length) return DEGRADED
+  }
   // 否决节点**不改名**（`rejected` / `rejected-canceled` 本身就是准确的状态名），
   // 只保证它有颜色 —— 见 NODE_STATUS_CLASS 里那条补的映射。
-  return rawStatus || 'pending'
+  return st
 }
 
 /**
@@ -128,6 +254,9 @@ export const STATUS_LABELS = {
   pending: '等待中',
   skipped: '已跳过',
   'rejected-canceled': '审批超时',
+  // 节点级文案。run 级那句在 `runStatusLabel` 里（"成功（含告警）"）—— 主语不同，
+  // 不共用这一条：表里的值是**节点**口径的。
+  degraded: '完成（含告警）',
   // —— 审批记录级（`GET /runs/{id}` 的 approvals[].status）——
   //
   // ⚠️ **这几个是大写的**，是后端的常量原值（`statestore/base.py`），与上面那些
@@ -169,6 +298,9 @@ export function runStatusLabel(run) {
   if (st === REJECTED) {
     return rejectReasonOf(run) === 'timeout' ? '审批超时' : '审批不通过'
   }
+  // run 级说"成功（含告警）"，节点级说"完成（含告警）" —— 两处主语不同
+  // （run 是对外承诺的结果，节点是流水线上的一步），文案不该照抄。
+  if (st === DEGRADED) return '成功（含告警）'
   return statusLabel(st)
 }
 
@@ -192,6 +324,10 @@ export const NODE_STATUS_CLASS = {
   'rejected-canceled': 'bs-node-status-rejected',
   waiting_approval: 'bs-node-status-waiting',
   skipped: 'bs-node-status-skipped',
+  // ⚠️ 漏掉这一条的后果与上一段那条同源、但**更糟**：`degraded` 会落到下面
+  // `statusClass` 的兜底 `bs-node-status-pending` —— 一个"跑完了、只是有告警"的节点
+  // 在图上渲染成**灰色"还没跑"**。那比不加这个状态还坏：它把"有瑕疵"说成了"没开始"。
+  degraded: 'bs-node-status-degraded',
 }
 
 export function statusClass(st) {

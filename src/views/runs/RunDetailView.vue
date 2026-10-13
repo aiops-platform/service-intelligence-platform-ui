@@ -12,6 +12,7 @@ import GraphCanvas from '@/components/graph/GraphCanvas.vue'
 import { graphNodeById, nodeTipOf } from '@/components/graph/nodeTip'
 import { nodeStatusLabel, runStatusLabel, statusLabel } from '@/utils/runStatus'
 import NodePayload from '@/components/graph/NodePayload.vue'
+import NodeHealth from '@/components/graph/NodeHealth.vue'
 import { agentsApi } from '@/api/agentflow'
 import { formatTime } from '@/utils/time'
 
@@ -25,6 +26,7 @@ const {
   totals, detail, detailTab, panelTab, setPanelTab, pendingApprovals, approvals,
   stopping, pausing, resuming, pausingNote, executorAlive, looksStranded,
   start, stop, pause, resume, stopPolling, approve, reject, selectNode, statusClass,
+  runHealth,
 } = state
 
 /**
@@ -158,6 +160,36 @@ watch(
       <span class="si-error-msg"><span class="si-error-icon">!</span><span>{{ error }}</span></span>
     </div>
 
+    <!--
+      这条 run 的执行告警。放在状态徽章下面、概览卡上面 —— 它是"这条 run 有没有问题"
+      的第二句话，不该埋在某个节点的 output 里等人去翻。
+
+      数据来自响应**顶层** `health`（与节点级 `nodes[nid].output._health` 是两种形状，
+      归一化在 `@/utils/runStatus`）。`unmet` 非空走红档（交付真的没发生），
+      否则琥珀档（有工具调用失败但目标达成）。
+
+      ⚠️ 这里**只呈现，不改状态**：run 徽章的颜色由 `runStatusOf` 判，
+      交付未满足的 run 本来就是 `failed`，红的还是红的（见那里的说明）。
+    -->
+    <div v-if="runHealth.degraded" class="bs-health"
+         :class="runHealth.unmet.length ? 'bs-health-critical' : 'bs-health-warn'">
+      <div class="bs-health-title">
+        执行告警：{{ runHealth.warnings.length }} 个工具调用失败<template
+          v-if="runHealth.unmet.length">，{{ runHealth.unmet.length }} 项交付未满足</template><template
+          v-if="runHealth.truncated">（另有 {{ runHealth.truncated }} 条未列出）</template>
+      </div>
+      <!-- run 级条目**带 node 字段**（节点级没有），所以这里能一并显示是哪个节点出的错 -->
+      <div v-for="(w, i) in runHealth.warnings" :key="i" class="bs-health-item">
+        <span class="bs-health-tool">{{ w.node }} · {{ w.tool }} · {{ w.impact || '—' }}</span>
+        <div v-if="w.error" class="bs-health-err">{{ w.error }}</div>
+      </div>
+      <!-- run 级的 unmet 是 `"节点：工具"` 串，与节点级的裸工具名不同形 —— 原样铺开，
+           不要去解析它（形状的差异收在 runStatus 的归一化里，模板不重复承担） -->
+      <div v-if="runHealth.unmet.length" class="bs-health-item">
+        未交付：<span class="bs-health-tool">{{ runHealth.unmet.join('、') }}</span>
+      </div>
+    </div>
+
     <!-- 概览 -->
     <div class="reflow-stats" style="grid-template-columns: repeat(5, 1fr)">
       <div class="kpi-card">
@@ -254,6 +286,14 @@ watch(
             <div v-if="detail.error" class="alert-error" style="display: block; margin: 8px 0">
               {{ detail.error }}
             </div>
+            <!--
+              执行告警。挂在字段列表**上方**、页签之外 —— 页签一/页签二都会看到它，
+              不必先点对页签才发现这个节点出过事。
+              `_health` 已由 useRunDetail 从 output 里摘掉，所以这里与下面的字段列表
+              不会重复渲染同一份东西。
+            -->
+            <NodeHealth v-if="detail.health?.degraded"
+                        :health="detail.health" :status="detail.status" />
             <div class="bs-tabs">
               <button class="bs-tab" :class="{ active: detailTab === 'output' }"
                       @click="detailTab = 'output'">输出 Output</button>

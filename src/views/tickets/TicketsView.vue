@@ -48,6 +48,7 @@ const {
   windowWarning,
   ticketDisplayStatus,
   ticketStatusLabel,
+  runDegraded,
 } = useTickets()
 
 const showNew = ref(false)
@@ -241,6 +242,13 @@ onActivated(load)
               <span class="alert-tag" :class="'status-' + ticketDisplayStatus(t)">
                 {{ ticketStatusLabel(t) }}
               </span>
+              <!--
+                含告警：run 是成功的，但过程里有失败的工具调用。**另起一枚标记**，
+                不改工单展示状态 —— 那套状态是筛选器的词表，塞新值会连带改筛选语义
+                （见 useTickets.runDegraded 的说明）。
+              -->
+              <span v-if="runDegraded(t.latest_run)" class="alert-tag status-degraded"
+                    title="这次 run 成功跑完，但过程中有工具调用失败 —— 点进去看节点详情">含告警</span>
             </td>
             <td>
               <button
@@ -297,6 +305,8 @@ onActivated(load)
             <span class="alert-tag" :class="'status-' + ticketDisplayStatus(detail)">
               {{ ticketStatusLabel(detail) }}
             </span>
+            <span v-if="runDegraded(detail.latest_run)" class="alert-tag status-degraded"
+                  title="最新一次 run 成功跑完，但过程中有工具调用失败">含告警</span>
           </h3>
           <button class="ap-modal-close" @click="closeDetail">&times;</button>
         </div>

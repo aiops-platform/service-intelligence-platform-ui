@@ -6,7 +6,7 @@
  */
 import { ref, computed } from 'vue'
 import { ticketApi, runApi, workflowApi } from '@/api/agentflow'
-import { REJECTED, runStatusLabel, statusLabel } from '@/utils/runStatus'
+import { REJECTED, runHealthOf, runStatusLabel, statusLabel } from '@/utils/runStatus'
 
 /**
  * 还在跑的节点状态。
@@ -42,7 +42,11 @@ const STATUS_FILTERS = [
  * 会永远是 running，哪怕 run 早就失败或中断了。
  *
  * 判据只能来自 run。后端 `GET /tickets` 顺带返回 `latest_run`
- * （`{run_id, status, outcome, halted_at}`，见 `api/app.py` 的 `_with_latest_run`）。
+ * （`{run_id, status, outcome, halted_at, rejected_at, reject_reason, health}`，
+ * 见 `api/app.py` 的 `_with_latest_run`）。
+ *
+ * ⚠️ 那份 `latest_run` 还**顺带带了 `health`**（run 级执行告警）。所以这一页要显示
+ * "跑完了但有告警"**不需要再拉一次完整的 run** —— 见下面的 `runDegraded`。
  *
  * 所以**工单的展示状态几乎完全由 run 派生**，`ticket.status` 只在"没发起过 run"时
  * 才用得上。这不是绕远路，是实情：后端那份状态本来就没有后续。
@@ -131,6 +135,27 @@ export function ticketStatusLabel(t) {
     return t?.latest_run?.reject_reason === 'timeout' ? '审批超时' : '审批不通过'
   }
   return statusLabel(st)
+}
+
+/**
+ * 最新一次 run **成功、但过程有告警**（有工具调用失败，且没有交付未满足）。
+ *
+ * ## 为什么是**另起一枚标记**，而不是给工单加一个展示状态
+ *
+ * `ticketDisplayStatus` 喂给两处：状态列的文字，以及 `STATUS_FILTERS` 的筛选
+ * （`TicketsView` 的 `visible`）。往里塞一个新值 = 连带改筛选语义、改计数、
+ * 改筛选器词表 —— 而"含告警"根本不是**一种工单状态**，它是挂在"已解决"之上的
+ * 一条附注。所以标记与状态并列，状态本身不动。
+ *
+ * ## 为什么判据是"run 成功且有告警"而不是直接读 `health.degraded`
+ *
+ * 交付未满足（`unmet`）的 run 本来就是 `failed`，工单也不会显示成已解决 ——
+ * 那种情况由状态列说，不需要这枚标记。这里只管"绿的、但别当它干净"。
+ */
+export function runDegraded(r) {
+  if (!r || r.status !== 'success') return false
+  const h = runHealthOf(r)
+  return !h.unmet.length && h.warnings.length > 0
 }
 
 /** 默认时间窗：最近 1 小时。v5.5 §7.1 要求窗口由调用方下发，不能留给平台猜。 */
@@ -521,5 +546,7 @@ export function useTickets() {
     // 展示状态：中断的工单不再显示 running（见 ticketDisplayStatus）
     ticketDisplayStatus,
     ticketStatusLabel,
+    /** 「含告警」标记（与状态**并列**，不是新状态 —— 见 runDegraded 的说明） */
+    runDegraded,
   }
 }

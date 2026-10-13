@@ -9,7 +9,7 @@
 import { ref, computed } from 'vue'
 import { workflowApi, runApi } from '@/api/agentflow'
 import { usePolling } from '@/composables/usePolling'
-import { nodeStatusOf, runStatusOf } from '@/utils/runStatus'
+import { nodeHealthOf, nodeStatusOf, runStatusOf, withoutNodeHealth } from '@/utils/runStatus'
 
 const TERMINAL = { success: 1, failed: 1, cancelled: 1 }
 
@@ -38,11 +38,16 @@ export function useBugSolveRun({ getCanvas }) {
   const totalTokens = ref(0)
   const totalCost = ref('0.0')
   /**
-   * 中断判据（`outcome` / `halted_at`）。
+   * 从 run 里摘出来喂给 `nodeStatusOf` / `runStatusOf` 的那几个字段。
    *
-   * 本模块原先只存 `runStatus = data.status`，而中断的 run 那个值也是 `success`
-   * —— 于是「证据不足、什么都没诊断出来」在本页显示成绿色的成功。判据与颜色
-   * 的规则统一在 `@/utils/runStatus`（Run Detail 用的是同一份）。
+   * 中断判据（`outcome` / `halted_at`）：本模块原先只存 `runStatus = data.status`，
+   * 而中断的 run 那个值也是 `success` —— 于是「证据不足、什么都没诊断出来」在本页
+   * 显示成绿色的成功。判据与颜色的规则统一在 `@/utils/runStatus`（Run Detail 同源）。
+   *
+   * ⚠️ `nodes` 与 `health` 是后加的，**不是可有可无**：`nodeStatusOf` 要靠
+   * `run.nodes[nid].output._health` 判「完成但有告警」。少了 `nodes`，它读不到健康度 →
+   * 这一页的降级节点会**静默退回纯绿**（看起来实现了，实际永远不触发，且不报错）。
+   * Run Detail 传的是完整响应体，所以那边不受影响 —— 这个坑只在这一页。
    */
   const runMeta = ref(null)
 
@@ -88,8 +93,16 @@ export function useBugSolveRun({ getCanvas }) {
       cost: typeof n.cost === 'number' ? n.cost.toFixed(4) : '0.0',
       // **传对象本身**，交给 NodePayload 按字段渲染（原先 JSON.stringify 成一个大块
       // 再由 <pre> 直出，一个上千字的摘要就会把其余字段顶出屏幕）。
-      output: n.output === undefined ? null : n.output,
+      //
+      // `_health` 摘掉：它由 NodeHealth 在字段列表**上方**单独渲染。不摘的话同一份
+      // 告警会再列一遍，而且混在几十个业务字段中间 —— 正是要消灭的那种"看不见"。
+      output: withoutNodeHealth(n.output === undefined ? null : n.output),
       params: n.params || {},
+      // 失败原因。原先没带上，于是本页**从不显示**失败节点的错误
+      // （Run Detail 那边有 `detail.error` 一直在显示）—— 顺带补齐。
+      error: n.error || '',
+      /** 该节点的执行告警（已归一化）。`_health` 缺失时为"健康"，不是 null。 */
+      health: nodeHealthOf(runMeta.value, nid),
       /** running 节点 output 尚未产出 —— 实时自动跟随时给「正在执行」反馈 */
       isRunning: st === 'running',
     }
@@ -179,7 +192,14 @@ export function useBugSolveRun({ getCanvas }) {
 
   function applyRun(data) {
     if (!runId.value || data.run_id !== runId.value) return
-    runMeta.value = { outcome: data.outcome, halted_at: data.halted_at }
+    // `nodes` / `health` 必须带上：降级判据要读节点输出里的 `_health`
+    // （见上面 runMeta 的说明 —— 漏了它本页的降级节点会静默变回纯绿）。
+    runMeta.value = {
+      outcome: data.outcome,
+      halted_at: data.halted_at,
+      nodes: data.nodes || {},
+      health: data.health,
+    }
     runStatus.value = runStatusOf(data)
     totalTokens.value = data.total_tokens || 0
     totalCost.value = typeof data.total_cost === 'number' ? data.total_cost.toFixed(4) : '0.0'

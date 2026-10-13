@@ -8,7 +8,7 @@ import { ref, computed } from 'vue'
 import { runApi } from '@/api/agentflow'
 import { usePolling } from '@/composables/usePolling'
 import { statusClass } from '@/views/bug-solve/useBugSolveRun'
-import { nodeStatusOf, runStatusOf } from '@/utils/runStatus'
+import { nodeHealthOf, nodeStatusOf, runHealthOf, runStatusOf, withoutNodeHealth } from '@/utils/runStatus'
 
 const TERMINAL = new Set(['success', 'failed', 'cancelled'])
 
@@ -36,6 +36,16 @@ export function useRunDetail(getRunId) {
   const displayStatus = computed(() => runStatusOf(run.value))
   const isTerminal = computed(() => TERMINAL.has(status.value))
   const running = computed(() => !!status.value && !isTerminal.value)
+
+  /**
+   * 整条 run 的执行告警（已归一化，来自响应**顶层** `health`）。
+   *
+   * 与 `detail.health`（节点级，来自 `nodes[nid].output._health`）是**两种形状**的
+   * 数据源，不是同一份东西 —— 归一化在 `@/utils/runStatus` 里做掉了，这里不用管差异。
+   * 单开一个 computed 是因为详情页要在**不止一个节点**的角度上给一句总账：
+   * 「这条 run 有没有问题」，否则得逐个节点点开才知道。
+   */
+  const runHealth = computed(() => runHealthOf(run.value))
 
   /** 单个节点的展示状态（触发中断的那个节点报 `halted`，不是 `done`）。 */
   function nodeStatus(nid, rawStatus) {
@@ -106,8 +116,13 @@ export function useRunDetail(getRunId) {
       // **传对象本身**，交给 NodePayload 按字段渲染。
       // 原先是这里 JSON.stringify 成一个大块，再由 <pre> 直出 —— 一个上千字的
       // 摘要会把其余字段顶出屏幕，读的人以为这个节点只收到一个输入。
-      output: n.output === undefined ? null : n.output,
+      //
+      // `_health` 摘掉：它由 NodeHealth 在字段列表**上方**单独渲染。不摘的话同一份
+      // 告警会再列一遍，而且混在几十个业务字段中间 —— 正是要消灭的那种"看不见"。
+      output: withoutNodeHealth(n.output === undefined ? null : n.output),
       params: n.params || {},
+      /** 该节点的执行告警（已归一化）。`_health` 缺失时为"健康"，不是 null。 */
+      health: nodeHealthOf(run.value, nid),
       /** 节点尚未跑出结果（渲染用；与 status 分开，避免和状态文案混淆） */
       isRunning: n.status === 'running',
     }
@@ -256,6 +271,8 @@ export function useRunDetail(getRunId) {
     nodes,
     totals,
     detail,
+    /** run 级执行告警（顶层 `health` 归一化而来，见 runHealth 的说明） */
+    runHealth,
     detailTab,
     /** 右侧面板页签：`detail` | `approvals` */
     panelTab,
